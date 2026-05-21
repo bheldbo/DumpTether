@@ -1,6 +1,7 @@
 param(
-    [ValidateSet("Db", "DbDown", "Migrate", "Api", "Web", "All")]
-    [string] $Target = "All"
+    [ValidateSet("Db", "DbDown", "Migrate", "Api", "Backend", "Web", "Frontend", "All", "Both")]
+    [string] $Target = "All",
+    [switch] $OpenBrowser
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,6 +10,8 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $webRoot = Join-Path $repoRoot "apps\web"
 $apiProject = Join-Path $repoRoot "src\DumpTether.Api\DumpTether.Api.csproj"
 $connectionString = "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
+$apiHealthUrl = "http://localhost:55868/health"
+$webUrl = "http://localhost:5173"
 
 function Get-DockerCommand {
     $docker = Get-Command docker -ErrorAction SilentlyContinue
@@ -109,6 +112,75 @@ function Start-DevWindow {
     )
 }
 
+function Wait-ForUrl {
+    param(
+        [string] $Url,
+        [string] $Name,
+        [int] $TimeoutSeconds = 60
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2
+
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+                return $true
+            }
+        }
+        catch {
+            Start-Sleep -Seconds 1
+        }
+    }
+
+    Write-Warning "$Name did not become ready at $Url within $TimeoutSeconds seconds."
+    return $false
+}
+
+function Open-UrlWhenReady {
+    param(
+        [string] $Url,
+        [string] $Name
+    )
+
+    if (Wait-ForUrl -Url $Url -Name $Name) {
+        Start-Process $Url
+    }
+}
+
+function Start-BrowserWatcher {
+    param(
+        [string] $Url,
+        [string] $Name
+    )
+
+    Start-Job -ScriptBlock {
+        param(
+            [string] $WatcherUrl,
+            [string] $WatcherName
+        )
+
+        $deadline = (Get-Date).AddSeconds(60)
+
+        while ((Get-Date) -lt $deadline) {
+            try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri $WatcherUrl -TimeoutSec 2
+
+                if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+                    Start-Process $WatcherUrl
+                    return
+                }
+            }
+            catch {
+                Start-Sleep -Seconds 1
+            }
+        }
+
+        Write-Warning "$WatcherName did not become ready at $WatcherUrl within 60 seconds."
+    } -ArgumentList $Url, $Name | Out-Null
+}
+
 switch ($Target) {
     "Db" {
         Start-Database
@@ -121,9 +193,34 @@ switch ($Target) {
         Invoke-Migrations
     }
     "Api" {
+        if ($OpenBrowser) {
+            Start-BrowserWatcher -Url $apiHealthUrl -Name "DumpTether API"
+        }
+
+        Start-Api
+    }
+    "Backend" {
+        Start-Database
+        Invoke-Migrations
+
+        if ($OpenBrowser) {
+            Start-BrowserWatcher -Url $apiHealthUrl -Name "DumpTether API"
+        }
+
         Start-Api
     }
     "Web" {
+        if ($OpenBrowser) {
+            Start-BrowserWatcher -Url $webUrl -Name "DumpTether Web"
+        }
+
+        Start-Web
+    }
+    "Frontend" {
+        if ($OpenBrowser) {
+            Start-BrowserWatcher -Url $webUrl -Name "DumpTether Web"
+        }
+
         Start-Web
     }
     "All" {
@@ -132,7 +229,24 @@ switch ($Target) {
         Start-DevWindow "DumpTether API" "Api"
         Start-DevWindow "DumpTether Web" "Web"
 
-        Write-Host "DumpTether API: http://localhost:55868/health"
-        Write-Host "DumpTether Web: http://localhost:5173"
+        Write-Host "DumpTether API: $apiHealthUrl"
+        Write-Host "DumpTether Web: $webUrl"
+
+        if ($OpenBrowser) {
+            Open-UrlWhenReady -Url $webUrl -Name "DumpTether Web"
+        }
+    }
+    "Both" {
+        Start-Database
+        Invoke-Migrations
+        Start-DevWindow "DumpTether API" "Api"
+        Start-DevWindow "DumpTether Web" "Web"
+
+        Write-Host "DumpTether API: $apiHealthUrl"
+        Write-Host "DumpTether Web: $webUrl"
+
+        if ($OpenBrowser) {
+            Open-UrlWhenReady -Url $webUrl -Name "DumpTether Web"
+        }
     }
 }
