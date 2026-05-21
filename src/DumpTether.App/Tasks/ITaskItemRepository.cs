@@ -22,5 +22,11 @@ public interface ITaskItemRepository
         IEnumerable<Guid> fieldDefinitionIds,
         CancellationToken cancellationToken);
 
+    Task<ArchiveResolution?> GetArchiveResolutionByIdAsync(
+        Guid id,
+        Guid workspaceId,
+        CancellationToken cancellationToken);
+
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

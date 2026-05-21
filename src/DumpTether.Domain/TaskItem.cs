@@ -197,6 +197,14 @@ public sealed class TaskItem
                 "Archive resolution must belong to the same workspace as the task item.");
         }
 
+        var normalizedNote = DomainGuards.OptionalTrimmed(note);
+
+        if (archiveResolution.RequiresExplanation && string.IsNullOrWhiteSpace(normalizedNote))
+        {
+            throw new InvalidOperationException(
+                "Archive note is required for the selected archive resolution.");
+        }
+
         ArchivedAt = archivedAt;
         ArchiveResolutionId = archiveResolution.Id;
 
@@ -204,6 +212,23 @@ public sealed class TaskItem
             TaskTimelineEntryKind.Archived,
             $"Archived as {archiveResolution.Name}",
             archivedAt,
+            normalizedNote);
+    }
+
+    public void Reopen(DateTimeOffset reopenedAt, string? note = null)
+    {
+        if (ArchivedAt is null)
+        {
+            throw new InvalidOperationException("Only archived task items can be reopened.");
+        }
+
+        ArchivedAt = null;
+        ArchiveResolutionId = null;
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.Reopened,
+            "Task item reopened",
+            reopenedAt,
             DomainGuards.OptionalTrimmed(note));
     }
 

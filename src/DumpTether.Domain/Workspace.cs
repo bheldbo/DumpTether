@@ -59,9 +59,16 @@ public sealed class Workspace
     public ArchiveResolution AddArchiveResolution(
         string name,
         DateTimeOffset createdAt,
-        string? description = null)
+        string? description = null,
+        bool requiresExplanation = false)
     {
-        var archiveResolution = ArchiveResolution.Create(Id, name, createdAt, description);
+        var archiveResolution = ArchiveResolution.Create(
+            Id,
+            name,
+            createdAt,
+            description,
+            requiresExplanation);
+
         _archiveResolutions.Add(archiveResolution);
 
         return archiveResolution;
