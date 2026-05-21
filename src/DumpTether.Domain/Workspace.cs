@@ -74,9 +74,20 @@ public sealed class Workspace
         return archiveResolution;
     }
 
-    public SavedView AddWorkspaceView(string name, string definitionJson, DateTimeOffset createdAt)
+    public SavedView AddWorkspaceView(
+        string name,
+        string definitionJson,
+        DateTimeOffset createdAt,
+        string sortJson = "{}",
+        int sortOrder = 0)
     {
-        var savedView = SavedView.CreateWorkspaceView(Id, name, definitionJson, createdAt);
+        var savedView = SavedView.CreateWorkspaceView(
+            Id,
+            name,
+            definitionJson,
+            sortJson,
+            sortOrder,
+            createdAt);
         _savedViews.Add(savedView);
 
         return savedView;
@@ -86,7 +97,9 @@ public sealed class Workspace
         Project project,
         string name,
         string definitionJson,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        string sortJson = "{}",
+        int sortOrder = 0)
     {
         ArgumentNullException.ThrowIfNull(project);
 
@@ -100,6 +113,8 @@ public sealed class Workspace
             project.Id,
             name,
             definitionJson,
+            sortJson,
+            sortOrder,
             createdAt);
 
         _savedViews.Add(savedView);

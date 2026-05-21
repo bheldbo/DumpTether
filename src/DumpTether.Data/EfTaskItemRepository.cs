@@ -24,38 +24,42 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         TaskItemListScope scope,
         CancellationToken cancellationToken)
     {
-        var query = _dbContext.TaskItems
+        return await ListAsync(
+            new TaskItemQuery(
+                workspaceId,
+                projectId,
+                Status: null,
+                MapScope(scope),
+                TaskItemFollowUpFilter.None,
+                NotViewedSinceDays: null,
+                NotTouchedSinceDays: null,
+                Text: null,
+                TaskItemSortField.LastTouchedAt,
+                SortDescending: true,
+                DateTimeOffset.UtcNow),
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskItem>> ListAsync(
+        TaskItemQuery query,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await _dbContext.TaskItems
             .AsNoTracking()
-            .Where(taskItem =>
-                taskItem.WorkspaceId == workspaceId &&
-                taskItem.ProjectId == projectId);
-
-        query = scope switch
-        {
-            TaskItemListScope.Active => query.Where(taskItem => taskItem.ArchivedAt == null),
-            TaskItemListScope.Archive => query.Where(taskItem => taskItem.ArchivedAt != null),
-            TaskItemListScope.All => query,
-            _ => query.Where(taskItem => taskItem.ArchivedAt == null)
-        };
-
-        if (_dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
-        {
-            return (await query.ToListAsync(cancellationToken))
-                .OrderByDescending(taskItem => taskItem.LastTouchedAt)
-                .ThenBy(taskItem => taskItem.Title)
-                .ToList();
-        }
-
-        return await query
-            .OrderByDescending(taskItem => taskItem.LastTouchedAt)
-            .ThenBy(taskItem => taskItem.Title)
+            .Include("_timelineEntries")
+            .AsSplitQuery()
+            .Where(taskItem => taskItem.WorkspaceId == query.WorkspaceId)
             .ToListAsync(cancellationToken);
+
+        return SortTaskItems(candidates.Where(taskItem => MatchesQuery(taskItem, query)), query)
+            .ThenBy(taskItem => taskItem.Title)
+            .ToList();
     }
 
     public async Task<TaskItem?> GetByIdAsync(
         Guid id,
         Guid workspaceId,
-        Guid projectId,
+        Guid? projectId,
         bool trackChanges,
         CancellationToken cancellationToken)
     {
@@ -66,7 +70,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .Where(taskItem =>
                 taskItem.Id == id &&
                 taskItem.WorkspaceId == workspaceId &&
-                taskItem.ProjectId == projectId);
+                (!projectId.HasValue || taskItem.ProjectId == projectId.Value));
 
         if (!trackChanges)
         {
@@ -152,5 +156,147 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static TaskItemArchiveFilter MapScope(TaskItemListScope scope)
+    {
+        return scope switch
+        {
+            TaskItemListScope.Archive => TaskItemArchiveFilter.Archived,
+            TaskItemListScope.All => TaskItemArchiveFilter.All,
+            _ => TaskItemArchiveFilter.Active
+        };
+    }
+
+    private static bool MatchesQuery(TaskItem taskItem, TaskItemQuery query)
+    {
+        return MatchesProject(taskItem, query.ProjectId) &&
+            MatchesArchive(taskItem, query.ArchiveFilter) &&
+            MatchesStatus(taskItem, query.Status) &&
+            MatchesFollowUp(taskItem, query.FollowUpFilter, query.Now) &&
+            MatchesNotViewedSince(taskItem, query.NotViewedSinceDays, query.Now) &&
+            MatchesNotTouchedSince(taskItem, query.NotTouchedSinceDays, query.Now) &&
+            MatchesText(taskItem, query.Text);
+    }
+
+    private static bool MatchesProject(TaskItem taskItem, Guid? projectId)
+    {
+        return !projectId.HasValue || taskItem.ProjectId == projectId.Value;
+    }
+
+    private static bool MatchesArchive(TaskItem taskItem, TaskItemArchiveFilter archiveFilter)
+    {
+        return archiveFilter switch
+        {
+            TaskItemArchiveFilter.Archived => taskItem.ArchivedAt.HasValue,
+            TaskItemArchiveFilter.All => true,
+            _ => !taskItem.ArchivedAt.HasValue
+        };
+    }
+
+    private static bool MatchesStatus(TaskItem taskItem, string? status)
+    {
+        if (status is null)
+        {
+            return true;
+        }
+
+        if (status.Length == 0)
+        {
+            return string.IsNullOrWhiteSpace(taskItem.Status);
+        }
+
+        return string.Equals(taskItem.Status, status, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesFollowUp(
+        TaskItem taskItem,
+        TaskItemFollowUpFilter followUpFilter,
+        DateTimeOffset now)
+    {
+        var today = new DateTimeOffset(now.Date, now.Offset);
+
+        return followUpFilter switch
+        {
+            TaskItemFollowUpFilter.Any => taskItem.FollowUpAt.HasValue,
+            TaskItemFollowUpFilter.Overdue => taskItem.FollowUpAt.HasValue &&
+                taskItem.FollowUpAt.Value < now,
+            TaskItemFollowUpFilter.Today => taskItem.FollowUpAt.HasValue &&
+                taskItem.FollowUpAt.Value.Date == now.Date,
+            TaskItemFollowUpFilter.ThisWeek => taskItem.FollowUpAt.HasValue &&
+                taskItem.FollowUpAt.Value >= today &&
+                taskItem.FollowUpAt.Value < today.AddDays(7),
+            _ => true
+        };
+    }
+
+    private static bool MatchesNotViewedSince(
+        TaskItem taskItem,
+        int? notViewedSinceDays,
+        DateTimeOffset now)
+    {
+        if (!notViewedSinceDays.HasValue)
+        {
+            return true;
+        }
+
+        var threshold = now.AddDays(-notViewedSinceDays.Value);
+        return !taskItem.LastViewedAt.HasValue || taskItem.LastViewedAt.Value <= threshold;
+    }
+
+    private static bool MatchesNotTouchedSince(
+        TaskItem taskItem,
+        int? notTouchedSinceDays,
+        DateTimeOffset now)
+    {
+        if (!notTouchedSinceDays.HasValue)
+        {
+            return true;
+        }
+
+        return taskItem.LastTouchedAt <= now.AddDays(-notTouchedSinceDays.Value);
+    }
+
+    private static bool MatchesText(TaskItem taskItem, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        return ContainsText(taskItem.Title, text) ||
+            ContainsText(taskItem.Status, text) ||
+            taskItem.TimelineEntries.Any(entry =>
+                ContainsText(entry.Summary, text) ||
+                ContainsText(entry.Details, text));
+    }
+
+    private static bool ContainsText(string? value, string text)
+    {
+        return value?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false;
+    }
+
+    private static IOrderedEnumerable<TaskItem> SortTaskItems(
+        IEnumerable<TaskItem> taskItems,
+        TaskItemQuery query)
+    {
+        return query.SortField switch
+        {
+            TaskItemSortField.CreatedAt => query.SortDescending
+                ? taskItems.OrderByDescending(taskItem => taskItem.CreatedAt)
+                : taskItems.OrderBy(taskItem => taskItem.CreatedAt),
+            TaskItemSortField.FollowUpAt => query.SortDescending
+                ? taskItems.OrderByDescending(taskItem => taskItem.FollowUpAt ?? DateTimeOffset.MinValue)
+                : taskItems.OrderBy(taskItem => taskItem.FollowUpAt ?? DateTimeOffset.MaxValue),
+            TaskItemSortField.Title => query.SortDescending
+                ? taskItems.OrderByDescending(taskItem => taskItem.Title)
+                : taskItems.OrderBy(taskItem => taskItem.Title),
+            TaskItemSortField.Status => query.SortDescending
+                ? taskItems.OrderByDescending(taskItem => taskItem.Status ?? string.Empty)
+                : taskItems.OrderBy(taskItem => taskItem.Status ?? string.Empty),
+            _ => query.SortDescending
+                ? taskItems.OrderByDescending(taskItem => taskItem.LastTouchedAt)
+                : taskItems.OrderBy(taskItem => taskItem.LastTouchedAt)
+        };
     }
 }

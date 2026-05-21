@@ -156,6 +156,38 @@ curl.exe -X PATCH http://localhost:55868/api/tasks/{id} `
   -d "{\"fieldValues\":{\"{confidence-field-id}\":\"Medium\"}}"
 ```
 
+List saved views:
+
+```powershell
+curl.exe http://localhost:55868/api/views
+```
+
+Create a saved view for waiting tasks:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/views `
+  -H "Content-Type: application/json" `
+  -d "{\"name\":\"Waiting work\",\"filter\":{\"status\":\"Waiting\",\"archive\":\"Active\"},\"sort\":{\"field\":\"lastTouchedAt\",\"direction\":\"desc\"},\"sortOrder\":20}"
+```
+
+Use a saved view to query tasks:
+
+```powershell
+curl.exe "http://localhost:55868/api/tasks?viewId={view-id}"
+```
+
+Use equivalent task filters directly:
+
+```powershell
+curl.exe "http://localhost:55868/api/tasks?archive=Active&status=Waiting"
+curl.exe "http://localhost:55868/api/tasks?notViewedSinceDays=7"
+curl.exe "http://localhost:55868/api/tasks?notTouchedSinceDays=14"
+curl.exe "http://localhost:55868/api/tasks?followUp=Today"
+curl.exe "http://localhost:55868/api/tasks?text=upgrade&sort=followUpAt&direction=asc"
+```
+
+Open a task detail with `GET /api/tasks/{id}` to update `LastViewedAt`. This does not update `LastTouchedAt`; only meaningful edits, timeline entries, archive/reopen events, and field changes touch the task.
+
 Run the frontend:
 
 ```powershell

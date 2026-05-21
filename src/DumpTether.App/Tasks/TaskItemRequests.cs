@@ -3,6 +3,19 @@ using System.Text.Json;
 
 namespace DumpTether.App.Tasks;
 
+public sealed record TaskItemListRequest(
+    Guid? ViewId = null,
+    TaskItemListScope Scope = TaskItemListScope.Active,
+    Guid? ProjectId = null,
+    string? Status = null,
+    string? Archive = null,
+    string? FollowUp = null,
+    int? NotViewedSinceDays = null,
+    int? NotTouchedSinceDays = null,
+    string? Text = null,
+    string? Sort = null,
+    string? Direction = null);
+
 public sealed record CreateTaskItemRequest(
     [Required]
     [MaxLength(500)]

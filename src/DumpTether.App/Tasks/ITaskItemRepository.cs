@@ -12,10 +12,14 @@ public interface ITaskItemRepository
         TaskItemListScope scope,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<TaskItem>> ListAsync(
+        TaskItemQuery query,
+        CancellationToken cancellationToken);
+
     Task<TaskItem?> GetByIdAsync(
         Guid id,
         Guid workspaceId,
-        Guid projectId,
+        Guid? projectId,
         bool trackChanges,
         CancellationToken cancellationToken);
 

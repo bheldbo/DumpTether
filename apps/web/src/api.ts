@@ -2,15 +2,19 @@ import type {
   AddTaskTimelineEntryRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CreateSavedViewRequest,
   CreateTaskTemplateRequest,
   CreateTaskItemRequest,
+  ProjectResponse,
   ReopenTaskItemRequest,
+  SavedViewResponse,
   TaskTemplateDetailResponse,
   TaskTemplateSummaryResponse,
+  TaskItemListQuery,
   TaskItemDetailResponse,
-  TaskItemListScope,
   TaskItemSummaryResponse,
   UpdateTaskItemRequest,
+  UpdateSavedViewRequest,
   UpdateTaskTemplateRequest,
 } from './types';
 
@@ -58,10 +62,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function listTaskItems(
-  scope: TaskItemListScope,
+  query: TaskItemListQuery = {},
 ): Promise<TaskItemSummaryResponse[]> {
+  const searchParams = new URLSearchParams();
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      searchParams.set(key, String(value));
+    }
+  });
+
+  const queryString = searchParams.toString();
   return request<TaskItemSummaryResponse[]>(
-    `/api/tasks?scope=${encodeURIComponent(scope)}`,
+    `/api/tasks${queryString ? `?${queryString}` : ''}`,
   );
 }
 
@@ -120,6 +133,43 @@ export function reopenTaskItem(
 
 export function listArchiveResolutions(): Promise<ArchiveResolutionResponse[]> {
   return request<ArchiveResolutionResponse[]>('/api/archive-resolutions');
+}
+
+export function listProjects(): Promise<ProjectResponse[]> {
+  return request<ProjectResponse[]>('/api/projects');
+}
+
+export function listSavedViews(): Promise<SavedViewResponse[]> {
+  return request<SavedViewResponse[]>('/api/views');
+}
+
+export function getSavedView(id: string): Promise<SavedViewResponse> {
+  return request<SavedViewResponse>(`/api/views/${id}`);
+}
+
+export function createSavedView(
+  requestBody: CreateSavedViewRequest,
+): Promise<SavedViewResponse> {
+  return request<SavedViewResponse>('/api/views', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function updateSavedView(
+  id: string,
+  requestBody: UpdateSavedViewRequest,
+): Promise<SavedViewResponse> {
+  return request<SavedViewResponse>(`/api/views/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function deleteSavedView(id: string): Promise<void> {
+  return request<void>(`/api/views/${id}`, {
+    method: 'DELETE',
+  });
 }
 
 export function listTaskTemplates(): Promise<TaskTemplateSummaryResponse[]> {

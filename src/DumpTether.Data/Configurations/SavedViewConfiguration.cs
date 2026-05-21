@@ -44,9 +44,25 @@ internal sealed class SavedViewConfiguration : IEntityTypeConfiguration<SavedVie
             .HasColumnType("jsonb")
             .IsRequired();
 
+        builder.Property(savedView => savedView.SortJson)
+            .HasColumnName("sort")
+            .HasColumnType("jsonb")
+            .IsRequired();
+
+        builder.Property(savedView => savedView.SortOrder)
+            .HasColumnName("sort_order")
+            .IsRequired();
+
         builder.Property(savedView => savedView.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();
+
+        builder.Property(savedView => savedView.UpdatedAt)
+            .HasColumnName("updated_at")
+            .IsRequired();
+
+        builder.Property(savedView => savedView.DeletedAt)
+            .HasColumnName("deleted_at");
 
         builder.HasIndex(savedView => new
             {
@@ -54,7 +70,7 @@ internal sealed class SavedViewConfiguration : IEntityTypeConfiguration<SavedVie
                 savedView.Name
             })
             .IsUnique()
-            .HasFilter("project_id IS NULL");
+            .HasFilter("project_id IS NULL AND deleted_at IS NULL");
 
         builder.HasIndex(savedView => new
             {
@@ -63,7 +79,7 @@ internal sealed class SavedViewConfiguration : IEntityTypeConfiguration<SavedVie
                 savedView.Name
             })
             .IsUnique()
-            .HasFilter("project_id IS NOT NULL");
+            .HasFilter("project_id IS NOT NULL AND deleted_at IS NULL");
 
         builder.HasOne<Workspace>()
             .WithMany("_savedViews")

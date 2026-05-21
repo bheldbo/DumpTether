@@ -13,6 +13,7 @@ export interface TaskItemSummaryResponse {
   followUpAt: string | null;
   archivedAt: string | null;
   archiveResolutionId: string | null;
+  latestTimelineEntry: TaskTimelineEntryResponse | null;
 }
 
 export interface TaskItemDetailResponse extends TaskItemSummaryResponse {
@@ -41,6 +42,68 @@ export interface ArchiveResolutionResponse {
   name: string;
   description: string | null;
   requiresExplanation: boolean;
+}
+
+export interface ProjectResponse {
+  id: string;
+  workspaceId: string;
+  name: string;
+  createdAt: string;
+}
+
+export type SavedViewScope = 'Workspace' | 'Project';
+export type SavedViewArchiveFilter = 'Active' | 'Archived' | 'All';
+export type SavedViewFollowUpFilter = 'Any' | 'Overdue' | 'Today' | 'ThisWeek';
+export type SavedViewSortField =
+  | 'lastTouchedAt'
+  | 'createdAt'
+  | 'followUpAt'
+  | 'title'
+  | 'status';
+export type SavedViewSortDirection = 'asc' | 'desc';
+
+export interface SavedViewFilter {
+  projectId?: string | null;
+  status?: string | null;
+  archive?: SavedViewArchiveFilter | null;
+  followUp?: SavedViewFollowUpFilter | null;
+  notViewedSinceDays?: number | null;
+  notTouchedSinceDays?: number | null;
+  text?: string | null;
+}
+
+export interface SavedViewSort {
+  field?: SavedViewSortField | null;
+  direction?: SavedViewSortDirection | null;
+}
+
+export interface SavedViewResponse {
+  id: string;
+  workspaceId: string;
+  projectId: string | null;
+  name: string;
+  scope: SavedViewScope;
+  filter: SavedViewFilter;
+  sort: SavedViewSort;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSavedViewRequest {
+  name: string;
+  scope?: SavedViewScope | null;
+  filter?: SavedViewFilter | null;
+  sort?: SavedViewSort | null;
+  sortOrder?: number;
+}
+
+export interface UpdateSavedViewRequest {
+  name?: string;
+  scope?: SavedViewScope | null;
+  filter?: SavedViewFilter | null;
+  sort?: SavedViewSort | null;
+  sortOrder?: number;
 }
 
 export type FieldDefinitionType = 'Text' | 'LongText' | 'Date' | 'Checkbox' | 'Select';
@@ -118,4 +181,18 @@ export interface ArchiveTaskItemRequest {
 
 export interface ReopenTaskItemRequest {
   note?: string | null;
+}
+
+export interface TaskItemListQuery {
+  viewId?: string | null;
+  scope?: TaskItemListScope;
+  projectId?: string | null;
+  status?: string | null;
+  archive?: SavedViewArchiveFilter | null;
+  followUp?: SavedViewFollowUpFilter | null;
+  notViewedSinceDays?: number | null;
+  notTouchedSinceDays?: number | null;
+  text?: string | null;
+  sort?: SavedViewSortField | null;
+  direction?: SavedViewSortDirection | null;
 }

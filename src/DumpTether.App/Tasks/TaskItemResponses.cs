@@ -14,7 +14,8 @@ public sealed record TaskItemSummaryResponse(
     DateTimeOffset LastTouchedAt,
     DateTimeOffset? FollowUpAt,
     DateTimeOffset? ArchivedAt,
-    Guid? ArchiveResolutionId);
+    Guid? ArchiveResolutionId,
+    TaskTimelineEntryResponse? LatestTimelineEntry);
 
 public sealed record TaskItemDetailResponse(
     Guid Id,

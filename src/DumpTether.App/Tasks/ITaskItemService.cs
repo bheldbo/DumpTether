@@ -10,6 +10,10 @@ public interface ITaskItemService
         TaskItemListScope scope,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<TaskItemSummaryResponse>> ListAsync(
+        TaskItemListRequest request,
+        CancellationToken cancellationToken);
+
     Task<TaskItemDetailResponse?> GetByIdAsync(
         Guid id,
         CancellationToken cancellationToken);

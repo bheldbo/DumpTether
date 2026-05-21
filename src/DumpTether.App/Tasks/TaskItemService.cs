@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using DumpTether.App.Templates;
+using DumpTether.App.Views;
 using DumpTether.Domain;
 
 namespace DumpTether.App.Tasks;
@@ -9,15 +10,18 @@ internal sealed class TaskItemService : ITaskItemService
 {
     private readonly IClock _clock;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
+    private readonly ISavedViewRepository _savedViewRepository;
     private readonly ITaskItemRepository _taskItemRepository;
 
     public TaskItemService(
         IClock clock,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
+        ISavedViewRepository savedViewRepository,
         ITaskItemRepository taskItemRepository)
     {
         _clock = clock;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
+        _savedViewRepository = savedViewRepository;
         _taskItemRepository = taskItemRepository;
     }
 
@@ -53,11 +57,19 @@ internal sealed class TaskItemService : ITaskItemService
         TaskItemListScope scope,
         CancellationToken cancellationToken)
     {
+        return await ListAsync(
+            new TaskItemListRequest(Scope: scope),
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskItemSummaryResponse>> ListAsync(
+        TaskItemListRequest request,
+        CancellationToken cancellationToken)
+    {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var query = await BuildQueryAsync(context.WorkspaceId, request, cancellationToken);
         var taskItems = await _taskItemRepository.ListAsync(
-            context.WorkspaceId,
-            context.ProjectId,
-            scope,
+            query,
             cancellationToken);
 
         return taskItems.Select(MapSummary).ToList();
@@ -71,14 +83,17 @@ internal sealed class TaskItemService : ITaskItemService
         var taskItem = await _taskItemRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
-            context.ProjectId,
-            trackChanges: false,
+            projectId: null,
+            trackChanges: true,
             cancellationToken);
 
         if (taskItem is null)
         {
             return null;
         }
+
+        taskItem.MarkViewed(_clock.UtcNow);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
         var taskTemplate = await ResolveTaskTemplateForDetailAsync(
             taskItem,
@@ -99,7 +114,7 @@ internal sealed class TaskItemService : ITaskItemService
         var taskItem = await _taskItemRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
-            context.ProjectId,
+            projectId: null,
             trackChanges: true,
             cancellationToken);
 
@@ -177,7 +192,7 @@ internal sealed class TaskItemService : ITaskItemService
         var taskItem = await _taskItemRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
-            context.ProjectId,
+            projectId: null,
             trackChanges: true,
             cancellationToken);
 
@@ -241,9 +256,126 @@ internal sealed class TaskItemService : ITaskItemService
         return await _taskItemRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
-            context.ProjectId,
+            projectId: null,
             trackChanges: true,
             cancellationToken);
+    }
+
+    private async Task<TaskItemQuery> BuildQueryAsync(
+        Guid workspaceId,
+        TaskItemListRequest request,
+        CancellationToken cancellationToken)
+    {
+        var filter = request.ViewId.HasValue && request.ViewId.Value != Guid.Empty
+            ? await GetSavedViewFilterAsync(
+                workspaceId,
+                request.ViewId.Value,
+                cancellationToken)
+            : SavedViewPayloads.NormalizeFilter(
+                new SavedViewFilterRequest(
+                    request.ProjectId,
+                    request.Status,
+                    request.Archive ?? MapScopeToArchiveFilter(request.Scope),
+                    request.FollowUp,
+                    request.NotViewedSinceDays,
+                    request.NotTouchedSinceDays,
+                    request.Text));
+        var sort = request.ViewId.HasValue && request.ViewId.Value != Guid.Empty
+            ? await GetSavedViewSortAsync(
+                workspaceId,
+                request.ViewId.Value,
+                cancellationToken)
+            : SavedViewPayloads.NormalizeSort(
+                new SavedViewSortRequest(request.Sort, request.Direction));
+
+        return new TaskItemQuery(
+            workspaceId,
+            filter.ProjectId == Guid.Empty ? null : filter.ProjectId,
+            filter.Status,
+            ParseArchiveFilter(filter.Archive),
+            ParseFollowUpFilter(filter.FollowUp),
+            filter.NotViewedSinceDays,
+            filter.NotTouchedSinceDays,
+            filter.Text,
+            ParseSortField(sort.Field),
+            string.Equals(sort.Direction, "desc", StringComparison.OrdinalIgnoreCase),
+            _clock.UtcNow);
+    }
+
+    private async Task<SavedViewFilterRequest> GetSavedViewFilterAsync(
+        Guid workspaceId,
+        Guid viewId,
+        CancellationToken cancellationToken)
+    {
+        var savedView = await _savedViewRepository.GetByIdAsync(
+            viewId,
+            workspaceId,
+            trackChanges: false,
+            cancellationToken);
+
+        return savedView is null
+            ? throw new ValidationException("Saved view was not found.")
+            : SavedViewPayloads.DeserializeFilter(savedView.DefinitionJson);
+    }
+
+    private async Task<SavedViewSortRequest> GetSavedViewSortAsync(
+        Guid workspaceId,
+        Guid viewId,
+        CancellationToken cancellationToken)
+    {
+        var savedView = await _savedViewRepository.GetByIdAsync(
+            viewId,
+            workspaceId,
+            trackChanges: false,
+            cancellationToken);
+
+        return savedView is null
+            ? throw new ValidationException("Saved view was not found.")
+            : SavedViewPayloads.DeserializeSort(savedView.SortJson);
+    }
+
+    private static string MapScopeToArchiveFilter(TaskItemListScope scope)
+    {
+        return scope switch
+        {
+            TaskItemListScope.Archive => "Archived",
+            TaskItemListScope.All => "All",
+            _ => "Active"
+        };
+    }
+
+    private static TaskItemArchiveFilter ParseArchiveFilter(string? archive)
+    {
+        return archive switch
+        {
+            "Archived" => TaskItemArchiveFilter.Archived,
+            "All" => TaskItemArchiveFilter.All,
+            _ => TaskItemArchiveFilter.Active
+        };
+    }
+
+    private static TaskItemFollowUpFilter ParseFollowUpFilter(string? followUp)
+    {
+        return followUp switch
+        {
+            "Any" => TaskItemFollowUpFilter.Any,
+            "Overdue" => TaskItemFollowUpFilter.Overdue,
+            "Today" => TaskItemFollowUpFilter.Today,
+            "ThisWeek" => TaskItemFollowUpFilter.ThisWeek,
+            _ => TaskItemFollowUpFilter.None
+        };
+    }
+
+    private static TaskItemSortField ParseSortField(string? sortField)
+    {
+        return sortField switch
+        {
+            "createdAt" => TaskItemSortField.CreatedAt,
+            "followUpAt" => TaskItemSortField.FollowUpAt,
+            "title" => TaskItemSortField.Title,
+            "status" => TaskItemSortField.Status,
+            _ => TaskItemSortField.LastTouchedAt
+        };
     }
 
     private async Task<TaskTemplate?> ResolveTaskTemplateForCreateAsync(
@@ -454,6 +586,11 @@ internal sealed class TaskItemService : ITaskItemService
 
     private static TaskItemSummaryResponse MapSummary(TaskItem taskItem)
     {
+        var latestTimelineEntry = taskItem.TimelineEntries
+            .OrderByDescending(entry => entry.OccurredAt)
+            .ThenByDescending(entry => entry.Id)
+            .FirstOrDefault();
+
         return new TaskItemSummaryResponse(
             taskItem.Id,
             taskItem.WorkspaceId,
@@ -466,7 +603,15 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.LastTouchedAt,
             taskItem.FollowUpAt,
             taskItem.ArchivedAt,
-            taskItem.ArchiveResolutionId);
+            taskItem.ArchiveResolutionId,
+            latestTimelineEntry is null
+                ? null
+                : new TaskTimelineEntryResponse(
+                    latestTimelineEntry.Id,
+                    latestTimelineEntry.Kind.ToString(),
+                    latestTimelineEntry.Summary,
+                    latestTimelineEntry.Details,
+                    latestTimelineEntry.OccurredAt));
     }
 
     private static TaskItemDetailResponse MapDetail(

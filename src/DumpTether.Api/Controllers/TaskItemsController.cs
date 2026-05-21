@@ -38,6 +38,16 @@ public sealed class TaskItemsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TaskItemSummaryResponse>>> List(
         [FromQuery] TaskItemListScope scope,
+        [FromQuery] Guid? viewId,
+        [FromQuery] Guid? projectId,
+        [FromQuery] string? status,
+        [FromQuery] string? archive,
+        [FromQuery] string? followUp,
+        [FromQuery] int? notViewedSinceDays,
+        [FromQuery] int? notTouchedSinceDays,
+        [FromQuery] string? text,
+        [FromQuery] string? sort,
+        [FromQuery] string? direction,
         CancellationToken cancellationToken)
     {
         if (scope == 0)
@@ -45,8 +55,28 @@ public sealed class TaskItemsController : ControllerBase
             scope = TaskItemListScope.Active;
         }
 
-        var response = await _taskItemService.ListAsync(scope, cancellationToken);
-        return Ok(response);
+        try
+        {
+            var response = await _taskItemService.ListAsync(
+                new TaskItemListRequest(
+                    viewId,
+                    scope,
+                    projectId,
+                    status,
+                    archive,
+                    followUp,
+                    notViewedSinceDays,
+                    notTouchedSinceDays,
+                    text,
+                    sort,
+                    direction),
+                cancellationToken);
+            return Ok(response);
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
     }
 
     [HttpGet("{id:guid}")]

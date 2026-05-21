@@ -9,7 +9,11 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 {
     private const string DevelopmentProjectName = "Development Project";
     private const string DevelopmentWorkspaceName = "Development Workspace";
+    private const string JobProjectName = "Job";
+    private const string PersonalProjectName = "Personal";
     private static readonly SemaphoreSlim SeedLock = new(1, 1);
+    private static readonly JsonSerializerOptions JsonSerializerOptions =
+        new(JsonSerializerDefaults.Web);
 
     private static readonly DevelopmentArchiveResolution[] DevelopmentArchiveResolutions =
     [
@@ -56,6 +60,13 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             ])
     ];
 
+    private static readonly string[] DevelopmentProjectNames =
+    [
+        DevelopmentProjectName,
+        JobProjectName,
+        PersonalProjectName
+    ];
+
     private readonly IClock _clock;
     private readonly DumpTetherDbContext _dbContext;
 
@@ -93,18 +104,31 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             await _dbContext.Workspaces.AddAsync(workspace, cancellationToken);
         }
 
-        var project = await _dbContext.Projects
-            .SingleOrDefaultAsync(
-                candidate =>
-                    candidate.WorkspaceId == workspace.Id &&
-                    candidate.Name == DevelopmentProjectName,
-                cancellationToken);
-
-        if (project is null)
+        foreach (var projectName in DevelopmentProjectNames)
         {
-            project = Project.Create(workspace.Id, DevelopmentProjectName, _clock.UtcNow);
-            await _dbContext.Projects.AddAsync(project, cancellationToken);
+            var exists = await _dbContext.Projects
+                .AnyAsync(
+                    candidate =>
+                        candidate.WorkspaceId == workspace.Id &&
+                        candidate.Name == projectName,
+                    cancellationToken);
+
+            if (!exists)
+            {
+                await _dbContext.Projects.AddAsync(
+                    Project.Create(workspace.Id, projectName, _clock.UtcNow),
+                    cancellationToken);
+            }
         }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var projects = await _dbContext.Projects
+            .Where(candidate => candidate.WorkspaceId == workspace.Id)
+            .ToDictionaryAsync(
+                candidate => candidate.Name,
+                cancellationToken);
+        var project = projects[DevelopmentProjectName];
 
         foreach (var resolution in DevelopmentArchiveResolutions)
         {
@@ -163,6 +187,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         }
 
         await DeactivateDuplicateDevelopmentTemplatesAsync(workspace.Id, cancellationToken);
+        await SeedDevelopmentSavedViewsAsync(workspace.Id, projects, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new DevelopmentWorkspaceContext(workspace.Id, project.Id);
@@ -188,6 +213,117 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             {
                 duplicateTemplate.SoftDelete(_clock.UtcNow);
             }
+        }
+    }
+
+    private async Task SeedDevelopmentSavedViewsAsync(
+        Guid workspaceId,
+        IReadOnlyDictionary<string, Project> projects,
+        CancellationToken cancellationToken)
+    {
+        var definitions = new DevelopmentSavedView[]
+        {
+            new(
+                "Inbox",
+                SavedViewScope.Workspace,
+                null,
+                new DevelopmentSavedViewFilter(Status: string.Empty),
+                0),
+            new(
+                "All active",
+                SavedViewScope.Workspace,
+                null,
+                new DevelopmentSavedViewFilter(),
+                1),
+            new(
+                "Job",
+                SavedViewScope.Project,
+                projects[JobProjectName].Id,
+                new DevelopmentSavedViewFilter(ProjectId: projects[JobProjectName].Id),
+                2),
+            new(
+                "Personal",
+                SavedViewScope.Project,
+                projects[PersonalProjectName].Id,
+                new DevelopmentSavedViewFilter(ProjectId: projects[PersonalProjectName].Id),
+                3),
+            new(
+                "Waiting",
+                SavedViewScope.Workspace,
+                null,
+                new DevelopmentSavedViewFilter(Status: "Waiting"),
+                4),
+            new(
+                "Follow-up today",
+                SavedViewScope.Workspace,
+                null,
+                new DevelopmentSavedViewFilter(FollowUp: "Today"),
+                5),
+            new(
+                "Follow-up this week",
+                SavedViewScope.Workspace,
+                null,
+                new DevelopmentSavedViewFilter(FollowUp: "ThisWeek"),
+                6),
+            new(
+                "Not viewed in 7 days",
+                SavedViewScope.Workspace,
+                null,
+                new DevelopmentSavedViewFilter(NotViewedSinceDays: 7),
+                7),
+            new(
+                "Not touched in 14 days",
+                SavedViewScope.Workspace,
+                null,
+                new DevelopmentSavedViewFilter(NotTouchedSinceDays: 14),
+                8),
+            new(
+                "Archive",
+                SavedViewScope.Workspace,
+                null,
+                new DevelopmentSavedViewFilter(Archive: "Archived"),
+                9)
+        };
+
+        foreach (var definition in definitions)
+        {
+            var exists = await _dbContext.SavedViews
+                .AnyAsync(
+                    candidate =>
+                        candidate.WorkspaceId == workspaceId &&
+                        candidate.Name == definition.Name &&
+                        candidate.DeletedAt == null,
+                    cancellationToken);
+
+            if (exists)
+            {
+                continue;
+            }
+
+            var definitionJson = JsonSerializer.Serialize(
+                definition.Filter,
+                JsonSerializerOptions);
+            var sortJson = JsonSerializer.Serialize(
+                new DevelopmentSavedViewSort(),
+                JsonSerializerOptions);
+            var savedView = definition.Scope == SavedViewScope.Project
+                ? SavedView.CreateProjectView(
+                    workspaceId,
+                    definition.ProjectId!.Value,
+                    definition.Name,
+                    definitionJson,
+                    sortJson,
+                    definition.SortOrder,
+                    _clock.UtcNow)
+                : SavedView.CreateWorkspaceView(
+                    workspaceId,
+                    definition.Name,
+                    definitionJson,
+                    sortJson,
+                    definition.SortOrder,
+                    _clock.UtcNow);
+
+            await _dbContext.SavedViews.AddAsync(savedView, cancellationToken);
         }
     }
 
@@ -224,4 +360,24 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         {
         }
     }
+
+    private sealed record DevelopmentSavedView(
+        string Name,
+        SavedViewScope Scope,
+        Guid? ProjectId,
+        DevelopmentSavedViewFilter Filter,
+        int SortOrder);
+
+    private sealed record DevelopmentSavedViewFilter(
+        Guid? ProjectId = null,
+        string? Status = null,
+        string Archive = "Active",
+        string? FollowUp = null,
+        int? NotViewedSinceDays = null,
+        int? NotTouchedSinceDays = null,
+        string? Text = null);
+
+    private sealed record DevelopmentSavedViewSort(
+        string Field = "lastTouchedAt",
+        string Direction = "desc");
 }
