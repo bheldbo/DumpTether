@@ -107,6 +107,102 @@ internal sealed class TaskItemService : ITaskItemService
         return MapDetail(taskItem);
     }
 
+    public async Task<TaskItemDetailResponse?> AddTimelineEntryAsync(
+        Guid id,
+        AddTaskTimelineEntryRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var taskItem = await GetTaskItemForUpdateAsync(id, cancellationToken);
+
+        if (taskItem is null)
+        {
+            return null;
+        }
+
+        taskItem.AddNote(request.Note, _clock.UtcNow);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        return MapDetail(taskItem);
+    }
+
+    public async Task<TaskItemDetailResponse?> ArchiveAsync(
+        Guid id,
+        ArchiveTaskItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!request.ArchiveResolutionId.HasValue ||
+            request.ArchiveResolutionId.Value == Guid.Empty)
+        {
+            throw new ValidationException("ArchiveResolutionId is required.");
+        }
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var taskItem = await _taskItemRepository.GetByIdAsync(
+            id,
+            context.WorkspaceId,
+            context.ProjectId,
+            trackChanges: true,
+            cancellationToken);
+
+        if (taskItem is null)
+        {
+            return null;
+        }
+
+        var archiveResolution = await _taskItemRepository.GetArchiveResolutionByIdAsync(
+            request.ArchiveResolutionId.Value,
+            context.WorkspaceId,
+            cancellationToken);
+
+        if (archiveResolution is null)
+        {
+            throw new ValidationException("Archive resolution was not found.");
+        }
+
+        taskItem.Archive(archiveResolution, _clock.UtcNow, request.Note);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        return MapDetail(taskItem);
+    }
+
+    public async Task<TaskItemDetailResponse?> ReopenAsync(
+        Guid id,
+        ReopenTaskItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var taskItem = await GetTaskItemForUpdateAsync(id, cancellationToken);
+
+        if (taskItem is null)
+        {
+            return null;
+        }
+
+        taskItem.Reopen(_clock.UtcNow, request.Note);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        return MapDetail(taskItem);
+    }
+
+    private async Task<TaskItem?> GetTaskItemForUpdateAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+
+        return await _taskItemRepository.GetByIdAsync(
+            id,
+            context.WorkspaceId,
+            context.ProjectId,
+            trackChanges: true,
+            cancellationToken);
+    }
+
     private async Task ApplyFieldValuesAsync(
         TaskItem taskItem,
         IReadOnlyDictionary<Guid, JsonElement>? fieldValues,

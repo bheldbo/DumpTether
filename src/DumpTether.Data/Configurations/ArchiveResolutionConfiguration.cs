@@ -29,6 +29,10 @@ internal sealed class ArchiveResolutionConfiguration : IEntityTypeConfiguration<
             .HasColumnName("description")
             .HasMaxLength(1000);
 
+        builder.Property(archiveResolution => archiveResolution.RequiresExplanation)
+            .HasColumnName("requires_explanation")
+            .IsRequired();
+
         builder.Property(archiveResolution => archiveResolution.IsActive)
             .HasColumnName("is_active")
             .IsRequired();

@@ -72,4 +72,75 @@ public sealed class TaskItemsController : ControllerBase
             return BadRequest(new { error = exception.Message });
         }
     }
+
+    [HttpPost("{id:guid}/timeline")]
+    public async Task<ActionResult<TaskItemDetailResponse>> AddTimelineEntry(
+        Guid id,
+        AddTaskTimelineEntryRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.AddTimelineEntryAsync(id, request, cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/archive")]
+    public async Task<ActionResult<TaskItemDetailResponse>> Archive(
+        Guid id,
+        ArchiveTaskItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.ArchiveAsync(id, request, cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/reopen")]
+    public async Task<ActionResult<TaskItemDetailResponse>> Reopen(
+        Guid id,
+        ReopenTaskItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.ReopenAsync(id, request, cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
 }
