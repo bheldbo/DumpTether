@@ -93,9 +93,41 @@ public sealed class TaskItem
         LastViewedAt = viewedAt;
     }
 
-    public void SetFollowUp(DateTimeOffset? followUpAt)
+    public void Rename(string title, DateTimeOffset occurredAt)
     {
+        var normalizedTitle = DomainGuards.NotBlank(title, nameof(title));
+
+        if (Title == normalizedTitle)
+        {
+            return;
+        }
+
+        var previousTitle = Title;
+        Title = normalizedTitle;
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.TitleChanged,
+            "Title changed",
+            occurredAt,
+            $"From \"{previousTitle}\" to \"{Title}\"");
+    }
+
+    public void SetFollowUp(DateTimeOffset? followUpAt, DateTimeOffset occurredAt)
+    {
+        if (FollowUpAt == followUpAt)
+        {
+            return;
+        }
+
         FollowUpAt = followUpAt;
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.FollowUpChanged,
+            "Follow-up changed",
+            occurredAt,
+            followUpAt.HasValue
+                ? $"Follow-up set to {followUpAt.Value:O}"
+                : "Follow-up cleared");
     }
 
     public void AddNote(string note, DateTimeOffset occurredAt)
@@ -131,13 +163,23 @@ public sealed class TaskItem
         if (existingValue is not null)
         {
             existingValue.UpdateValue(valueJson, updatedAt);
-            LastTouchedAt = updatedAt;
+            AddTimelineEntry(
+                TaskTimelineEntryKind.FieldValueChanged,
+                $"Field value changed: {fieldDefinition.Label}",
+                updatedAt,
+                fieldDefinition.Key);
+
             return existingValue;
         }
 
         var fieldValue = FieldValue.Create(Id, fieldDefinition.Id, valueJson, updatedAt);
         _fieldValues.Add(fieldValue);
-        LastTouchedAt = updatedAt;
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.FieldValueChanged,
+            $"Field value changed: {fieldDefinition.Label}",
+            updatedAt,
+            fieldDefinition.Key);
 
         return fieldValue;
     }

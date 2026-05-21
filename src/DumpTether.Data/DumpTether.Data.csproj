@@ -4,6 +4,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DumpTether.App\DumpTether.App.csproj" />
     <ProjectReference Include="..\DumpTether.Domain\DumpTether.Domain.csproj" />
   </ItemGroup>
 
