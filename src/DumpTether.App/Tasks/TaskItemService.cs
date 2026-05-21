@@ -38,12 +38,15 @@ internal sealed class TaskItemService : ITaskItemService
         return MapDetail(taskItem);
     }
 
-    public async Task<IReadOnlyList<TaskItemSummaryResponse>> ListAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<TaskItemSummaryResponse>> ListAsync(
+        TaskItemListScope scope,
+        CancellationToken cancellationToken)
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
         var taskItems = await _taskItemRepository.ListAsync(
             context.WorkspaceId,
             context.ProjectId,
+            scope,
             cancellationToken);
 
         return taskItems.Select(MapSummary).ToList();
