@@ -8,5 +8,6 @@ public enum TaskTimelineEntryKind
     Archived = 4,
     TitleChanged = 5,
     FollowUpChanged = 6,
-    FieldValueChanged = 7
+    FieldValueChanged = 7,
+    Reopened = 8
 }

@@ -11,12 +11,14 @@ public sealed class ArchiveResolution
         Guid workspaceId,
         string name,
         string? description,
+        bool requiresExplanation,
         DateTimeOffset createdAt)
     {
         Id = id;
         WorkspaceId = workspaceId;
         Name = name;
         Description = description;
+        RequiresExplanation = requiresExplanation;
         CreatedAt = createdAt;
         IsActive = true;
     }
@@ -29,6 +31,8 @@ public sealed class ArchiveResolution
 
     public string? Description { get; private set; }
 
+    public bool RequiresExplanation { get; private set; }
+
     public bool IsActive { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -37,7 +41,8 @@ public sealed class ArchiveResolution
         Guid workspaceId,
         string name,
         DateTimeOffset createdAt,
-        string? description = null)
+        string? description = null,
+        bool requiresExplanation = false)
     {
         DomainGuards.NotEmpty(workspaceId, nameof(workspaceId));
 
@@ -46,6 +51,7 @@ public sealed class ArchiveResolution
             workspaceId,
             DomainGuards.NotBlank(name, nameof(name)),
             DomainGuards.OptionalTrimmed(description),
+            requiresExplanation,
             createdAt);
     }
 

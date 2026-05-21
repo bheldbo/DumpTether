@@ -14,3 +14,16 @@ public sealed record UpdateTaskItemRequest(
     [MaxLength(120)] string? Status = null,
     DateTimeOffset? FollowUpAt = null,
     Dictionary<Guid, JsonElement>? FieldValues = null);
+
+public sealed record AddTaskTimelineEntryRequest(
+    [Required]
+    [MaxLength(4000)]
+    string Note);
+
+public sealed record ArchiveTaskItemRequest(
+    [Required]
+    Guid? ArchiveResolutionId,
+    [MaxLength(4000)] string? Note = null);
+
+public sealed record ReopenTaskItemRequest(
+    [MaxLength(4000)] string? Note = null);

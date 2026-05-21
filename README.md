@@ -102,6 +102,30 @@ curl.exe -X PATCH http://localhost:55868/api/tasks/{id} `
   -d "{\"title\":\"Capture launch notes v2\",\"status\":\"In Progress\",\"followUpAt\":\"2026-05-22T09:00:00Z\"}"
 ```
 
+Add a timeline note:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/tasks/{id}/timeline `
+  -H "Content-Type: application/json" `
+  -d "{\"note\":\"Captured the source note.\"}"
+```
+
+Archive a task item:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/tasks/{id}/archive `
+  -H "Content-Type: application/json" `
+  -d "{\"archiveResolutionId\":\"{archive-resolution-id}\",\"note\":\"Finished and verified.\"}"
+```
+
+Reopen an archived task item:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/tasks/{id}/reopen `
+  -H "Content-Type: application/json" `
+  -d "{\"note\":\"Needs another pass.\"}"
+```
+
 Run the frontend:
 
 ```powershell

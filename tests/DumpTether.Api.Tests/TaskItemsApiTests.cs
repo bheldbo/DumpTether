@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using DumpTether.App.Tasks;
+using DumpTether.Data;
+using DumpTether.Domain;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace DumpTether.Api.Tests;
@@ -112,6 +115,167 @@ public sealed class TaskItemsApiTests
         Assert.Equal(created.CreatedAt, entry.OccurredAt);
     }
 
+    [Fact]
+    public async Task PostTaskTimeline_AddsTimelineNote()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateTaskItemAsync(client, "Take timeline note");
+
+        await Task.Delay(10);
+
+        var updated = await PostTimelineEntryAsync(
+            client,
+            created.Id,
+            new
+            {
+                note = "Found the source note."
+            });
+
+        Assert.True(updated.LastTouchedAt > created.LastTouchedAt);
+        Assert.Equal(2, updated.TimelineEntries.Count);
+
+        var entry = updated.TimelineEntries.Last();
+        Assert.Equal("NoteAdded", entry.Kind);
+        Assert.Equal("Note added", entry.Summary);
+        Assert.Equal("Found the source note.", entry.Details);
+    }
+
+    [Fact]
+    public async Task PostTaskArchive_WithValidResolution_ArchivesTaskItem()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateTaskItemAsync(client, "Archive me");
+        var archiveResolutionId = await CreateArchiveResolutionAsync(
+            factory,
+            created.WorkspaceId,
+            "Completed");
+
+        var archived = await PostArchiveAsync(
+            client,
+            created.Id,
+            new
+            {
+                archiveResolutionId,
+                note = "Done and captured."
+            });
+
+        Assert.NotNull(archived.ArchivedAt);
+        Assert.Equal(archiveResolutionId, archived.ArchiveResolutionId);
+
+        var entry = archived.TimelineEntries.Last();
+        Assert.Equal("Archived", entry.Kind);
+        Assert.Equal("Archived as Completed", entry.Summary);
+        Assert.Equal("Done and captured.", entry.Details);
+    }
+
+    [Fact]
+    public async Task PostTaskArchive_WithoutResolution_ReturnsBadRequest()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateTaskItemAsync(client, "Reject archive");
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/tasks/{created.Id}/archive",
+            new
+            {
+                note = "No resolution selected."
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostTaskArchive_WhenResolutionRequiresExplanationWithoutNote_ReturnsBadRequest()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateTaskItemAsync(client, "Explain archive");
+        var archiveResolutionId = await CreateArchiveResolutionAsync(
+            factory,
+            created.WorkspaceId,
+            "Blocked",
+            requiresExplanation: true);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/tasks/{created.Id}/archive",
+            new
+            {
+                archiveResolutionId
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTaskItems_ExcludesArchivedTaskItemsByDefault()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateTaskItemAsync(client, "Hide when archived");
+        var archiveResolutionId = await CreateArchiveResolutionAsync(
+            factory,
+            created.WorkspaceId,
+            "Completed");
+
+        await PostArchiveAsync(
+            client,
+            created.Id,
+            new
+            {
+                archiveResolutionId,
+                note = "Done."
+            });
+
+        var taskItems = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+
+        Assert.NotNull(taskItems);
+        Assert.DoesNotContain(taskItems, taskItem => taskItem.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task PostTaskReopen_ReopensArchivedTaskItem()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateTaskItemAsync(client, "Reopen me");
+        var archiveResolutionId = await CreateArchiveResolutionAsync(
+            factory,
+            created.WorkspaceId,
+            "Completed");
+
+        await PostArchiveAsync(
+            client,
+            created.Id,
+            new
+            {
+                archiveResolutionId,
+                note = "Closed too soon."
+            });
+
+        var reopened = await PostReopenAsync(
+            client,
+            created.Id,
+            new
+            {
+                note = "Needs another pass."
+            });
+
+        Assert.Null(reopened.ArchivedAt);
+        Assert.Null(reopened.ArchiveResolutionId);
+
+        var entry = reopened.TimelineEntries.Last();
+        Assert.Equal("Reopened", entry.Kind);
+        Assert.Equal("Task item reopened", entry.Summary);
+        Assert.Equal("Needs another pass.", entry.Details);
+
+        var taskItems = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+        Assert.NotNull(taskItems);
+        Assert.Contains(taskItems, taskItem => taskItem.Id == created.Id);
+    }
+
     private static async Task<TaskItemDetailResponse> CreateTaskItemAsync(
         HttpClient client,
         string title)
@@ -145,5 +309,70 @@ public sealed class TaskItemsApiTests
         Assert.NotNull(updated);
 
         return updated;
+    }
+
+    private static async Task<TaskItemDetailResponse> PostTimelineEntryAsync(
+        HttpClient client,
+        Guid id,
+        object request)
+    {
+        var response = await client.PostAsJsonAsync($"/api/tasks/{id}/timeline", request);
+        response.EnsureSuccessStatusCode();
+
+        var updated = await response.Content.ReadFromJsonAsync<TaskItemDetailResponse>();
+        Assert.NotNull(updated);
+
+        return updated;
+    }
+
+    private static async Task<TaskItemDetailResponse> PostArchiveAsync(
+        HttpClient client,
+        Guid id,
+        object request)
+    {
+        var response = await client.PostAsJsonAsync($"/api/tasks/{id}/archive", request);
+        response.EnsureSuccessStatusCode();
+
+        var updated = await response.Content.ReadFromJsonAsync<TaskItemDetailResponse>();
+        Assert.NotNull(updated);
+
+        return updated;
+    }
+
+    private static async Task<TaskItemDetailResponse> PostReopenAsync(
+        HttpClient client,
+        Guid id,
+        object request)
+    {
+        var response = await client.PostAsJsonAsync($"/api/tasks/{id}/reopen", request);
+        response.EnsureSuccessStatusCode();
+
+        var updated = await response.Content.ReadFromJsonAsync<TaskItemDetailResponse>();
+        Assert.NotNull(updated);
+
+        return updated;
+    }
+
+    private static async Task<Guid> CreateArchiveResolutionAsync(
+        DumpTetherApiFactory factory,
+        Guid workspaceId,
+        string name,
+        bool requiresExplanation = false)
+    {
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var archiveResolution = ArchiveResolution.Create(
+            workspaceId,
+            name,
+            DateTimeOffset.UtcNow,
+            requiresExplanation
+                ? "Test resolution requires an archive note."
+                : null,
+            requiresExplanation);
+
+        dbContext.ArchiveResolutions.Add(archiveResolution);
+        await dbContext.SaveChangesAsync();
+
+        return archiveResolution.Id;
     }
 }

@@ -27,7 +27,8 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .AsNoTracking()
             .Where(taskItem =>
                 taskItem.WorkspaceId == workspaceId &&
-                taskItem.ProjectId == projectId);
+                taskItem.ProjectId == projectId &&
+                taskItem.ArchivedAt == null);
 
         if (_dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
         {
@@ -84,6 +85,20 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .Where(fieldDefinition => ids.Contains(fieldDefinition.Id))
             .ToDictionaryAsync(
                 fieldDefinition => fieldDefinition.Id,
+                cancellationToken);
+    }
+
+    public async Task<ArchiveResolution?> GetArchiveResolutionByIdAsync(
+        Guid id,
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.ArchiveResolutions
+            .SingleOrDefaultAsync(
+                archiveResolution =>
+                    archiveResolution.Id == id &&
+                    archiveResolution.WorkspaceId == workspaceId &&
+                    archiveResolution.IsActive,
                 cancellationToken);
     }
 
