@@ -14,6 +14,7 @@ public sealed class TaskTemplate
         WorkspaceId = workspaceId;
         Name = name;
         CreatedAt = createdAt;
+        UpdatedAt = createdAt;
     }
 
     public Guid Id { get; private set; }
@@ -23,6 +24,12 @@ public sealed class TaskTemplate
     public string Name { get; private set; } = string.Empty;
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    public DateTimeOffset UpdatedAt { get; private set; }
+
+    public DateTimeOffset? DeletedAt { get; private set; }
+
+    public bool IsActive => DeletedAt is null;
 
     public IReadOnlyCollection<FieldDefinition> FieldDefinitions => _fieldDefinitions.AsReadOnly();
 
@@ -42,7 +49,8 @@ public sealed class TaskTemplate
         string label,
         FieldDefinitionType type,
         bool isRequired,
-        int sortOrder)
+        int sortOrder,
+        string? optionsJson = null)
     {
         var fieldDefinition = FieldDefinition.Create(
             Id,
@@ -50,9 +58,34 @@ public sealed class TaskTemplate
             label,
             type,
             isRequired,
-            sortOrder);
+            sortOrder,
+            optionsJson);
 
         _fieldDefinitions.Add(fieldDefinition);
         return fieldDefinition;
+    }
+
+    public void Rename(string name, DateTimeOffset updatedAt)
+    {
+        var normalizedName = DomainGuards.NotBlank(name, nameof(name));
+
+        if (Name == normalizedName)
+        {
+            return;
+        }
+
+        Name = normalizedName;
+        UpdatedAt = updatedAt;
+    }
+
+    public void MarkUpdated(DateTimeOffset updatedAt)
+    {
+        UpdatedAt = updatedAt;
+    }
+
+    public void SoftDelete(DateTimeOffset deletedAt)
+    {
+        DeletedAt ??= deletedAt;
+        UpdatedAt = deletedAt;
     }
 }

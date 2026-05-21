@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using DumpTether.App.Templates;
 using DumpTether.Domain;
 
 namespace DumpTether.App.Tasks;
@@ -28,14 +29,24 @@ internal sealed class TaskItemService : ITaskItemService
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
         var now = _clock.UtcNow;
-        var taskItem = TaskItem.Create(context.WorkspaceId, context.ProjectId, request.Title, now);
+        var taskTemplate = await ResolveTaskTemplateForCreateAsync(
+            context.WorkspaceId,
+            request.TaskTemplateId,
+            cancellationToken);
+        var taskItem = TaskItem.Create(
+            context.WorkspaceId,
+            context.ProjectId,
+            request.Title,
+            now,
+            taskTemplate?.Id);
 
-        await ApplyFieldValuesAsync(taskItem, request.FieldValues, now, cancellationToken);
+        ValidateRequiredFieldValues(taskTemplate, request.FieldValues);
+        ApplyFieldValues(taskItem, taskTemplate, request.FieldValues, now);
 
         await _taskItemRepository.AddAsync(taskItem, cancellationToken);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
-        return MapDetail(taskItem);
+        return MapDetail(taskItem, taskTemplate);
     }
 
     public async Task<IReadOnlyList<TaskItemSummaryResponse>> ListAsync(
@@ -64,7 +75,17 @@ internal sealed class TaskItemService : ITaskItemService
             trackChanges: false,
             cancellationToken);
 
-        return taskItem is null ? null : MapDetail(taskItem);
+        if (taskItem is null)
+        {
+            return null;
+        }
+
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+
+        return MapDetail(taskItem, taskTemplate);
     }
 
     public async Task<TaskItemDetailResponse?> UpdateAsync(
@@ -88,6 +109,10 @@ internal sealed class TaskItemService : ITaskItemService
         }
 
         var now = _clock.UtcNow;
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
 
         if (request.Title is not null)
         {
@@ -104,10 +129,10 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.SetFollowUp(request.FollowUpAt.Value, now);
         }
 
-        await ApplyFieldValuesAsync(taskItem, request.FieldValues, now, cancellationToken);
+        ApplyFieldValues(taskItem, taskTemplate, request.FieldValues, now);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
-        return MapDetail(taskItem);
+        return MapDetail(taskItem, taskTemplate);
     }
 
     public async Task<TaskItemDetailResponse?> AddTimelineEntryAsync(
@@ -127,7 +152,12 @@ internal sealed class TaskItemService : ITaskItemService
         taskItem.AddNote(request.Note, _clock.UtcNow);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
-        return MapDetail(taskItem);
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+
+        return MapDetail(taskItem, taskTemplate);
     }
 
     public async Task<TaskItemDetailResponse?> ArchiveAsync(
@@ -169,7 +199,12 @@ internal sealed class TaskItemService : ITaskItemService
         taskItem.Archive(archiveResolution, _clock.UtcNow, request.Note);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
-        return MapDetail(taskItem);
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+
+        return MapDetail(taskItem, taskTemplate);
     }
 
     public async Task<TaskItemDetailResponse?> ReopenAsync(
@@ -189,7 +224,12 @@ internal sealed class TaskItemService : ITaskItemService
         taskItem.Reopen(_clock.UtcNow, request.Note);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
-        return MapDetail(taskItem);
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+
+        return MapDetail(taskItem, taskTemplate);
     }
 
     private async Task<TaskItem?> GetTaskItemForUpdateAsync(
@@ -206,20 +246,89 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
     }
 
-    private async Task ApplyFieldValuesAsync(
-        TaskItem taskItem,
-        IReadOnlyDictionary<Guid, JsonElement>? fieldValues,
-        DateTimeOffset occurredAt,
+    private async Task<TaskTemplate?> ResolveTaskTemplateForCreateAsync(
+        Guid workspaceId,
+        Guid? requestedTemplateId,
         CancellationToken cancellationToken)
+    {
+        if (requestedTemplateId.HasValue && requestedTemplateId.Value != Guid.Empty)
+        {
+            var requestedTemplate = await _taskItemRepository.GetTaskTemplateByIdAsync(
+                requestedTemplateId.Value,
+                workspaceId,
+                includeDeleted: false,
+                cancellationToken);
+
+            return requestedTemplate ??
+                throw new ValidationException("Task template was not found.");
+        }
+
+        return await _taskItemRepository.GetDefaultTaskTemplateAsync(
+            workspaceId,
+            cancellationToken);
+    }
+
+    private async Task<TaskTemplate?> ResolveTaskTemplateForDetailAsync(
+        TaskItem taskItem,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+    {
+        if (!taskItem.TaskTemplateId.HasValue)
+        {
+            return null;
+        }
+
+        return await _taskItemRepository.GetTaskTemplateByIdAsync(
+            taskItem.TaskTemplateId.Value,
+            taskItem.WorkspaceId,
+            includeDeleted,
+            cancellationToken);
+    }
+
+    private static void ValidateRequiredFieldValues(
+        TaskTemplate? taskTemplate,
+        IReadOnlyDictionary<Guid, JsonElement>? fieldValues)
+    {
+        if (taskTemplate is null)
+        {
+            return;
+        }
+
+        var providedFieldValues = fieldValues ?? new Dictionary<Guid, JsonElement>();
+
+        foreach (var requiredField in taskTemplate.FieldDefinitions.Where(field =>
+                     field.IsActive &&
+                     field.IsRequired))
+        {
+            if (!providedFieldValues.TryGetValue(requiredField.Id, out var value) ||
+                FieldValueIsEmpty(value))
+            {
+                throw new ValidationException(
+                    $"Field '{requiredField.Label}' is required.");
+            }
+        }
+    }
+
+    private static void ApplyFieldValues(
+        TaskItem taskItem,
+        TaskTemplate? taskTemplate,
+        IReadOnlyDictionary<Guid, JsonElement>? fieldValues,
+        DateTimeOffset occurredAt)
     {
         if (fieldValues is null || fieldValues.Count == 0)
         {
             return;
         }
 
-        var definitions = await _taskItemRepository.GetFieldDefinitionsAsync(
-            fieldValues.Keys,
-            cancellationToken);
+        if (taskTemplate is null)
+        {
+            throw new ValidationException(
+                "A task template is required before field values can be updated.");
+        }
+
+        var definitions = taskTemplate.FieldDefinitions
+            .Where(field => field.IsActive)
+            .ToDictionary(field => field.Id);
 
         foreach (var (fieldDefinitionId, value) in fieldValues)
         {
@@ -229,8 +338,118 @@ internal sealed class TaskItemService : ITaskItemService
                     $"Field definition '{fieldDefinitionId}' was not found.");
             }
 
-            taskItem.SetFieldValue(definition, value.GetRawText(), occurredAt);
+            taskItem.SetFieldValue(
+                definition,
+                NormalizeFieldValue(definition, value),
+                occurredAt);
         }
+    }
+
+    private static string NormalizeFieldValue(
+        FieldDefinition fieldDefinition,
+        JsonElement value)
+    {
+        if (FieldValueIsEmpty(value))
+        {
+            if (fieldDefinition.IsRequired)
+            {
+                throw new ValidationException(
+                    $"Field '{fieldDefinition.Label}' is required.");
+            }
+
+            return "null";
+        }
+
+        return fieldDefinition.Type switch
+        {
+            FieldDefinitionType.Text or FieldDefinitionType.LongText =>
+                NormalizeStringValue(fieldDefinition, value),
+            FieldDefinitionType.Date => NormalizeDateValue(fieldDefinition, value),
+            FieldDefinitionType.Checkbox => NormalizeCheckboxValue(fieldDefinition, value),
+            FieldDefinitionType.Select => NormalizeSelectValue(fieldDefinition, value),
+            _ => throw new ValidationException(
+                $"Unsupported field type '{fieldDefinition.Type}'.")
+        };
+    }
+
+    private static string NormalizeStringValue(
+        FieldDefinition fieldDefinition,
+        JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new ValidationException(
+                $"Field '{fieldDefinition.Label}' requires a text value.");
+        }
+
+        return value.GetRawText();
+    }
+
+    private static string NormalizeDateValue(
+        FieldDefinition fieldDefinition,
+        JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new ValidationException(
+                $"Field '{fieldDefinition.Label}' requires a date value.");
+        }
+
+        var dateText = value.GetString();
+
+        if (string.IsNullOrWhiteSpace(dateText) ||
+            (!DateOnly.TryParse(dateText, out _) &&
+             !DateTimeOffset.TryParse(dateText, out _)))
+        {
+            throw new ValidationException(
+                $"Field '{fieldDefinition.Label}' requires a valid date value.");
+        }
+
+        return value.GetRawText();
+    }
+
+    private static string NormalizeCheckboxValue(
+        FieldDefinition fieldDefinition,
+        JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.True &&
+            value.ValueKind != JsonValueKind.False)
+        {
+            throw new ValidationException(
+                $"Field '{fieldDefinition.Label}' requires a checkbox value.");
+        }
+
+        return value.GetRawText();
+    }
+
+    private static string NormalizeSelectValue(
+        FieldDefinition fieldDefinition,
+        JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new ValidationException(
+                $"Field '{fieldDefinition.Label}' requires a selected option.");
+        }
+
+        var selectedOption = value.GetString()?.Trim();
+        var options = TaskTemplateService.ParseOptions(fieldDefinition.OptionsJson);
+
+        if (string.IsNullOrWhiteSpace(selectedOption) ||
+            !options.Contains(selectedOption, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new ValidationException(
+                $"Field '{fieldDefinition.Label}' must be one of the configured options.");
+        }
+
+        return JsonSerializer.Serialize(selectedOption);
+    }
+
+    private static bool FieldValueIsEmpty(JsonElement value)
+    {
+        return value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ||
+            value.ValueKind == JsonValueKind.String &&
+            string.IsNullOrWhiteSpace(value.GetString());
     }
 
     private static TaskItemSummaryResponse MapSummary(TaskItem taskItem)
@@ -239,6 +458,7 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.Id,
             taskItem.WorkspaceId,
             taskItem.ProjectId,
+            taskItem.TaskTemplateId,
             taskItem.Title,
             taskItem.Status,
             taskItem.CreatedAt,
@@ -249,12 +469,15 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.ArchiveResolutionId);
     }
 
-    private static TaskItemDetailResponse MapDetail(TaskItem taskItem)
+    private static TaskItemDetailResponse MapDetail(
+        TaskItem taskItem,
+        TaskTemplate? taskTemplate)
     {
         return new TaskItemDetailResponse(
             taskItem.Id,
             taskItem.WorkspaceId,
             taskItem.ProjectId,
+            taskItem.TaskTemplateId,
             taskItem.Title,
             taskItem.Status,
             taskItem.CreatedAt,
@@ -263,6 +486,7 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.FollowUpAt,
             taskItem.ArchivedAt,
             taskItem.ArchiveResolutionId,
+            taskTemplate is null ? null : MapTaskTemplateForTask(taskTemplate, taskItem),
             taskItem.FieldValues
                 .OrderBy(value => value.UpdatedAt)
                 .ThenBy(value => value.Id)
@@ -281,6 +505,27 @@ internal sealed class TaskItemService : ITaskItemService
                     entry.Summary,
                     entry.Details,
                     entry.OccurredAt))
+                .ToList());
+    }
+
+    private static TaskTemplateDetailResponse MapTaskTemplateForTask(
+        TaskTemplate taskTemplate,
+        TaskItem taskItem)
+    {
+        var fieldValueDefinitionIds = taskItem.FieldValues
+            .Select(value => value.FieldDefinitionId)
+            .ToHashSet();
+
+        return new TaskTemplateDetailResponse(
+            taskTemplate.Id,
+            taskTemplate.Name,
+            taskTemplate.CreatedAt,
+            taskTemplate.UpdatedAt,
+            taskTemplate.FieldDefinitions
+                .Where(field => field.IsActive || fieldValueDefinitionIds.Contains(field.Id))
+                .OrderBy(field => field.SortOrder)
+                .ThenBy(field => field.Label)
+                .Select(TaskTemplateService.MapField)
                 .ToList());
     }
 }

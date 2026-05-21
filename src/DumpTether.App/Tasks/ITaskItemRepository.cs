@@ -23,6 +23,16 @@ public interface ITaskItemRepository
         IEnumerable<Guid> fieldDefinitionIds,
         CancellationToken cancellationToken);
 
+    Task<TaskTemplate?> GetTaskTemplateByIdAsync(
+        Guid id,
+        Guid workspaceId,
+        bool includeDeleted,
+        CancellationToken cancellationToken);
+
+    Task<TaskTemplate?> GetDefaultTaskTemplateAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken);
+
     Task<ArchiveResolution?> GetArchiveResolutionByIdAsync(
         Guid id,
         Guid workspaceId,

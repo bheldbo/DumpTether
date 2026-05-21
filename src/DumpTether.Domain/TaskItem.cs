@@ -150,29 +150,35 @@ public sealed class TaskItem
             DomainGuards.OptionalTrimmed(note));
     }
 
-    public FieldValue SetFieldValue(
+    public bool SetFieldValue(
         FieldDefinition fieldDefinition,
         string valueJson,
         DateTimeOffset updatedAt)
     {
         ArgumentNullException.ThrowIfNull(fieldDefinition);
+        var normalizedValueJson = DomainGuards.NotBlank(valueJson, nameof(valueJson));
 
         var existingValue = _fieldValues.FirstOrDefault(value =>
             value.FieldDefinitionId == fieldDefinition.Id);
 
         if (existingValue is not null)
         {
-            existingValue.UpdateValue(valueJson, updatedAt);
+            if (existingValue.ValueJson == normalizedValueJson)
+            {
+                return false;
+            }
+
+            existingValue.UpdateValue(normalizedValueJson, updatedAt);
             AddTimelineEntry(
                 TaskTimelineEntryKind.FieldValueChanged,
                 $"Field value changed: {fieldDefinition.Label}",
                 updatedAt,
                 fieldDefinition.Key);
 
-            return existingValue;
+            return true;
         }
 
-        var fieldValue = FieldValue.Create(Id, fieldDefinition.Id, valueJson, updatedAt);
+        var fieldValue = FieldValue.Create(Id, fieldDefinition.Id, normalizedValueJson, updatedAt);
         _fieldValues.Add(fieldValue);
 
         AddTimelineEntry(
@@ -181,7 +187,7 @@ public sealed class TaskItem
             updatedAt,
             fieldDefinition.Key);
 
-        return fieldValue;
+        return true;
     }
 
     public void Archive(

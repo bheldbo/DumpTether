@@ -222,12 +222,20 @@ button:disabled {
 
 .create-task-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 190px) auto;
   gap: 8px;
   padding: 0 22px 18px;
 }
 
 .create-task-form input,
+.create-task-form select,
+.field-editor input,
+.field-editor select,
+.field-editor textarea,
+.template-name input,
+.template-field-row input,
+.template-field-row select,
+.template-field-row textarea,
 .reopen-form input,
 .archive-form select,
 .archive-form textarea,
@@ -242,13 +250,31 @@ button:disabled {
 }
 
 .create-task-form input,
+.create-task-form select,
+.field-editor input,
+.field-editor select,
 .reopen-form input,
 .archive-form select {
   min-height: 40px;
   padding: 0 11px;
 }
 
+.field-editor textarea,
+.template-field-row textarea {
+  resize: vertical;
+  padding: 10px 11px;
+  line-height: 1.45;
+}
+
 .create-task-form input:focus,
+.create-task-form select:focus,
+.field-editor input:focus,
+.field-editor select:focus,
+.field-editor textarea:focus,
+.template-name input:focus,
+.template-field-row input:focus,
+.template-field-row select:focus,
+.template-field-row textarea:focus,
 .reopen-form input:focus,
 .archive-form select:focus,
 .archive-form textarea:focus,
@@ -260,6 +286,10 @@ button:disabled {
 .create-task-form button,
 .timeline-form button,
 .archive-form button,
+.templates-list .list-header button,
+.template-editor .section-heading button,
+.template-editor .dialog-actions button,
+.field-order-actions button,
 .secondary-action,
 .reopen-form button {
   min-height: 40px;
@@ -274,6 +304,14 @@ button:disabled {
   color: #ffffff;
   font-size: 0.88rem;
   font-weight: 720;
+}
+
+.create-fields {
+  grid-column: 1 / -1;
+  padding: 12px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
 .secondary-action,
@@ -388,7 +426,7 @@ button:disabled {
 
 .detail-meta {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
   gap: 10px;
   margin: 22px 0;
 }
@@ -462,11 +500,41 @@ button:disabled {
   color: #7b8794;
 }
 
+.field-editor-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.field-editor {
+  display: grid;
+  gap: 7px;
+  color: #2f3c4f;
+  font-size: 0.86rem;
+  font-weight: 720;
+}
+
+.field-editor strong {
+  color: #8f2f1d;
+}
+
+.field-editor input[type="checkbox"],
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  accent-color: #1d5f91;
+}
+
+.field-editor:has(input[type="checkbox"]) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
 .timeline-panel {
   margin-top: 22px;
 }
 
-.section-heading span {
+.section-heading > span {
   color: #68778a;
   font-size: 0.82rem;
 }
@@ -612,6 +680,98 @@ button:disabled {
   gap: 8px;
 }
 
+.templates-page {
+  grid-column: 1 / -1;
+  min-height: calc(100vh - 36px);
+  display: grid;
+  grid-template-columns: minmax(280px, 390px) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.templates-list,
+.template-editor {
+  min-width: 0;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 16px 40px rgba(26, 43, 61, 0.08);
+}
+
+.templates-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.template-editor {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 24px;
+}
+
+.template-name {
+  display: grid;
+  gap: 7px;
+  color: #2f3c4f;
+  font-size: 0.86rem;
+  font-weight: 720;
+}
+
+.template-name input,
+.template-field-row input,
+.template-field-row select {
+  min-height: 40px;
+  padding: 0 11px;
+}
+
+.template-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.template-field-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.3fr) minmax(120px, 0.8fr) auto minmax(220px, auto);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.checkbox-label {
+  min-height: 40px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: #344456;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.field-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.field-order-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+}
+
+.options-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 7px;
+  color: #2f3c4f;
+  font-size: 0.86rem;
+  font-weight: 720;
+}
+
 .icon {
   width: 19px;
   height: 19px;
@@ -642,7 +802,7 @@ button:disabled {
   }
 
   .view-nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .nav-item {
@@ -658,6 +818,10 @@ button:disabled {
   }
 
   .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .templates-page {
     grid-template-columns: 1fr;
   }
 
@@ -714,6 +878,10 @@ button:disabled {
   }
 
   .field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .template-field-row {
     grid-template-columns: 1fr;
   }
 

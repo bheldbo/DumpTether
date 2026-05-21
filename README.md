@@ -126,6 +126,36 @@ curl.exe -X POST http://localhost:55868/api/tasks/{id}/reopen `
   -d "{\"note\":\"Needs another pass.\"}"
 ```
 
+List task templates:
+
+```powershell
+curl.exe http://localhost:55868/api/templates
+```
+
+Create a task template with custom fields:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/templates `
+  -H "Content-Type: application/json" `
+  -d "{\"name\":\"Research Note\",\"fields\":[{\"name\":\"Source\",\"type\":\"Text\",\"required\":true,\"sortOrder\":0,\"options\":[]},{\"name\":\"Confidence\",\"type\":\"Select\",\"required\":false,\"sortOrder\":1,\"options\":[\"Low\",\"Medium\",\"High\"]}]}"
+```
+
+Create a task from a template:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/tasks `
+  -H "Content-Type: application/json" `
+  -d "{\"title\":\"Check upgrade note\",\"taskTemplateId\":\"{template-id}\",\"fieldValues\":{\"{source-field-id}\":\"Release notes\",\"{confidence-field-id}\":\"High\"}}"
+```
+
+Update task field values:
+
+```powershell
+curl.exe -X PATCH http://localhost:55868/api/tasks/{id} `
+  -H "Content-Type: application/json" `
+  -d "{\"fieldValues\":{\"{confidence-field-id}\":\"Medium\"}}"
+```
+
 Run the frontend:
 
 ```powershell

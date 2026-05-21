@@ -7,6 +7,7 @@ public sealed record CreateTaskItemRequest(
     [Required]
     [MaxLength(500)]
     string Title,
+    Guid? TaskTemplateId = null,
     Dictionary<Guid, JsonElement>? FieldValues = null);
 
 public sealed record UpdateTaskItemRequest(

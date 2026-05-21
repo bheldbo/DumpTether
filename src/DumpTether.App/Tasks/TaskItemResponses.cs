@@ -1,9 +1,12 @@
+using DumpTether.App.Templates;
+
 namespace DumpTether.App.Tasks;
 
 public sealed record TaskItemSummaryResponse(
     Guid Id,
     Guid WorkspaceId,
     Guid? ProjectId,
+    Guid? TaskTemplateId,
     string Title,
     string? Status,
     DateTimeOffset CreatedAt,
@@ -17,6 +20,7 @@ public sealed record TaskItemDetailResponse(
     Guid Id,
     Guid WorkspaceId,
     Guid? ProjectId,
+    Guid? TaskTemplateId,
     string Title,
     string? Status,
     DateTimeOffset CreatedAt,
@@ -25,6 +29,7 @@ public sealed record TaskItemDetailResponse(
     DateTimeOffset? FollowUpAt,
     DateTimeOffset? ArchivedAt,
     Guid? ArchiveResolutionId,
+    TaskTemplateDetailResponse? Template,
     IReadOnlyList<FieldValueResponse> FieldValues,
     IReadOnlyList<TaskTimelineEntryResponse> TimelineEntries);
 

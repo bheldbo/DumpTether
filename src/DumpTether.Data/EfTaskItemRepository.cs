@@ -97,6 +97,44 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
                 cancellationToken);
     }
 
+    public async Task<TaskTemplate?> GetTaskTemplateByIdAsync(
+        Guid id,
+        Guid workspaceId,
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.TaskTemplates
+            .Include("_fieldDefinitions")
+            .AsSplitQuery()
+            .AsNoTracking()
+            .Where(template =>
+                template.Id == id &&
+                template.WorkspaceId == workspaceId);
+
+        if (!includeDeleted)
+        {
+            query = query.Where(template => template.DeletedAt == null);
+        }
+
+        return await query.SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<TaskTemplate?> GetDefaultTaskTemplateAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.TaskTemplates
+            .Include("_fieldDefinitions")
+            .AsSplitQuery()
+            .AsNoTracking()
+            .Where(template =>
+                template.WorkspaceId == workspaceId &&
+                template.DeletedAt == null)
+            .OrderByDescending(template => template.Name == "Basic Task")
+            .ThenBy(template => template.Name)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<ArchiveResolution?> GetArchiveResolutionByIdAsync(
         Guid id,
         Guid workspaceId,

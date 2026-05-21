@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Tasks;
+using DumpTether.App.Templates;
 
 namespace DumpTether.App;
 
@@ -11,6 +12,7 @@ public static class DependencyInjection
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IArchiveResolutionService, ArchiveResolutionService>();
         services.AddScoped<ITaskItemService, TaskItemService>();
+        services.AddScoped<ITaskTemplateService, TaskTemplateService>();
 
         return services;
     }

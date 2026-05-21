@@ -1,5 +1,6 @@
 using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Tasks;
+using DumpTether.App.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<IArchiveResolutionRepository, EfArchiveResolutionRepository>();
         services.AddScoped<IDevelopmentWorkspaceProvider, DevelopmentWorkspaceProvider>();
         services.AddScoped<ITaskItemRepository, EfTaskItemRepository>();
+        services.AddScoped<ITaskTemplateRepository, EfTaskTemplateRepository>();
 
         return services;
     }

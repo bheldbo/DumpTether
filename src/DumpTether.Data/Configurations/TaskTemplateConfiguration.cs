@@ -29,14 +29,21 @@ internal sealed class TaskTemplateConfiguration : IEntityTypeConfiguration<TaskT
             .HasColumnName("created_at")
             .IsRequired();
 
+        builder.Property(taskTemplate => taskTemplate.UpdatedAt)
+            .HasColumnName("updated_at")
+            .IsRequired();
+
+        builder.Property(taskTemplate => taskTemplate.DeletedAt)
+            .HasColumnName("deleted_at");
+
         builder.Ignore(taskTemplate => taskTemplate.FieldDefinitions);
+        builder.Ignore(taskTemplate => taskTemplate.IsActive);
 
         builder.HasIndex(taskTemplate => new
             {
                 taskTemplate.WorkspaceId,
                 taskTemplate.Name
-            })
-            .IsUnique();
+            });
 
         builder.HasOne<Workspace>()
             .WithMany("_taskTemplates")

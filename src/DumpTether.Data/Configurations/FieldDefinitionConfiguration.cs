@@ -44,12 +44,20 @@ internal sealed class FieldDefinitionConfiguration : IEntityTypeConfiguration<Fi
             .HasColumnName("sort_order")
             .IsRequired();
 
+        builder.Property(fieldDefinition => fieldDefinition.OptionsJson)
+            .HasColumnName("options")
+            .HasColumnType("jsonb");
+
+        builder.Property(fieldDefinition => fieldDefinition.DeactivatedAt)
+            .HasColumnName("deactivated_at");
+
+        builder.Ignore(fieldDefinition => fieldDefinition.IsActive);
+
         builder.HasIndex(fieldDefinition => new
             {
                 fieldDefinition.TaskTemplateId,
                 fieldDefinition.Key
-            })
-            .IsUnique();
+            });
 
         builder.HasIndex(fieldDefinition => new
         {

@@ -2,11 +2,16 @@ import type {
   AddTaskTimelineEntryRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CreateTaskTemplateRequest,
   CreateTaskItemRequest,
   ReopenTaskItemRequest,
+  TaskTemplateDetailResponse,
+  TaskTemplateSummaryResponse,
   TaskItemDetailResponse,
   TaskItemListScope,
   TaskItemSummaryResponse,
+  UpdateTaskItemRequest,
+  UpdateTaskTemplateRequest,
 } from './types';
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
@@ -73,6 +78,16 @@ export function createTaskItem(
   });
 }
 
+export function updateTaskItem(
+  id: string,
+  requestBody: UpdateTaskItemRequest,
+): Promise<TaskItemDetailResponse> {
+  return request<TaskItemDetailResponse>(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(requestBody),
+  });
+}
+
 export function addTaskTimelineEntry(
   id: string,
   requestBody: AddTaskTimelineEntryRequest,
@@ -105,4 +120,37 @@ export function reopenTaskItem(
 
 export function listArchiveResolutions(): Promise<ArchiveResolutionResponse[]> {
   return request<ArchiveResolutionResponse[]>('/api/archive-resolutions');
+}
+
+export function listTaskTemplates(): Promise<TaskTemplateSummaryResponse[]> {
+  return request<TaskTemplateSummaryResponse[]>('/api/templates');
+}
+
+export function getTaskTemplate(id: string): Promise<TaskTemplateDetailResponse> {
+  return request<TaskTemplateDetailResponse>(`/api/templates/${id}`);
+}
+
+export function createTaskTemplate(
+  requestBody: CreateTaskTemplateRequest,
+): Promise<TaskTemplateDetailResponse> {
+  return request<TaskTemplateDetailResponse>('/api/templates', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function updateTaskTemplate(
+  id: string,
+  requestBody: UpdateTaskTemplateRequest,
+): Promise<TaskTemplateDetailResponse> {
+  return request<TaskTemplateDetailResponse>(`/api/templates/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function deleteTaskTemplate(id: string): Promise<void> {
+  return request<void>(`/api/templates/${id}`, {
+    method: 'DELETE',
+  });
 }

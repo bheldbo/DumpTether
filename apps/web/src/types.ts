@@ -4,6 +4,7 @@ export interface TaskItemSummaryResponse {
   id: string;
   workspaceId: string;
   projectId: string | null;
+  taskTemplateId: string | null;
   title: string;
   status: string | null;
   createdAt: string;
@@ -15,6 +16,7 @@ export interface TaskItemSummaryResponse {
 }
 
 export interface TaskItemDetailResponse extends TaskItemSummaryResponse {
+  template: TaskTemplateDetailResponse | null;
   fieldValues: FieldValueResponse[];
   timelineEntries: TaskTimelineEntryResponse[];
 }
@@ -41,8 +43,68 @@ export interface ArchiveResolutionResponse {
   requiresExplanation: boolean;
 }
 
+export type FieldDefinitionType = 'Text' | 'LongText' | 'Date' | 'Checkbox' | 'Select';
+
+export interface TaskTemplateSummaryResponse {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  fieldCount: number;
+}
+
+export interface TaskTemplateDetailResponse {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  fields: FieldDefinitionResponse[];
+}
+
+export interface FieldDefinitionResponse {
+  id: string;
+  key: string;
+  name: string;
+  type: FieldDefinitionType;
+  required: boolean;
+  sortOrder: number;
+  options: string[];
+}
+
+export interface UpsertFieldDefinitionRequest {
+  id?: string | null;
+  name: string;
+  type: FieldDefinitionType;
+  required: boolean;
+  sortOrder: number;
+  options?: string[] | null;
+}
+
+export interface CreateTaskTemplateRequest {
+  name: string;
+  fields: UpsertFieldDefinitionRequest[];
+}
+
+export interface UpdateTaskTemplateRequest {
+  name?: string;
+  fields?: UpsertFieldDefinitionRequest[];
+}
+
+export type FieldValuePrimitive = string | boolean | null;
+
+export type FieldValueMap = Record<string, FieldValuePrimitive>;
+
 export interface CreateTaskItemRequest {
   title: string;
+  taskTemplateId?: string | null;
+  fieldValues?: FieldValueMap;
+}
+
+export interface UpdateTaskItemRequest {
+  title?: string | null;
+  status?: string | null;
+  followUpAt?: string | null;
+  fieldValues?: FieldValueMap;
 }
 
 export interface AddTaskTimelineEntryRequest {
