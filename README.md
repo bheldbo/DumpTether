@@ -142,19 +142,39 @@ Open `DumpTether.sln` in Visual Studio 2022.
 
 The repository includes `.vsconfig`, so Visual Studio can prompt for the required ASP.NET, Node.js, and Docker tooling workloads if they are missing.
 
-To run the API from Visual Studio:
+The `DumpTether.Api` project includes several launch profiles in the debug target dropdown next to the Start button:
+
+```text
+DumpTether.Api        Debug the API only. Uses the local PostgreSQL connection string.
+DumpTether.Backend    Start PostgreSQL, apply migrations, then run the API from PowerShell.
+DumpTether.Web        Run the Vite frontend only. Use this when the API is already running.
+DumpTether.FullStack  Start PostgreSQL, apply migrations, run API + Vite, then open the web UI.
+DumpTether.Database   Start PostgreSQL and apply migrations only.
+```
+
+For API debugging from Visual Studio:
 
 1. Start Docker Desktop.
 2. Run `.\scripts\dev.ps1 -Target Migrate` once to start PostgreSQL and apply migrations.
-3. Set `DumpTether.Api` as the startup project.
+3. Set `DumpTether.Api` as the startup project and choose the `DumpTether.Api` launch profile.
 4. Press F5.
 
 The API opens at `http://localhost:55868/health`.
 
+For the easiest full-stack run from Visual Studio:
+
+1. Set `DumpTether.Api` as the startup project.
+2. Choose the `DumpTether.FullStack` launch profile.
+3. Press Ctrl+F5 or F5.
+
+That profile opens separate PowerShell windows for the API and Vite frontend and opens `http://localhost:5173`. It is a run helper, not an API debugger attach. For backend breakpoints, use `DumpTether.Api` and start the frontend separately with `DumpTether.Web` or `.\scripts\dev.ps1 -Target Web -OpenBrowser`.
+
+Visual Studio's true "Multiple startup projects" selection is stored in local `.vs`/`.suo` state, so it is not a good repo setting to commit. The committed launch profiles above are the portable version.
+
 To run the full local stack from a terminal:
 
 ```powershell
-.\scripts\dev.ps1 -Target All
+.\scripts\dev.ps1 -Target Both -OpenBrowser
 ```
 
 This starts PostgreSQL, applies migrations, and opens separate API and web dev server windows.

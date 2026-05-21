@@ -9,6 +9,34 @@
         "ConnectionStrings__DumpTether": "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
       },
       "applicationUrl": "http://localhost:55868"
+    },
+    "DumpTether.Backend": {
+      "commandName": "Executable",
+      "executablePath": "powershell.exe",
+      "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\dev.ps1\" -Target Backend -OpenBrowser",
+      "workingDirectory": "$(ProjectDir)",
+      "launchBrowser": false
+    },
+    "DumpTether.Web": {
+      "commandName": "Executable",
+      "executablePath": "powershell.exe",
+      "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\dev.ps1\" -Target Web -OpenBrowser",
+      "workingDirectory": "$(ProjectDir)",
+      "launchBrowser": false
+    },
+    "DumpTether.FullStack": {
+      "commandName": "Executable",
+      "executablePath": "powershell.exe",
+      "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\dev.ps1\" -Target Both -OpenBrowser",
+      "workingDirectory": "$(ProjectDir)",
+      "launchBrowser": false
+    },
+    "DumpTether.Database": {
+      "commandName": "Executable",
+      "executablePath": "powershell.exe",
+      "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\dev.ps1\" -Target Migrate",
+      "workingDirectory": "$(ProjectDir)",
+      "launchBrowser": false
     }
   }
 }

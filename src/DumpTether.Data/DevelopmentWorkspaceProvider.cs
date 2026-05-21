@@ -9,6 +9,13 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     private const string DevelopmentProjectName = "Development Project";
     private const string DevelopmentWorkspaceName = "Development Workspace";
 
+    private static readonly DevelopmentArchiveResolution[] DevelopmentArchiveResolutions =
+    [
+        new("Completed", "Work finished or captured elsewhere.", false),
+        new("No Longer Needed", "The task is intentionally dropped.", true),
+        new("Blocked", "The task cannot move forward right now.", true)
+    ];
+
     private readonly IClock _clock;
     private readonly DumpTetherDbContext _dbContext;
 
@@ -45,8 +52,35 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             await _dbContext.Projects.AddAsync(project, cancellationToken);
         }
 
+        foreach (var resolution in DevelopmentArchiveResolutions)
+        {
+            var exists = await _dbContext.ArchiveResolutions
+                .AnyAsync(
+                    candidate =>
+                        candidate.WorkspaceId == workspace.Id &&
+                        candidate.Name == resolution.Name,
+                    cancellationToken);
+
+            if (!exists)
+            {
+                await _dbContext.ArchiveResolutions.AddAsync(
+                    ArchiveResolution.Create(
+                        workspace.Id,
+                        resolution.Name,
+                        _clock.UtcNow,
+                        resolution.Description,
+                        resolution.RequiresExplanation),
+                    cancellationToken);
+            }
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new DevelopmentWorkspaceContext(workspace.Id, project.Id);
     }
+
+    private sealed record DevelopmentArchiveResolution(
+        string Name,
+        string Description,
+        bool RequiresExplanation);
 }

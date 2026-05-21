@@ -21,14 +21,22 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
     public async Task<IReadOnlyList<TaskItem>> ListAsync(
         Guid workspaceId,
         Guid projectId,
+        TaskItemListScope scope,
         CancellationToken cancellationToken)
     {
         var query = _dbContext.TaskItems
             .AsNoTracking()
             .Where(taskItem =>
                 taskItem.WorkspaceId == workspaceId &&
-                taskItem.ProjectId == projectId &&
-                taskItem.ArchivedAt == null);
+                taskItem.ProjectId == projectId);
+
+        query = scope switch
+        {
+            TaskItemListScope.Active => query.Where(taskItem => taskItem.ArchivedAt == null),
+            TaskItemListScope.Archive => query.Where(taskItem => taskItem.ArchivedAt != null),
+            TaskItemListScope.All => query,
+            _ => query.Where(taskItem => taskItem.ArchivedAt == null)
+        };
 
         if (_dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
         {
@@ -54,6 +62,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         var query = _dbContext.TaskItems
             .Include("_fieldValues")
             .Include("_timelineEntries")
+            .AsSplitQuery()
             .Where(taskItem =>
                 taskItem.Id == id &&
                 taskItem.WorkspaceId == workspaceId &&
