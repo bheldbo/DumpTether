@@ -1,3 +1,4 @@
+using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -22,6 +23,7 @@ public static class DependencyInjection
         services.AddDbContext<DumpTetherDbContext>(options =>
             options.UseNpgsql(connectionString));
 
+        services.AddScoped<IArchiveResolutionRepository, EfArchiveResolutionRepository>();
         services.AddScoped<IDevelopmentWorkspaceProvider, DevelopmentWorkspaceProvider>();
         services.AddScoped<ITaskItemRepository, EfTaskItemRepository>();
 

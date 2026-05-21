@@ -9,6 +9,7 @@ public interface ITaskItemRepository
     Task<IReadOnlyList<TaskItem>> ListAsync(
         Guid workspaceId,
         Guid projectId,
+        TaskItemListScope scope,
         CancellationToken cancellationToken);
 
     Task<TaskItem?> GetByIdAsync(

@@ -37,9 +37,15 @@ public sealed class TaskItemsController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TaskItemSummaryResponse>>> List(
+        [FromQuery] TaskItemListScope scope,
         CancellationToken cancellationToken)
     {
-        var response = await _taskItemService.ListAsync(cancellationToken);
+        if (scope == 0)
+        {
+            scope = TaskItemListScope.Active;
+        }
+
+        var response = await _taskItemService.ListAsync(scope, cancellationToken);
         return Ok(response);
     }
 

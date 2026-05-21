@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Tasks;
 using DumpTether.Data;
 using DumpTether.Domain;
@@ -236,6 +237,49 @@ public sealed class TaskItemsApiTests
     }
 
     [Fact]
+    public async Task GetTaskItems_WithArchiveScope_ReturnsArchivedTaskItems()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateTaskItemAsync(client, "Show in archive");
+        var archiveResolutionId = await CreateArchiveResolutionAsync(
+            factory,
+            created.WorkspaceId,
+            "Completed");
+
+        await PostArchiveAsync(
+            client,
+            created.Id,
+            new
+            {
+                archiveResolutionId,
+                note = "Done."
+            });
+
+        var taskItems = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>(
+            "/api/tasks?scope=Archive");
+
+        Assert.NotNull(taskItems);
+        Assert.Contains(taskItems, taskItem => taskItem.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task GetArchiveResolutions_ReturnsDevelopmentArchiveResolutions()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+
+        var archiveResolutions = await client.GetFromJsonAsync<List<ArchiveResolutionResponse>>(
+            "/api/archive-resolutions");
+
+        Assert.NotNull(archiveResolutions);
+        Assert.Contains(archiveResolutions, resolution => resolution.Name == "Completed");
+        Assert.Contains(archiveResolutions, resolution =>
+            resolution.Name == "Blocked" &&
+            resolution.RequiresExplanation);
+    }
+
+    [Fact]
     public async Task PostTaskReopen_ReopensArchivedTaskItem()
     {
         using var factory = new DumpTetherApiFactory();
@@ -361,6 +405,16 @@ public sealed class TaskItemsApiTests
     {
         using var scope = factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var existingResolution = dbContext.ArchiveResolutions.SingleOrDefault(
+            archiveResolution =>
+                archiveResolution.WorkspaceId == workspaceId &&
+                archiveResolution.Name == name);
+
+        if (existingResolution is not null)
+        {
+            return existingResolution.Id;
+        }
+
         var archiveResolution = ArchiveResolution.Create(
             workspaceId,
             name,
