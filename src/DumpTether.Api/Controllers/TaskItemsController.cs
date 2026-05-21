@@ -1,0 +1,75 @@
+using System.ComponentModel.DataAnnotations;
+using DumpTether.App.Tasks;
+using Microsoft.AspNetCore.Mvc;
+
+namespace DumpTether.Api.Controllers;
+
+[ApiController]
+[Route("api/tasks")]
+public sealed class TaskItemsController : ControllerBase
+{
+    private readonly ITaskItemService _taskItemService;
+
+    public TaskItemsController(ITaskItemService taskItemService)
+    {
+        _taskItemService = taskItemService;
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<TaskItemDetailResponse>> Create(
+        CreateTaskItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.CreateAsync(request, cancellationToken);
+            return CreatedAtAction(nameof(GetById), new { id = response.Id }, response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyList<TaskItemSummaryResponse>>> List(
+        CancellationToken cancellationToken)
+    {
+        var response = await _taskItemService.ListAsync(cancellationToken);
+        return Ok(response);
+    }
+
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<TaskItemDetailResponse>> GetById(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var response = await _taskItemService.GetByIdAsync(id, cancellationToken);
+        return response is null ? NotFound() : Ok(response);
+    }
+
+    [HttpPatch("{id:guid}")]
+    public async Task<ActionResult<TaskItemDetailResponse>> Update(
+        Guid id,
+        UpdateTaskItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.UpdateAsync(id, request, cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+}

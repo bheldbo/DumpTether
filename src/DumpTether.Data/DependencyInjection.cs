@@ -1,3 +1,4 @@
+using DumpTether.App.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +21,9 @@ public static class DependencyInjection
 
         services.AddDbContext<DumpTetherDbContext>(options =>
             options.UseNpgsql(connectionString));
+
+        services.AddScoped<IDevelopmentWorkspaceProvider, DevelopmentWorkspaceProvider>();
+        services.AddScoped<ITaskItemRepository, EfTaskItemRepository>();
 
         return services;
     }

@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "components": [
+    "Microsoft.VisualStudio.Workload.NetWeb",
+    "Microsoft.VisualStudio.Workload.Node",
+    "Microsoft.VisualStudio.Component.DockerTools"
+  ]
+}

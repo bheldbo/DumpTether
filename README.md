@@ -2,7 +2,7 @@
 
 DumpTether is a lightweight personal task-and-note system that turns messy working notes into structured tasks with history, templates, views, and archive reasons.
 
-This repository is the initial modular monolith scaffold. It intentionally does not implement business features yet.
+This repository is the initial modular monolith scaffold with the first task item API surface.
 
 ## MVP Boundaries
 
@@ -50,7 +50,9 @@ The local Docker Compose database uses this development-only pattern:
 Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password
 ```
 
-Configure the API through an environment variable:
+Visual Studio and `dotnet run --launch-profile DumpTether.Api` use the local Compose connection string from `src/DumpTether.Api/Properties/launchSettings.json`.
+
+For terminal sessions that do not use the launch profile, configure the API through an environment variable:
 
 ```powershell
 $env:ConnectionStrings__DumpTether = "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
@@ -67,16 +69,91 @@ dotnet tool run dotnet-ef database update --project src/DumpTether.Data --startu
 Run the API:
 
 ```powershell
-dotnet run --project src/DumpTether.Api
+dotnet run --project src/DumpTether.Api --launch-profile DumpTether.Api
+```
+
+The first task endpoints use a temporary development workspace and project until authentication and workspace selection are introduced. This is development-only plumbing, not a security boundary.
+
+Create a task item:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/tasks `
+  -H "Content-Type: application/json" `
+  -d "{\"title\":\"Capture launch notes\"}"
+```
+
+List task items:
+
+```powershell
+curl.exe http://localhost:55868/api/tasks
+```
+
+Get one task item:
+
+```powershell
+curl.exe http://localhost:55868/api/tasks/{id}
+```
+
+Update a task item:
+
+```powershell
+curl.exe -X PATCH http://localhost:55868/api/tasks/{id} `
+  -H "Content-Type: application/json" `
+  -d "{\"title\":\"Capture launch notes v2\",\"status\":\"In Progress\",\"followUpAt\":\"2026-05-22T09:00:00Z\"}"
 ```
 
 Run the frontend:
 
 ```powershell
 cd apps/web
-npm ci
-npm run dev
+npm.cmd ci
+npm.cmd run dev
 ```
+
+Use `npm.cmd` from PowerShell if the `npm.ps1` shim is blocked by local execution policy.
+
+## Visual Studio
+
+Open `DumpTether.sln` in Visual Studio 2022.
+
+The repository includes `.vsconfig`, so Visual Studio can prompt for the required ASP.NET, Node.js, and Docker tooling workloads if they are missing.
+
+To run the API from Visual Studio:
+
+1. Start Docker Desktop.
+2. Run `.\scripts\dev.ps1 -Target Migrate` once to start PostgreSQL and apply migrations.
+3. Set `DumpTether.Api` as the startup project.
+4. Press F5.
+
+The API opens at `http://localhost:55868/health`.
+
+To run the full local stack from a terminal:
+
+```powershell
+.\scripts\dev.ps1 -Target All
+```
+
+This starts PostgreSQL, applies migrations, and opens separate API and web dev server windows.
+
+### Docker Desktop Troubleshooting
+
+If Docker Desktop says virtualization support was not detected:
+
+1. Enable these Windows features from an elevated terminal:
+
+   ```powershell
+   dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+   dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+   ```
+
+2. Restart Windows. The `/norestart` flag means the feature changes are not fully active yet.
+3. If Docker still reports missing virtualization, enable CPU virtualization in BIOS/UEFI, usually called Intel VT-x, Intel Virtualization Technology, AMD-V, or SVM.
+4. Start Docker Desktop and verify:
+
+   ```powershell
+   wsl --status
+   docker info
+   ```
 
 ## First GitHub Push
 
@@ -106,9 +183,9 @@ Frontend:
 
 ```powershell
 cd apps/web
-npm run lint
-npm run typecheck
-npm run build
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd run build
 ```
 
 Docker Compose validation:

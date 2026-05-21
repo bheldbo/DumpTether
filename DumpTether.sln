@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DumpTether.Domain.Tests", "
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DumpTether.Api.Tests", "tests\DumpTether.Api.Tests\DumpTether.Api.Tests.csproj", "{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,11 +89,24 @@ Global
 		{0CF3BE81-B60E-4B80-B8E0-36603825CDA7}.Release|x64.Build.0 = Release|Any CPU
 		{0CF3BE81-B60E-4B80-B8E0-36603825CDA7}.Release|x86.ActiveCfg = Release|Any CPU
 		{0CF3BE81-B60E-4B80-B8E0-36603825CDA7}.Release|x86.Build.0 = Release|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Debug|x64.Build.0 = Debug|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Debug|x86.Build.0 = Debug|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Release|x64.ActiveCfg = Release|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Release|x64.Build.0 = Release|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Release|x86.ActiveCfg = Release|Any CPU
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{0CF3BE81-B60E-4B80-B8E0-36603825CDA7} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
