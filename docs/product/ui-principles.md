@@ -13,7 +13,7 @@ DumpTether should feel like a lightweight personal sticker wall backed by a stru
 - A card should show title, latest note content, small status/category/date signals, follow-up date when set, and whether notes exist.
 - Clicking a card should focus that task and let it fill the workspace.
 - Color, status, category, title, dates, fields and notes are edited in the focused task surface.
-- Creating a task should be a single-line action at the top of the wall.
+- Creating a task should start from a compact `+` action so the wall keeps the screen.
 - Pressing Enter in quick-create creates the task immediately.
 - The quick-create input should stay focused after creation.
 - Quick syntax such as `Call Jan #Waiting` or `Order trackers @Procurement` is future work, not MVP behavior yet.
@@ -34,9 +34,18 @@ DumpTether should feel like a lightweight personal sticker wall backed by a stru
 - Temporary filters should not require saving a view.
 - The wall should have compact filters for text, status, category, color, project, follow-up, and not-touched age.
 - Color filters should operate on the user's chosen task color, whatever that color means to them.
+- Color filters should show both a swatch and the color code.
+- Suggested view colors should come from colors that exist on active or archived tasks.
 - Reset filters should be obvious when filters are active.
 - Saved views still define reusable ways to see tasks.
+- Saved views should start with only `Overview` and `Archive`; users can drag sidebar views into their preferred order.
 - Do not build a full advanced query builder yet.
+
+## Localization
+
+- The UI should support English and Danish first.
+- Language selection belongs in sidebar settings.
+- Localization should cover the main navigation and task-wall controls before deeper admin text.
 
 ## Templates and Fields
 

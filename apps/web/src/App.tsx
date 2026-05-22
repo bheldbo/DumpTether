@@ -57,6 +57,8 @@ import type {
 
 type WorkspaceMode = 'tasks' | 'templates';
 type StatusFilterMode = 'any' | 'empty' | 'exact';
+type Language = 'en' | 'da';
+type Translate = (key: TranslationKey) => string;
 
 type IconName =
   | 'archive'
@@ -72,6 +74,7 @@ type IconName =
   | 'plus'
   | 'refresh'
   | 'search'
+  | 'settings'
   | 'templates'
   | 'trash'
   | 'waiting';
@@ -147,6 +150,80 @@ const colorChoices = [
   '#FDBA74',
   '#CBD5E1',
 ];
+const languageStorageKey = 'dumptether.language';
+const translations = {
+  en: {
+    addTask: 'Add task',
+    allProjects: 'All projects',
+    anyCategory: 'Any category',
+    anyColor: 'Any color',
+    anyFollowUp: 'Any follow-up',
+    anyProject: 'Any project',
+    anyStatus: 'Any status',
+    archive: 'Archive',
+    collapseSidebar: 'Collapse sidebar',
+    color: 'Color',
+    danish: 'Danish',
+    editView: 'Edit view',
+    english: 'English',
+    expandSidebar: 'Expand sidebar',
+    filterWall: 'Filter wall...',
+    language: 'Language',
+    loadingTasks: 'Loading tasks...',
+    newTask: 'New task',
+    newTaskPlaceholder: 'Add a task and press Enter...',
+    newView: 'New view',
+    noTaskColors: 'No task colors yet',
+    noTasks: 'Nothing here yet. Use + to add your first task.',
+    noTasksMatch: 'No tasks match these filters. Reset filters to see the whole wall again.',
+    notTouchedDays: 'Not touched days',
+    overview: 'Overview',
+    refresh: 'Refresh',
+    resetFilters: 'Reset filters',
+    savedViews: 'Saved views',
+    settings: 'Settings',
+    sortAscending: 'ascending',
+    sortDescending: 'descending',
+    sortedBy: 'Sorted by',
+    templates: 'Templates',
+  },
+  da: {
+    addTask: 'Tilfoj opgave',
+    allProjects: 'Alle projekter',
+    anyCategory: 'Alle kategorier',
+    anyColor: 'Alle farver',
+    anyFollowUp: 'Alle opfolgninger',
+    anyProject: 'Alle projekter',
+    anyStatus: 'Alle statusser',
+    archive: 'Arkiv',
+    collapseSidebar: 'Skjul sidebar',
+    color: 'Farve',
+    danish: 'Dansk',
+    editView: 'Rediger visning',
+    english: 'Engelsk',
+    expandSidebar: 'Vis sidebar',
+    filterWall: 'Filtrer tavlen...',
+    language: 'Sprog',
+    loadingTasks: 'Indlaeser opgaver...',
+    newTask: 'Ny opgave',
+    newTaskPlaceholder: 'Tilfoj en opgave og tryk Enter...',
+    newView: 'Ny visning',
+    noTaskColors: 'Ingen opgavefarver endnu',
+    noTasks: 'Her er tomt endnu. Brug + for at tilfoje din forste opgave.',
+    noTasksMatch: 'Ingen opgaver matcher filtrene. Nulstil filtrene for at se hele tavlen igen.',
+    notTouchedDays: 'Ikke roert i dage',
+    overview: 'Overblik',
+    refresh: 'Opdater',
+    resetFilters: 'Nulstil filtre',
+    savedViews: 'Gemte visninger',
+    settings: 'Indstillinger',
+    sortAscending: 'stigende',
+    sortDescending: 'faldende',
+    sortedBy: 'Sorteret efter',
+    templates: 'Skabeloner',
+  },
+} as const;
+type TranslationKey = keyof typeof translations.en;
 
 function App() {
   const [savedViews, setSavedViews] = useState<SavedViewResponse[]>([]);
@@ -164,10 +241,14 @@ function App() {
   const [viewEditorIsOpen, setViewEditorIsOpen] = useState(false);
   const [archiveDialogIsOpen, setArchiveDialogIsOpen] = useState(false);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
+  const [settingsIsOpen, setSettingsIsOpen] = useState(false);
+  const [language, setLanguage] = useState<Language>(getInitialLanguage);
+  const [taskColorOptions, setTaskColorOptions] = useState<string[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const t = useCallback<Translate>((key) => translate(language, key), [language]);
 
   const currentView = useMemo(
     () => savedViews.find((view) => view.id === currentViewId) ?? null,
@@ -187,7 +268,7 @@ function App() {
           listTaskTemplates(),
         ]);
         const selectedViewId = pickSavedViewId(views, preferredViewId);
-        const [templateDetails, selectedTasks, countEntries] = await Promise.all([
+        const [templateDetails, selectedTasks, countEntries, allTasksForColors] = await Promise.all([
           Promise.all(templateSummaries.map((template) => getTaskTemplate(template.id))),
           selectedViewId ? listTaskItems({ viewId: selectedViewId }) : Promise.resolve([]),
           Promise.all(
@@ -196,6 +277,7 @@ function App() {
               return [view.id, items.length] as const;
             }),
           ),
+          listTaskItems({ archive: 'All' }),
         ]);
 
         setWorkspace(workspaceInfo);
@@ -203,6 +285,7 @@ function App() {
         setProjects(projectList);
         setArchiveResolutions(resolutions);
         setTemplates(templateDetails);
+        setTaskColorOptions(mergeColorOptions(getTaskColors(allTasksForColors)));
         setCurrentViewId(selectedViewId);
         setTaskItems(selectedTasks);
         setViewCounts(Object.fromEntries(countEntries));
@@ -229,6 +312,10 @@ function App() {
     setHasBootstrapped(true);
     void loadWorkspace(currentViewId);
   }, [currentViewId, hasBootstrapped, loadWorkspace]);
+
+  useEffect(() => {
+    window.localStorage.setItem(languageStorageKey, language);
+  }, [language]);
 
   useEffect(() => {
     if (mode !== 'tasks' || !selectedTaskId) {
@@ -405,13 +492,50 @@ function App() {
 
     try {
       const reopened = await reopenTaskItem(selectedTask.id, { note });
-      const activeViewId = findViewId(savedViews, 'All active') ?? currentViewId;
+      const activeViewId = findViewId(savedViews, 'Overview') ?? currentViewId;
       setCurrentViewId(activeViewId);
       setSelectedTaskId(reopened.id);
       setSelectedTask(reopened);
       updateUrl('tasks', activeViewId);
       await loadWorkspace(activeViewId);
     } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleReorderSavedViews = async (draggedViewId: string, targetViewId: string) => {
+    if (draggedViewId === targetViewId) {
+      return;
+    }
+
+    const draggedIndex = savedViews.findIndex((view) => view.id === draggedViewId);
+    const targetIndex = savedViews.findIndex((view) => view.id === targetViewId);
+
+    if (draggedIndex < 0 || targetIndex < 0) {
+      return;
+    }
+
+    const reorderedViews = [...savedViews];
+    const [draggedView] = reorderedViews.splice(draggedIndex, 1);
+    reorderedViews.splice(targetIndex, 0, draggedView);
+    const normalizedViews = reorderedViews.map((view, index) => ({
+      ...view,
+      sortOrder: index,
+    }));
+    const previousViews = savedViews;
+    setSavedViews(normalizedViews);
+
+    try {
+      await Promise.all(
+        normalizedViews.map((view, index) =>
+          updateSavedView(view.id, {
+            sortOrder: index,
+          }),
+        ),
+      );
+      await loadWorkspace(currentViewId);
+    } catch (error) {
+      setSavedViews(previousViews);
       setErrorMessage(getErrorMessage(error));
     }
   };
@@ -504,18 +628,22 @@ function App() {
       <Sidebar
         counts={viewCounts}
         currentViewId={currentViewId}
+        language={language}
         mode={mode}
         onCreateView={() => {
           setEditingView(null);
           setViewEditorIsOpen(true);
         }}
+        onOpenSettings={() => setSettingsIsOpen(true)}
         onOpenTemplates={handleOpenTemplates}
         onRefresh={() => void loadWorkspace(currentViewId)}
+        onReorderViews={handleReorderSavedViews}
         onSelectView={handleSelectSavedView}
         onToggleSidebar={() => setSidebarIsCollapsed((isCollapsed) => !isCollapsed)}
         savedViews={savedViews}
         sidebarIsCollapsed={sidebarIsCollapsed}
         templateCount={templates.length}
+        t={t}
       />
 
       <section className="workspace" aria-label="Task workspace">
@@ -538,6 +666,7 @@ function App() {
             archiveDialogIsOpen={archiveDialogIsOpen}
             archiveResolutions={archiveResolutions}
             currentView={currentView}
+            colorOptions={taskColorOptions}
             isLoading={isLoadingWorkspace}
             isLoadingDetail={isLoadingDetail}
             onAddTimelineEntry={handleAddTimelineEntry}
@@ -567,6 +696,7 @@ function App() {
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
             taskItems={taskItems}
+            t={t}
             workspace={workspace}
           />
         )}
@@ -580,8 +710,19 @@ function App() {
           }}
           onDeleteView={handleDeleteView}
           onSaveView={handleSaveView}
+          colorOptions={taskColorOptions}
           projects={projects}
           savedView={editingView}
+          t={t}
+        />
+      ) : null}
+
+      {settingsIsOpen ? (
+        <SettingsPanel
+          language={language}
+          onChangeLanguage={setLanguage}
+          onClose={() => setSettingsIsOpen(false)}
+          t={t}
         />
       ) : null}
     </main>
@@ -591,28 +732,38 @@ function App() {
 function Sidebar({
   counts,
   currentViewId,
+  language,
   mode,
   onCreateView,
+  onOpenSettings,
   onOpenTemplates,
   onRefresh,
+  onReorderViews,
   onSelectView,
   onToggleSidebar,
   savedViews,
   sidebarIsCollapsed,
+  t,
   templateCount,
 }: {
   counts: Record<string, number>;
   currentViewId: string | null;
+  language: Language;
   mode: WorkspaceMode;
   onCreateView: () => void;
+  onOpenSettings: () => void;
   onOpenTemplates: () => void;
   onRefresh: () => void;
+  onReorderViews: (draggedViewId: string, targetViewId: string) => Promise<void>;
   onSelectView: (viewId: string) => void;
   onToggleSidebar: () => void;
   savedViews: SavedViewResponse[];
   sidebarIsCollapsed: boolean;
+  t: Translate;
   templateCount: number;
 }) {
+  const [draggedViewId, setDraggedViewId] = useState<string | null>(null);
+
   return (
     <aside className="sidebar" aria-label="DumpTether navigation">
       <div className="brand">
@@ -624,19 +775,35 @@ function Sidebar({
         <button
           className="icon-button sidebar-toggle"
           onClick={onToggleSidebar}
-          title={sidebarIsCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={sidebarIsCollapsed ? t('expandSidebar') : t('collapseSidebar')}
           type="button"
         >
           <Icon name="panel" />
         </button>
       </div>
 
-      <nav className="view-nav" aria-label="Saved views">
+      <nav className="view-nav" aria-label={t('savedViews')}>
         {savedViews.map((view) => (
           <button
             aria-current={mode === 'tasks' && currentViewId === view.id ? 'page' : undefined}
             className="nav-item"
+            data-dragging={draggedViewId === view.id}
+            draggable={!sidebarIsCollapsed}
             key={view.id}
+            onDragEnd={() => setDraggedViewId(null)}
+            onDragOver={(event) => {
+              event.preventDefault();
+            }}
+            onDragStart={() => setDraggedViewId(view.id)}
+            onDrop={(event) => {
+              event.preventDefault();
+              const sourceViewId = draggedViewId;
+              setDraggedViewId(null);
+
+              if (sourceViewId) {
+                void onReorderViews(sourceViewId, view.id);
+              }
+            }}
             onClick={() => onSelectView(view.id)}
             title={view.name}
             type="button"
@@ -651,7 +818,7 @@ function Sidebar({
       <div className="sidebar-actions">
         <button className="nav-item" onClick={onCreateView} type="button">
           <Icon name="plus" />
-          <span className="nav-label">New view</span>
+          <span className="nav-label">{t('newView')}</span>
           <span className="nav-count">+</span>
         </button>
         <button
@@ -661,12 +828,17 @@ function Sidebar({
           type="button"
         >
           <Icon name="templates" />
-          <span className="nav-label">Templates</span>
+          <span className="nav-label">{t('templates')}</span>
           <span className="nav-count">{templateCount}</span>
+        </button>
+        <button className="nav-item" onClick={onOpenSettings} type="button">
+          <Icon name="settings" />
+          <span className="nav-label">{t('settings')}</span>
+          <span className="nav-count">{language.toUpperCase()}</span>
         </button>
         <button className="refresh-button" onClick={onRefresh} type="button">
           <Icon name="refresh" />
-          <span className="nav-label">Refresh</span>
+          <span className="nav-label">{t('refresh')}</span>
         </button>
       </div>
     </aside>
@@ -676,6 +848,7 @@ function Sidebar({
 function TaskBoard({
   archiveDialogIsOpen,
   archiveResolutions,
+  colorOptions,
   currentView,
   isLoading,
   isLoadingDetail,
@@ -698,10 +871,12 @@ function TaskBoard({
   selectedTask,
   selectedTaskId,
   taskItems,
+  t,
   workspace,
 }: {
   archiveDialogIsOpen: boolean;
   archiveResolutions: ArchiveResolutionResponse[];
+  colorOptions: string[];
   currentView: SavedViewResponse | null;
   isLoading: boolean;
   isLoadingDetail: boolean;
@@ -726,6 +901,7 @@ function TaskBoard({
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
   taskItems: TaskItemSummaryResponse[];
+  t: Translate;
   workspace: WorkspaceResponse | null;
 }) {
   const canCreateTask = currentView?.filter.archive !== 'Archived';
@@ -738,7 +914,10 @@ function TaskBoard({
     ? visibleTaskItems.find((taskItem) => taskItem.id === selectedTaskId) ?? null
     : null;
   const displayedTaskItems = focusedTaskItem ? [focusedTaskItem] : visibleTaskItems;
-  const filterOptions = useMemo(() => buildTaskFilterOptions(taskItems), [taskItems]);
+  const filterOptions = useMemo(
+    () => buildTaskFilterOptions(taskItems, colorOptions),
+    [colorOptions, taskItems],
+  );
   const filtersAreActive = taskWallFiltersAreActive(filters);
   const currentProject = getCurrentProject(
     currentView,
@@ -775,15 +954,14 @@ function TaskBoard({
         currentProject={currentProject}
         currentView={currentView}
         onEditView={onEditView}
+        onCreateTaskItem={canCreateTask && !focusedTaskItem ? onCreateTaskItem : null}
         onUpdateProjectColor={onUpdateProjectColor}
         onUpdateWorkspaceColor={onUpdateWorkspaceColor}
+        colorOptions={colorOptions}
         projects={projects}
+        t={t}
         workspace={workspace}
       />
-
-      {canCreateTask && !focusedTaskItem ? (
-        <QuickCreateTaskForm onCreateTaskItem={onCreateTaskItem} />
-      ) : null}
 
       {!focusedTaskItem ? (
         <TaskFilterBar
@@ -793,16 +971,17 @@ function TaskBoard({
           onReset={() => setFilters(emptyTaskWallFilters)}
           options={filterOptions}
           projects={projects}
+          t={t}
         />
       ) : null}
 
       <div className="task-grid" aria-busy={isLoading}>
-        {isLoading ? <p className="empty-copy">Loading tasks...</p> : null}
+        {isLoading ? <p className="empty-copy">{t('loadingTasks')}</p> : null}
         {!isLoading && displayedTaskItems.length === 0 ? (
           <p className="empty-copy board-empty">
             {filtersAreActive
-              ? 'No tasks match these filters. Reset filters to see the whole wall again.'
-              : 'Nothing here yet. Type a task at the top, press Enter, and keep dumping.'}
+              ? t('noTasksMatch')
+              : t('noTasks')}
           </p>
         ) : null}
 
@@ -863,6 +1042,7 @@ function TaskBoard({
                       onUpdateFieldValues={onUpdateFieldValues}
                       onUpdateTaskItem={onUpdateTaskItem}
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
+                      colorOptions={colorOptions}
                       taskItem={selectedTask}
                     />
                   )}
@@ -877,20 +1057,26 @@ function TaskBoard({
 }
 
 function WorkspaceHeader({
+  colorOptions,
   currentProject,
   currentView,
+  onCreateTaskItem,
   onEditView,
   onUpdateProjectColor,
   onUpdateWorkspaceColor,
   projects,
+  t,
   workspace,
 }: {
+  colorOptions: string[];
   currentProject: ProjectResponse | null;
   currentView: SavedViewResponse | null;
+  onCreateTaskItem: ((title: string) => Promise<void>) | null;
   onEditView: () => void;
   onUpdateProjectColor: (id: string, color: string) => Promise<void>;
   onUpdateWorkspaceColor: (color: string) => Promise<void>;
   projects: ProjectResponse[];
+  t: Translate;
   workspace: WorkspaceResponse | null;
 }) {
   return (
@@ -903,17 +1089,19 @@ function WorkspaceHeader({
           <h1 id="task-board-title">{workspace?.name ?? 'DumpTether'}</h1>
           <ColorPickerPopover
             color={workspace?.color ?? ''}
+            colorOptions={colorOptions}
             label="Workspace color"
             onChange={(color) => void onUpdateWorkspaceColor(color)}
           />
         </div>
         <div className="workspace-context-row">
           <span className="context-chip" style={getContextChipStyle(currentProject?.color ?? null)}>
-            {currentProject?.name ?? 'All projects'}
+            {currentProject?.name ?? t('allProjects')}
           </span>
           {currentProject ? (
             <ColorPickerPopover
               color={currentProject.color ?? ''}
+              colorOptions={colorOptions}
               label={`${currentProject.name} color`}
               onChange={(color) => void onUpdateProjectColor(currentProject.id, color)}
             />
@@ -924,12 +1112,15 @@ function WorkspaceHeader({
       </div>
       <div className="board-actions">
         <span className="sort-pill">
-          Sorted by {formatSortField(currentView?.sort.field)}{' '}
-          {currentView?.sort.direction === 'asc' ? 'ascending' : 'descending'}
+          {t('sortedBy')} {formatSortField(currentView?.sort.field)}{' '}
+          {currentView?.sort.direction === 'asc' ? t('sortAscending') : t('sortDescending')}
         </span>
+        {onCreateTaskItem ? (
+          <QuickCreateTaskForm onCreateTaskItem={onCreateTaskItem} t={t} />
+        ) : null}
         <button className="secondary-action" disabled={!currentView} onClick={onEditView} type="button">
           <Icon name="edit" />
-          <span>Edit view</span>
+          <span>{t('editView')}</span>
         </button>
       </div>
     </div>
@@ -938,12 +1129,21 @@ function WorkspaceHeader({
 
 function QuickCreateTaskForm({
   onCreateTaskItem,
+  t,
 }: {
   onCreateTaskItem: (title: string) => Promise<void>;
+  t: Translate;
 }) {
   const [title, setTitle] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      inputRef.current?.focus();
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -960,20 +1160,51 @@ function QuickCreateTaskForm({
     inputRef.current?.focus();
   };
 
+  if (!isOpen) {
+    return (
+      <button
+        className="new-task-button"
+        onClick={() => setIsOpen(true)}
+        title={t('newTask')}
+        type="button"
+      >
+        <Icon name="plus" />
+        <span>{t('newTask')}</span>
+      </button>
+    );
+  }
+
   return (
     <form className="quick-create-form" onSubmit={handleSubmit}>
       <input
         aria-label="New task title"
         ref={inputRef}
         onChange={(event) => setTitle(event.target.value)}
-        placeholder="Add a task and press Enter..."
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !title.trim()) {
+            setIsOpen(false);
+          }
+        }}
+        placeholder={t('newTaskPlaceholder')}
         type="text"
         value={title}
       />
 
       <button disabled={!title.trim() || isSubmitting} type="submit">
         <Icon name="plus" />
-        <span>Add</span>
+        <span>{t('addTask')}</span>
+      </button>
+      <button
+        className="ghost-button"
+        onClick={() => {
+          setTitle('');
+          setIsOpen(false);
+        }}
+        title="Close"
+        type="button"
+      >
+        <Icon name="close" />
+        <span className="sr-only">Close</span>
       </button>
     </form>
   );
@@ -986,6 +1217,7 @@ function TaskFilterBar({
   onReset,
   options,
   projects,
+  t,
 }: {
   filters: TaskWallFilters;
   filtersAreActive: boolean;
@@ -997,6 +1229,7 @@ function TaskFilterBar({
     colors: string[];
   };
   projects: ProjectResponse[];
+  t: Translate;
 }) {
   const updateFilter = (update: Partial<TaskWallFilters>) => {
     onChange({ ...filters, ...update });
@@ -1008,7 +1241,7 @@ function TaskFilterBar({
         <span className="sr-only">Search tasks</span>
         <input
           onChange={(event) => updateFilter({ text: event.target.value })}
-          placeholder="Filter wall..."
+          placeholder={t('filterWall')}
           type="search"
           value={filters.text}
         />
@@ -1019,7 +1252,7 @@ function TaskFilterBar({
         onChange={(event) => updateFilter({ status: event.target.value })}
         value={filters.status}
       >
-        <option value="">Any status</option>
+        <option value="">{t('anyStatus')}</option>
         {options.statuses.map((status) => (
           <option key={status} value={status}>
             {status}
@@ -1032,7 +1265,7 @@ function TaskFilterBar({
         onChange={(event) => updateFilter({ category: event.target.value })}
         value={filters.category}
       >
-        <option value="">Any category</option>
+        <option value="">{t('anyCategory')}</option>
         {options.categories.map((category) => (
           <option key={category} value={category}>
             {category}
@@ -1040,25 +1273,21 @@ function TaskFilterBar({
         ))}
       </select>
 
-      <select
-        aria-label="Filter by color"
-        onChange={(event) => updateFilter({ color: event.target.value })}
+      <ColorOptionPicker
+        emptyLabel={t('noTaskColors')}
+        label={t('color')}
+        onChange={(color) => updateFilter({ color })}
+        options={options.colors}
         value={filters.color}
-      >
-        <option value="">Any color</option>
-        {options.colors.map((color) => (
-          <option key={color} value={color}>
-            {color}
-          </option>
-        ))}
-      </select>
+        zeroLabel={t('anyColor')}
+      />
 
       <select
         aria-label="Filter by project"
         onChange={(event) => updateFilter({ projectId: event.target.value })}
         value={filters.projectId}
       >
-        <option value="">Any project</option>
+        <option value="">{t('anyProject')}</option>
         {projects.map((project) => (
           <option key={project.id} value={project.id}>
             {project.name}
@@ -1073,7 +1302,7 @@ function TaskFilterBar({
         }
         value={filters.followUp}
       >
-        <option value="">Any follow-up</option>
+        <option value="">{t('anyFollowUp')}</option>
         {followUpFilters.map((filter) => (
           <option key={filter} value={filter}>
             {formatFollowUpFilter(filter)}
@@ -1085,15 +1314,61 @@ function TaskFilterBar({
         aria-label="Not touched for days"
         min={1}
         onChange={(event) => updateFilter({ notTouchedDays: event.target.value })}
-        placeholder="Not touched days"
+        placeholder={t('notTouchedDays')}
         type="number"
         value={filters.notTouchedDays}
       />
 
       {filtersAreActive ? (
         <button className="ghost-button" onClick={onReset} type="button">
-          Reset filters
+          {t('resetFilters')}
         </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ColorOptionPicker({
+  emptyLabel,
+  label,
+  onChange,
+  options,
+  value,
+  zeroLabel,
+}: {
+  emptyLabel: string;
+  label: string;
+  onChange: (color: string) => void;
+  options: string[];
+  value: string;
+  zeroLabel: string;
+}) {
+  return (
+    <div className="color-option-picker" aria-label={label}>
+      <button
+        className="color-option-button"
+        data-selected={!value}
+        onClick={() => onChange('')}
+        type="button"
+      >
+        <span className="color-option-empty" />
+        <span>{zeroLabel}</span>
+      </button>
+      {options.map((color) => (
+        <button
+          className="color-option-button"
+          data-selected={value.toUpperCase() === color}
+          key={color}
+          onClick={() => onChange(color)}
+          title={color}
+          type="button"
+        >
+          <span className="color-option-swatch" style={{ backgroundColor: color }} />
+          <span className="color-option-code">{color}</span>
+        </button>
+      ))}
+      {options.length === 0 ? (
+        <span className="color-option-empty-text">{emptyLabel}</span>
       ) : null}
     </div>
   );
@@ -1102,6 +1377,7 @@ function TaskFilterBar({
 function TaskDetail({
   archiveDialogIsOpen,
   archiveResolutions,
+  colorOptions,
   onAddTimelineEntry,
   onArchive,
   onClose,
@@ -1116,6 +1392,7 @@ function TaskDetail({
 }: {
   archiveDialogIsOpen: boolean;
   archiveResolutions: ArchiveResolutionResponse[];
+  colorOptions: string[];
   onAddTimelineEntry: (note: string) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onClose: () => void;
@@ -1179,7 +1456,11 @@ function TaskDetail({
         </div>
       </div>
 
-      <TaskQuickEditForm onUpdateTaskItem={onUpdateTaskItem} taskItem={taskItem} />
+      <TaskQuickEditForm
+        colorOptions={colorOptions}
+        onUpdateTaskItem={onUpdateTaskItem}
+        taskItem={taskItem}
+      />
 
       <div className="detail-meta">
         <MetaItem label="Status" value={taskItem.status ?? 'No status'} />
@@ -1248,9 +1529,11 @@ function TaskDetail({
 }
 
 function TaskQuickEditForm({
+  colorOptions,
   onUpdateTaskItem,
   taskItem,
 }: {
+  colorOptions: string[];
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   taskItem: TaskItemDetailResponse;
 }) {
@@ -1326,7 +1609,7 @@ function TaskQuickEditForm({
           value={category}
         />
       </label>
-      <TaskColorPicker color={color} onChange={setColor} />
+      <TaskColorPicker color={color} colorOptions={colorOptions} onChange={setColor} />
       <button disabled={!title.trim() || isSubmitting} type="submit">
         Save
       </button>
@@ -1336,9 +1619,11 @@ function TaskQuickEditForm({
 
 function TaskColorPicker({
   color,
+  colorOptions,
   onChange,
 }: {
   color: string;
+  colorOptions: string[];
   onChange: (color: string) => void;
 }) {
   return (
@@ -1346,6 +1631,7 @@ function TaskColorPicker({
       <span>Color</span>
       <ColorPickerPopover
         color={color}
+        colorOptions={colorOptions}
         label="Task color"
         onChange={onChange}
       />
@@ -1355,14 +1641,20 @@ function TaskColorPicker({
 
 function ColorPickerPopover({
   color,
+  colorOptions,
   label,
   onChange,
 }: {
   color: string;
+  colorOptions?: string[];
   label: string;
   onChange: (color: string) => void;
 }) {
   const selectedColor = isHexColor(color) ? color : '#FDE68A';
+  const choices = useMemo(
+    () => mergeColorOptions(colorOptions ?? [], colorChoices, color ? [color] : []),
+    [color, colorOptions],
+  );
 
   return (
     <details className="color-popover">
@@ -1376,7 +1668,7 @@ function ColorPickerPopover({
       </summary>
       <div className="color-popover-panel">
         <div className="color-swatch-row" aria-label={label}>
-          {colorChoices.map((choice) => (
+          {choices.map((choice) => (
             <button
               aria-label={`Use ${choice}`}
               className="color-swatch"
@@ -1387,6 +1679,7 @@ function ColorPickerPopover({
               type="button"
             />
           ))}
+          <span className="color-popover-code">{color || 'No color'}</span>
           <input
             aria-label="Custom color"
             onChange={(event) => onChange(event.target.value.toUpperCase())}
@@ -1703,12 +1996,15 @@ function TemplateEditor({
 }
 
 function ViewEditorPanel({
+  colorOptions,
   onClose,
   onDeleteView,
   onSaveView,
   projects,
   savedView,
+  t,
 }: {
+  colorOptions: string[];
   onClose: () => void;
   onDeleteView: (id: string) => Promise<void>;
   onSaveView: (
@@ -1717,6 +2013,7 @@ function ViewEditorPanel({
   ) => Promise<void>;
   projects: ProjectResponse[];
   savedView: SavedViewResponse | null;
+  t: Translate;
 }) {
   const [draft, setDraft] = useState<EditableViewDraft>(() =>
     toEditableViewDraft(savedView),
@@ -1874,20 +2171,17 @@ function ViewEditorPanel({
               />
             </label>
 
-            <label>
-              Color
-              <select
-                onChange={(event) => updateDraft({ color: event.target.value })}
+            <div className="view-color-filter">
+              <span className="field-label">{t('color')}</span>
+              <ColorOptionPicker
+                emptyLabel={t('noTaskColors')}
+                label={t('color')}
+                onChange={(color) => updateDraft({ color })}
+                options={colorOptions}
                 value={draft.color}
-              >
-                <option value="">Any color</option>
-                {colorChoices.map((choice) => (
-                  <option key={choice} value={choice}>
-                    {choice}
-                  </option>
-                ))}
-              </select>
-            </label>
+                zeroLabel={t('anyColor')}
+              />
+            </div>
 
             <label>
               Not viewed for days
@@ -1955,14 +2249,6 @@ function ViewEditorPanel({
               </select>
             </label>
 
-            <label>
-              Sidebar order
-              <input
-                onChange={(event) => updateDraft({ sortOrder: event.target.value })}
-                type="number"
-                value={draft.sortOrder}
-              />
-            </label>
           </div>
 
           <div className="dialog-actions">
@@ -2287,6 +2573,51 @@ function ArchiveDialog({
   );
 }
 
+function SettingsPanel({
+  language,
+  onChangeLanguage,
+  onClose,
+  t,
+}: {
+  language: Language;
+  onChangeLanguage: (language: Language) => void;
+  onClose: () => void;
+  t: Translate;
+}) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-labelledby="settings-title"
+        aria-modal="true"
+        className="settings-panel"
+        role="dialog"
+      >
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">DumpTether</p>
+            <h2 id="settings-title">{t('settings')}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">Close settings</span>
+          </button>
+        </div>
+
+        <label>
+          {t('language')}
+          <select
+            onChange={(event) => onChangeLanguage(event.target.value as Language)}
+            value={language}
+          >
+            <option value="en">{t('english')}</option>
+            <option value="da">{t('danish')}</option>
+          </select>
+        </label>
+      </section>
+    </div>
+  );
+}
+
 function TaskBadges({ taskItem }: { taskItem: TaskItemSummaryResponse }) {
   const badges = getTaskBadges(taskItem);
 
@@ -2320,6 +2651,7 @@ function Icon({ name }: { name: IconName }) {
     plus: 'M12 5v14M5 12h14',
     refresh: 'M20 7v5h-5M4 17v-5h5M18 10a6 6 0 0 0-10-4L4 10m2 4a6 6 0 0 0 10 4l4-4',
     search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm5 12 4 4',
+    settings: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-2.1-.6a6.9 6.9 0 0 0-.7-1.7l1.1-1.9-2.1-2.1-1.9 1.1a6.9 6.9 0 0 0-1.7-.7L12 4H9l-.6 2.1a6.9 6.9 0 0 0-1.7.7L4.8 5.7 2.7 7.8l1.1 1.9a6.9 6.9 0 0 0-.7 1.7L1 12l.6 3 2.1.6c.2.6.4 1.2.7 1.7l-1.1 1.9 2.1 2.1 1.9-1.1c.5.3 1.1.5 1.7.7L9 23h3l.6-2.1c.6-.2 1.2-.4 1.7-.7l1.9 1.1 2.1-2.1-1.1-1.9c.3-.5.5-1.1.7-1.7L20 15l.6-3Z',
     templates: 'M4 5h7v7H4V5Zm9 0h7v7h-7V5ZM4 14h7v5H4v-5Zm9 0h7v5h-7v-5Z',
     trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
     waiting: 'M6 4h12M8 4v5l4 3 4-3V4M8 20v-5l4-3 4 3v5M6 20h12',
@@ -2352,7 +2684,7 @@ function pickSavedViewId(
     return preferredViewId;
   }
 
-  return findViewId(views, 'Inbox') ?? views[0]?.id ?? null;
+  return findViewId(views, 'Overview') ?? views[0]?.id ?? null;
 }
 
 function findViewId(views: SavedViewResponse[], name: string) {
@@ -2367,6 +2699,15 @@ function getInitialMode(): WorkspaceMode {
 
 function getInitialViewId() {
   return new URL(window.location.href).searchParams.get('viewId');
+}
+
+function getInitialLanguage(): Language {
+  const storedLanguage = window.localStorage.getItem(languageStorageKey);
+  return storedLanguage === 'da' ? 'da' : 'en';
+}
+
+function translate(language: Language, key: TranslationKey) {
+  return translations[language][key] ?? translations.en[key];
 }
 
 function updateUrl(mode: WorkspaceMode, viewId: string | null) {
@@ -2417,12 +2758,32 @@ const emptyTaskWallFilters: TaskWallFilters = {
   followUp: '',
 };
 
-function buildTaskFilterOptions(taskItems: TaskItemSummaryResponse[]) {
+function buildTaskFilterOptions(
+  taskItems: TaskItemSummaryResponse[],
+  colorOptions: string[],
+) {
   return {
     statuses: uniqueSorted(taskItems.map((taskItem) => taskItem.status)),
     categories: uniqueSorted(taskItems.map((taskItem) => taskItem.category)),
-    colors: uniqueSorted(taskItems.map((taskItem) => taskItem.color)),
+    colors: colorOptions,
   };
+}
+
+function getTaskColors(taskItems: TaskItemSummaryResponse[]) {
+  return taskItems
+    .map((taskItem) => taskItem.color)
+    .filter((color): color is string => Boolean(color));
+}
+
+function mergeColorOptions(...sources: string[][]) {
+  return Array.from(
+    new Set(
+      sources
+        .flat()
+        .map((color) => color.trim().toUpperCase())
+        .filter(isHexColor),
+    ),
+  );
 }
 
 function uniqueSorted(values: Array<string | null>) {

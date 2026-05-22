@@ -67,6 +67,19 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         PersonalProjectName
     ];
 
+    private static readonly string[] LegacyDevelopmentSavedViewNames =
+    [
+        "Inbox",
+        "All active",
+        "Job",
+        "Personal",
+        "Waiting",
+        "Follow-up today",
+        "Follow-up this week",
+        "Not viewed in 7 days",
+        "Not touched in 14 days"
+    ];
+
     private readonly IClock _clock;
     private readonly DumpTetherDbContext _dbContext;
 
@@ -221,68 +234,43 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         IReadOnlyDictionary<string, Project> projects,
         CancellationToken cancellationToken)
     {
+        var overviewExists = await _dbContext.SavedViews
+            .AnyAsync(
+                savedView =>
+                    savedView.WorkspaceId == workspaceId &&
+                    savedView.DeletedAt == null &&
+                    savedView.Name == "Overview",
+                cancellationToken);
+
+        if (!overviewExists)
+        {
+            var legacyViews = await _dbContext.SavedViews
+                .Where(savedView =>
+                    savedView.WorkspaceId == workspaceId &&
+                    savedView.DeletedAt == null &&
+                    LegacyDevelopmentSavedViewNames.Contains(savedView.Name))
+                .ToListAsync(cancellationToken);
+
+            foreach (var legacyView in legacyViews)
+            {
+                legacyView.SoftDelete(_clock.UtcNow);
+            }
+        }
+
         var definitions = new DevelopmentSavedView[]
         {
             new(
-                "Inbox",
-                SavedViewScope.Workspace,
-                null,
-                new DevelopmentSavedViewFilter(Status: string.Empty),
-                0),
-            new(
-                "All active",
+                "Overview",
                 SavedViewScope.Workspace,
                 null,
                 new DevelopmentSavedViewFilter(),
-                1),
-            new(
-                "Job",
-                SavedViewScope.Project,
-                projects[JobProjectName].Id,
-                new DevelopmentSavedViewFilter(ProjectId: projects[JobProjectName].Id),
-                2),
-            new(
-                "Personal",
-                SavedViewScope.Project,
-                projects[PersonalProjectName].Id,
-                new DevelopmentSavedViewFilter(ProjectId: projects[PersonalProjectName].Id),
-                3),
-            new(
-                "Waiting",
-                SavedViewScope.Workspace,
-                null,
-                new DevelopmentSavedViewFilter(Status: "Waiting"),
-                4),
-            new(
-                "Follow-up today",
-                SavedViewScope.Workspace,
-                null,
-                new DevelopmentSavedViewFilter(FollowUp: "Today"),
-                5),
-            new(
-                "Follow-up this week",
-                SavedViewScope.Workspace,
-                null,
-                new DevelopmentSavedViewFilter(FollowUp: "ThisWeek"),
-                6),
-            new(
-                "Not viewed in 7 days",
-                SavedViewScope.Workspace,
-                null,
-                new DevelopmentSavedViewFilter(NotViewedSinceDays: 7),
-                7),
-            new(
-                "Not touched in 14 days",
-                SavedViewScope.Workspace,
-                null,
-                new DevelopmentSavedViewFilter(NotTouchedSinceDays: 14),
-                8),
+                0),
             new(
                 "Archive",
                 SavedViewScope.Workspace,
                 null,
                 new DevelopmentSavedViewFilter(Archive: "Archived"),
-                9)
+                1)
         };
 
         foreach (var definition in definitions)
