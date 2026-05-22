@@ -6,16 +6,20 @@ This project is called DumpTether.
 
 DumpTether is a lightweight personal task-and-note system that turns messy working notes into structured tasks with history, templates, views, and archive reasons.
 
+The product should feel like a plain personal task wall with structured notes inside each task and powerful filtering when needed.
+
 It is not a Jira clone.
+It is not a timeline-heavy audit system.
 It is not a generic notes app.
 It is not a kanban-first project manager.
+It is not a complex import or parser tool.
 
 ## Core rules
 
 - Everything is a task.
 - Every task has structured fields.
-- Every task has a timeline.
-- Every timeline entry is evidence.
+- Every task has structured notes.
+- Task history should be useful evidence, not timeline ceremony.
 - Templates define structure.
 - Views define how the user sees tasks.
 - Projects group work.
@@ -83,8 +87,11 @@ Never commit real secrets.
 - Use React + TypeScript.
 - Keep task field rendering modular.
 - New field types must include renderer and editor support.
+- Prefer a plain task wall with simple task units.
+- Let users create their own statuses, categories, and task colors.
+- Make note entry fast, with minimal overhead.
 - Prefer simple list/table/detail views before kanban.
-- The task detail page must support structured fields and timeline entries.
+- The task detail page must support structured fields and compact note history.
 
 ## Database rules
 

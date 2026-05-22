@@ -1,25 +1,26 @@
 # DumpTether Roadmap
 
-This roadmap is directional. The MVP should stay plain, fast, and focused on tasks, structured fields, timelines, templates, views, and archive reasons.
+This roadmap is directional. The MVP should stay plain, fast, and focused on a personal task wall, structured notes, templates, views, and archive reasons.
 
 ## v0.1 Web MVP
 
 - ASP.NET Core API.
 - React web UI.
 - PostgreSQL persistence.
-- Tasks with timeline evidence.
+- Tasks with compact note history.
 - Archive reasons.
 - Basic templates, custom fields, and saved views.
 
 ## v0.2 Templates, Views, and Search Hardening
 
 - Simpler task wall interaction.
+- Task cards that can be scanned like a sticker wall.
 - User-created statuses and categories.
 - User-selected task colors.
 - Faster note entry on tasks.
-- Cleaner timeline display with less ceremony.
+- Cleaner note history with less timeline ceremony.
 - Saved view filters over task text, status, project, archive state, dates, and custom fields.
-- Search examples and inline help for templates and views.
+- Search examples and inline help for templates and views, including custom field queries.
 
 ## v0.3 Desktop Online Wrapper
 
