@@ -1,6 +1,6 @@
 import {
+  type CSSProperties,
   FormEvent,
-  KeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -285,8 +285,8 @@ function App() {
     try {
       const created = await createTaskItem({ title });
       setMode('tasks');
-      setSelectedTaskId(created.id);
-      setSelectedTask(created);
+      setSelectedTaskId(null);
+      setSelectedTask(null);
       setTaskItems((currentItems) => [created, ...currentItems]);
       if (currentViewId) {
         setViewCounts((counts) => ({
@@ -308,25 +308,6 @@ function App() {
       const updated = await updateTaskItem(selectedTask.id, requestBody);
       setSelectedTask(updated);
       await loadWorkspace(currentViewId);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    }
-  };
-
-  const handleUpdateTaskItemById = async (
-    id: string,
-    requestBody: UpdateTaskItemRequest,
-  ) => {
-    try {
-      const updated = await updateTaskItem(id, requestBody);
-      setTaskItems((currentItems) =>
-        currentItems.map((taskItem) =>
-          taskItem.id === updated.id ? updated : taskItem,
-        ),
-      );
-      if (selectedTask?.id === updated.id) {
-        setSelectedTask(updated);
-      }
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -539,10 +520,13 @@ function App() {
             onOpenArchiveDialog={() => setArchiveDialogIsOpen(true)}
             onReopen={handleReopenTaskItem}
             onSelectTaskItem={(id) => {
-              setSelectedTaskId((currentId) => (currentId === id ? null : id));
+              setSelectedTaskId(id);
+            }}
+            onCloseTaskItem={() => {
+              setSelectedTaskId(null);
+              setSelectedTask(null);
             }}
             onUpdateFieldValues={handleUpdateFieldValues}
-            onUpdateTaskItemById={handleUpdateTaskItemById}
             onUpdateTaskItem={handleUpdateTaskItem}
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
             projects={projects}
@@ -668,9 +652,9 @@ function TaskBoard({
   onEditView,
   onOpenArchiveDialog,
   onReopen,
+  onCloseTaskItem,
   onSelectTaskItem,
   onUpdateFieldValues,
-  onUpdateTaskItemById,
   onUpdateTaskItem,
   onUpdateTimelineEntry,
   projects,
@@ -693,12 +677,9 @@ function TaskBoard({
   onEditView: () => void;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
+  onCloseTaskItem: () => void;
   onSelectTaskItem: (id: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
-  onUpdateTaskItemById: (
-    id: string,
-    requestBody: UpdateTaskItemRequest,
-  ) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
   projects: ProjectResponse[];
@@ -712,11 +693,37 @@ function TaskBoard({
     () => applyTaskWallFilters(taskItems, filters),
     [filters, taskItems],
   );
+  const focusedTaskItem = selectedTaskId
+    ? visibleTaskItems.find((taskItem) => taskItem.id === selectedTaskId) ?? null
+    : null;
+  const displayedTaskItems = focusedTaskItem ? [focusedTaskItem] : visibleTaskItems;
   const filterOptions = useMemo(() => buildTaskFilterOptions(taskItems), [taskItems]);
   const filtersAreActive = taskWallFiltersAreActive(filters);
 
+  useEffect(() => {
+    if (!selectedTaskId || archiveDialogIsOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || isTextEditingTarget(event.target)) {
+        return;
+      }
+
+      onCloseTaskItem();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [archiveDialogIsOpen, onCloseTaskItem, selectedTaskId]);
+
   return (
-    <section className="task-board" aria-labelledby="task-board-title">
+    <section
+      className="task-board"
+      aria-labelledby="task-board-title"
+      data-focus-mode={Boolean(focusedTaskItem)}
+    >
       <div className="board-header">
         <div>
           <p className="detail-kicker">Saved view</p>
@@ -735,22 +742,24 @@ function TaskBoard({
         </div>
       </div>
 
-      {canCreateTask ? (
+      {canCreateTask && !focusedTaskItem ? (
         <QuickCreateTaskForm onCreateTaskItem={onCreateTaskItem} />
       ) : null}
 
-      <TaskFilterBar
-        filters={filters}
-        filtersAreActive={filtersAreActive}
-        onChange={setFilters}
-        onReset={() => setFilters(emptyTaskWallFilters)}
-        options={filterOptions}
-        projects={projects}
-      />
+      {!focusedTaskItem ? (
+        <TaskFilterBar
+          filters={filters}
+          filtersAreActive={filtersAreActive}
+          onChange={setFilters}
+          onReset={() => setFilters(emptyTaskWallFilters)}
+          options={filterOptions}
+          projects={projects}
+        />
+      ) : null}
 
       <div className="task-grid" aria-busy={isLoading}>
         {isLoading ? <p className="empty-copy">Loading tasks...</p> : null}
-        {!isLoading && visibleTaskItems.length === 0 ? (
+        {!isLoading && displayedTaskItems.length === 0 ? (
           <p className="empty-copy board-empty">
             {filtersAreActive
               ? 'No tasks match these filters. Reset filters to see the whole wall again.'
@@ -758,7 +767,7 @@ function TaskBoard({
           </p>
         ) : null}
 
-        {visibleTaskItems.map((taskItem) => {
+        {displayedTaskItems.map((taskItem) => {
           const isExpanded = selectedTaskId === taskItem.id;
 
           return (
@@ -767,48 +776,47 @@ function TaskBoard({
               data-expanded={isExpanded}
               data-state={getTaskState(taskItem)}
               key={taskItem.id}
+              style={getTaskCardStyle(taskItem.color)}
             >
               <button
+                aria-expanded={isExpanded}
                 className="task-card-button"
                 onClick={() => onSelectTaskItem(taskItem.id)}
-                style={getTaskCardStyle(taskItem.color)}
                 type="button"
               >
-                <span className="task-card-main">
+                <span className="task-card-topline">
                   <span className="task-card-title">{taskItem.title}</span>
+                  {taskItem.noteCount > 0 ? (
+                    <span className="note-count">{taskItem.noteCount}</span>
+                  ) : null}
+                </span>
+                <span className="task-card-main">
                   <span className="task-card-latest">
                     {taskItem.latestTimelineEntry?.details ?? 'No notes yet'}
                   </span>
                 </span>
                 <span className="task-card-meta">
-                  <span>{taskItem.status || 'No status'}</span>
+                  {taskItem.status ? <span>{taskItem.status}</span> : null}
                   {taskItem.category ? <span>{taskItem.category}</span> : null}
-                  <span>Touched {formatRelativeDate(taskItem.lastTouchedAt)}</span>
+                  <span>{formatRelativeDate(taskItem.lastTouchedAt)}</span>
                   {taskItem.followUpAt ? (
                     <span>Follow-up {formatShortDate(taskItem.followUpAt)}</span>
                   ) : null}
-                  {taskItem.noteCount > 0 ? <span>{taskItem.noteCount} notes</span> : null}
                 </span>
                 <TaskBadges taskItem={taskItem} />
               </button>
 
-              <TaskCardQuickEdit
-                onUpdate={(requestBody) =>
-                  onUpdateTaskItemById(taskItem.id, requestBody)
-                }
-                taskItem={taskItem}
-              />
-
               {isExpanded ? (
                 <div className="task-card-detail">
                   {isLoadingDetail || !selectedTask ? (
-                    <p className="empty-copy">Opening task evidence...</p>
+                    <p className="empty-copy">Opening task...</p>
                   ) : (
                     <TaskDetail
                       archiveDialogIsOpen={archiveDialogIsOpen}
                       archiveResolutions={archiveResolutions}
                       onAddTimelineEntry={onAddTimelineEntry}
                       onArchive={onArchive}
+                      onClose={onCloseTaskItem}
                       onCloseArchiveDialog={onCloseArchiveDialog}
                       onOpenArchiveDialog={onOpenArchiveDialog}
                       onReopen={onReopen}
@@ -992,92 +1000,12 @@ function TaskFilterBar({
   );
 }
 
-function TaskCardQuickEdit({
-  onUpdate,
-  taskItem,
-}: {
-  onUpdate: (requestBody: UpdateTaskItemRequest) => Promise<void>;
-  taskItem: TaskItemSummaryResponse;
-}) {
-  const [status, setStatus] = useState(taskItem.status ?? '');
-  const [category, setCategory] = useState(taskItem.category ?? '');
-  const [savingField, setSavingField] = useState<string | null>(null);
-
-  useEffect(() => {
-    setStatus(taskItem.status ?? '');
-    setCategory(taskItem.category ?? '');
-  }, [taskItem]);
-
-  const save = async (field: string, requestBody: UpdateTaskItemRequest) => {
-    setSavingField(field);
-    await onUpdate(requestBody);
-    setSavingField(null);
-  };
-
-  const saveOnEnter = (
-    event: KeyboardEvent<HTMLInputElement>,
-    field: string,
-    requestBody: UpdateTaskItemRequest,
-  ) => {
-    if (event.key !== 'Enter') {
-      return;
-    }
-
-    event.preventDefault();
-    void save(field, requestBody);
-    event.currentTarget.blur();
-  };
-
-  return (
-    <div className="task-card-edits" onClick={(event) => event.stopPropagation()}>
-      <input
-        aria-label="Task status"
-        onBlur={() => void save('status', { status })}
-        onChange={(event) => setStatus(event.target.value)}
-        onKeyDown={(event) => saveOnEnter(event, 'status', { status })}
-        placeholder="Status"
-        value={status}
-      />
-      <input
-        aria-label="Task category"
-        onBlur={() => void save('category', { category })}
-        onChange={(event) => setCategory(event.target.value)}
-        onKeyDown={(event) => saveOnEnter(event, 'category', { category })}
-        placeholder="Category"
-        value={category}
-      />
-      <div className="color-swatch-row" aria-label="Task color">
-        {colorChoices.map((color) => (
-          <button
-            aria-label={`Set color ${color}`}
-            className="color-swatch"
-            data-selected={taskItem.color === color}
-            key={color}
-            onClick={() => void save('color', { color })}
-            style={{ backgroundColor: color }}
-            type="button"
-          />
-        ))}
-        {taskItem.color ? (
-          <button
-            className="clear-color-button"
-            onClick={() => void save('color', { color: '' })}
-            type="button"
-          >
-            Clear
-          </button>
-        ) : null}
-      </div>
-      {savingField ? <span className="saving-copy">Saving {savingField}...</span> : null}
-    </div>
-  );
-}
-
 function TaskDetail({
   archiveDialogIsOpen,
   archiveResolutions,
   onAddTimelineEntry,
   onArchive,
+  onClose,
   onCloseArchiveDialog,
   onOpenArchiveDialog,
   onReopen,
@@ -1091,6 +1019,7 @@ function TaskDetail({
   archiveResolutions: ArchiveResolutionResponse[];
   onAddTimelineEntry: (note: string) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
+  onClose: () => void;
   onCloseArchiveDialog: () => void;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
@@ -1121,29 +1050,34 @@ function TaskDetail({
           <h2>{taskItem.title}</h2>
         </div>
 
-        {taskItem.archivedAt ? (
-          <form
-            className="reopen-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void onReopen(reopenNote.trim() || undefined);
-            }}
-          >
-            <input
-              aria-label="Reopen note"
-              onChange={(event) => setReopenNote(event.target.value)}
-              placeholder="Optional reopen note"
-              type="text"
-              value={reopenNote}
-            />
-            <button type="submit">Reopen</button>
-          </form>
-        ) : (
-          <button className="secondary-action" onClick={onOpenArchiveDialog} type="button">
-            <Icon name="archive" />
-            <span>Archive</span>
+        <div className="detail-actions">
+          <button className="ghost-button" onClick={onClose} type="button">
+            Back to wall
           </button>
-        )}
+          {taskItem.archivedAt ? (
+            <form
+              className="reopen-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onReopen(reopenNote.trim() || undefined);
+              }}
+            >
+              <input
+                aria-label="Reopen note"
+                onChange={(event) => setReopenNote(event.target.value)}
+                placeholder="Optional reopen note"
+                type="text"
+                value={reopenNote}
+              />
+              <button type="submit">Reopen</button>
+            </form>
+          ) : (
+            <button className="secondary-action" onClick={onOpenArchiveDialog} type="button">
+              <Icon name="archive" />
+              <span>Archive</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <TaskQuickEditForm onUpdateTaskItem={onUpdateTaskItem} taskItem={taskItem} />
@@ -1297,24 +1231,55 @@ function TaskQuickEditForm({
           value={category}
         />
       </label>
-      <label>
-        Color
-        <select
-          onChange={(event) => setColor(event.target.value)}
-          value={color}
-        >
-          <option value="">No color</option>
-          {colorChoices.map((choice) => (
-            <option key={choice} value={choice}>
-              {choice}
-            </option>
-          ))}
-        </select>
-      </label>
+      <TaskColorPicker color={color} onChange={setColor} />
       <button disabled={!title.trim() || isSubmitting} type="submit">
         Save
       </button>
     </form>
+  );
+}
+
+function TaskColorPicker({
+  color,
+  onChange,
+}: {
+  color: string;
+  onChange: (color: string) => void;
+}) {
+  const selectedColor = isHexColor(color) ? color : '#FDE68A';
+
+  return (
+    <fieldset className="task-color-picker">
+      <legend>Color</legend>
+      <div className="color-swatch-row">
+        {colorChoices.map((choice) => (
+          <button
+            aria-label={`Use ${choice}`}
+            className="color-swatch"
+            data-selected={color.toUpperCase() === choice}
+            key={choice}
+            onClick={() => onChange(choice)}
+            style={{ backgroundColor: choice }}
+            type="button"
+          />
+        ))}
+        <input
+          aria-label="Custom color"
+          onChange={(event) => onChange(event.target.value.toUpperCase())}
+          type="color"
+          value={selectedColor}
+        />
+        {color ? (
+          <button
+            className="clear-color-button"
+            onClick={() => onChange('')}
+            type="button"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+    </fieldset>
   );
 }
 
@@ -2200,6 +2165,10 @@ function ArchiveDialog({
 function TaskBadges({ taskItem }: { taskItem: TaskItemSummaryResponse }) {
   const badges = getTaskBadges(taskItem);
 
+  if (badges.length === 0) {
+    return null;
+  }
+
   return (
     <span className="task-badges" aria-label={badges.join(', ')}>
       {badges.map((badge) => (
@@ -2424,14 +2393,21 @@ function taskWallFiltersAreActive(filters: TaskWallFilters) {
 }
 
 function getTaskCardStyle(color: string | null) {
-  if (!color) {
-    return undefined;
-  }
+  const taskColor = color && isHexColor(color) ? color : '#FFF3A6';
+  const textColor = getReadableTextColor(taskColor);
 
   return {
-    borderLeftColor: color,
-    background: `linear-gradient(90deg, ${color}22, #ffffff 42%)`,
-  };
+    '--task-note-color': taskColor,
+    '--task-note-text': textColor,
+    '--task-note-chip-bg':
+      textColor === '#FFFFFF'
+        ? 'rgba(255, 255, 255, 0.16)'
+        : 'rgba(255, 255, 255, 0.46)',
+    '--task-note-chip-border':
+      textColor === '#FFFFFF'
+        ? 'rgba(255, 255, 255, 0.24)'
+        : 'rgba(24, 33, 44, 0.1)',
+  } as CSSProperties;
 }
 
 function describeSavedView(view: SavedViewResponse, projects: ProjectResponse[]) {
@@ -2519,7 +2495,34 @@ function getTaskBadges(taskItem: TaskItemSummaryResponse) {
     badges.push('Follow-up');
   }
 
-  return badges.length > 0 ? badges : ['Active'];
+  return badges;
+}
+
+function isTextEditingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tagName = target.tagName.toLowerCase();
+  return (
+    tagName === 'input' ||
+    tagName === 'textarea' ||
+    tagName === 'select' ||
+    target.isContentEditable
+  );
+}
+
+function isHexColor(value: string) {
+  return /^#[0-9A-F]{6}$/i.test(value);
+}
+
+function getReadableTextColor(hexColor: string) {
+  const red = Number.parseInt(hexColor.slice(1, 3), 16);
+  const green = Number.parseInt(hexColor.slice(3, 5), 16);
+  const blue = Number.parseInt(hexColor.slice(5, 7), 16);
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+
+  return luminance > 0.55 ? '#18212C' : '#FFFFFF';
 }
 
 function isWaiting(taskItem: TaskItemSummaryResponse) {

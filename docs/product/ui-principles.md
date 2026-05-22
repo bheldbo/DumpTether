@@ -1,12 +1,16 @@
 # Task Wall UI Principles
 
-DumpTether should feel like a lightweight personal sticker wall: quick to dump into, quick to scan, and powerful to filter when the wall gets noisy.
+DumpTether should feel like a lightweight personal sticker wall backed by a structured database: quick to dump into, quick to scan, and powerful to filter when the wall gets noisy.
 
 ## Task Wall
 
 - The task wall is the default working surface.
-- Task cards should stay compact and readable.
-- A card should show title, status, category, color, last touched date, follow-up date, and whether notes exist.
+- Task cards should look and behave like plain post-it notes.
+- The task's chosen color belongs to the whole card, not a small label or category strip.
+- The wall card is for scanning, not editing.
+- A card should show title, latest note content, small status/category/date signals, follow-up date when set, and whether notes exist.
+- Clicking a card should focus that task and let it fill the workspace.
+- Color, status, category, title, dates, fields and notes are edited in the focused task surface.
 - Creating a task should be a single-line action at the top of the wall.
 - Pressing Enter in quick-create creates the task immediately.
 - The quick-create input should stay focused after creation.
@@ -27,6 +31,7 @@ DumpTether should feel like a lightweight personal sticker wall: quick to dump i
 
 - Temporary filters should not require saving a view.
 - The wall should have compact filters for text, status, category, color, project, follow-up, and not-touched age.
+- Color filters should operate on the user's chosen task color, whatever that color means to them.
 - Reset filters should be obvious when filters are active.
 - Saved views still define reusable ways to see tasks.
 - Do not build a full advanced query builder yet.
