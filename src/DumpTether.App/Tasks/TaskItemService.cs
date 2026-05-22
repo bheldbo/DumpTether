@@ -139,6 +139,16 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.ChangeStatus(request.Status, now);
         }
 
+        if (request.Category is not null)
+        {
+            taskItem.ChangeCategory(request.Category, now);
+        }
+
+        if (request.Color is not null)
+        {
+            taskItem.ChangeColor(request.Color, now);
+        }
+
         if (request.FollowUpAt.HasValue)
         {
             taskItem.SetFollowUp(request.FollowUpAt.Value, now);
@@ -146,6 +156,55 @@ internal sealed class TaskItemService : ITaskItemService
 
         ApplyFieldValues(taskItem, taskTemplate, request.FieldValues, now);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        return MapDetail(taskItem, taskTemplate);
+    }
+
+    public async Task<TaskItemDetailResponse?> UpdateTimelineEntryAsync(
+        Guid taskItemId,
+        Guid entryId,
+        UpdateTaskTimelineEntryRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var taskItem = await GetTaskItemForUpdateAsync(taskItemId, cancellationToken);
+
+        if (taskItem is null)
+        {
+            return null;
+        }
+
+        taskItem.EditNote(entryId, request.Note, _clock.UtcNow);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+
+        return MapDetail(taskItem, taskTemplate);
+    }
+
+    public async Task<TaskItemDetailResponse?> DeleteTimelineEntryAsync(
+        Guid taskItemId,
+        Guid entryId,
+        CancellationToken cancellationToken)
+    {
+        var taskItem = await GetTaskItemForUpdateAsync(taskItemId, cancellationToken);
+
+        if (taskItem is null)
+        {
+            return null;
+        }
+
+        taskItem.DeleteNote(entryId, _clock.UtcNow);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
 
         return MapDetail(taskItem, taskTemplate);
     }
@@ -275,6 +334,8 @@ internal sealed class TaskItemService : ITaskItemService
                 new SavedViewFilterRequest(
                     request.ProjectId,
                     request.Status,
+                    request.Category,
+                    request.Color,
                     request.Archive ?? MapScopeToArchiveFilter(request.Scope),
                     request.FollowUp,
                     request.NotViewedSinceDays,
@@ -292,6 +353,8 @@ internal sealed class TaskItemService : ITaskItemService
             workspaceId,
             filter.ProjectId == Guid.Empty ? null : filter.ProjectId,
             filter.Status,
+            filter.Category,
+            NormalizeColorFilter(filter.Color),
             ParseArchiveFilter(filter.Archive),
             ParseFollowUpFilter(filter.FollowUp),
             filter.NotViewedSinceDays,
@@ -377,6 +440,27 @@ internal sealed class TaskItemService : ITaskItemService
             _ => TaskItemSortField.LastTouchedAt
         };
     }
+
+    private static string? NormalizeColorFilter(string? color)
+    {
+        if (string.IsNullOrWhiteSpace(color))
+        {
+            return null;
+        }
+
+        var normalizedColor = color.Trim();
+
+        if (normalizedColor.Length != 7 ||
+            normalizedColor[0] != '#' ||
+            normalizedColor.Skip(1).Any(character => !Uri.IsHexDigit(character)))
+        {
+            throw new ValidationException(
+                "Color filter must be a hex color in #RRGGBB format.");
+        }
+
+        return normalizedColor.ToUpperInvariant();
+    }
+
 
     private async Task<TaskTemplate?> ResolveTaskTemplateForCreateAsync(
         Guid workspaceId,
@@ -587,9 +671,11 @@ internal sealed class TaskItemService : ITaskItemService
     private static TaskItemSummaryResponse MapSummary(TaskItem taskItem)
     {
         var latestTimelineEntry = taskItem.TimelineEntries
+            .Where(entry => entry.DeletedAt == null && entry.Kind == TaskTimelineEntryKind.NoteAdded)
             .OrderByDescending(entry => entry.OccurredAt)
             .ThenByDescending(entry => entry.Id)
             .FirstOrDefault();
+        var noteCount = CountNotes(taskItem);
 
         return new TaskItemSummaryResponse(
             taskItem.Id,
@@ -598,12 +684,15 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.TaskTemplateId,
             taskItem.Title,
             taskItem.Status,
+            taskItem.Category,
+            taskItem.Color,
             taskItem.CreatedAt,
             taskItem.LastViewedAt,
             taskItem.LastTouchedAt,
             taskItem.FollowUpAt,
             taskItem.ArchivedAt,
             taskItem.ArchiveResolutionId,
+            noteCount,
             latestTimelineEntry is null
                 ? null
                 : new TaskTimelineEntryResponse(
@@ -611,7 +700,8 @@ internal sealed class TaskItemService : ITaskItemService
                     latestTimelineEntry.Kind.ToString(),
                     latestTimelineEntry.Summary,
                     latestTimelineEntry.Details,
-                    latestTimelineEntry.OccurredAt));
+                    latestTimelineEntry.OccurredAt,
+                    latestTimelineEntry.UpdatedAt));
     }
 
     private static TaskItemDetailResponse MapDetail(
@@ -625,12 +715,15 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.TaskTemplateId,
             taskItem.Title,
             taskItem.Status,
+            taskItem.Category,
+            taskItem.Color,
             taskItem.CreatedAt,
             taskItem.LastViewedAt,
             taskItem.LastTouchedAt,
             taskItem.FollowUpAt,
             taskItem.ArchivedAt,
             taskItem.ArchiveResolutionId,
+            CountNotes(taskItem),
             taskTemplate is null ? null : MapTaskTemplateForTask(taskTemplate, taskItem),
             taskItem.FieldValues
                 .OrderBy(value => value.UpdatedAt)
@@ -642,6 +735,7 @@ internal sealed class TaskItemService : ITaskItemService
                     value.UpdatedAt))
                 .ToList(),
             taskItem.TimelineEntries
+                .Where(entry => entry.DeletedAt == null)
                 .OrderBy(entry => entry.OccurredAt)
                 .ThenBy(entry => entry.Id)
                 .Select(entry => new TaskTimelineEntryResponse(
@@ -649,8 +743,16 @@ internal sealed class TaskItemService : ITaskItemService
                     entry.Kind.ToString(),
                     entry.Summary,
                     entry.Details,
-                    entry.OccurredAt))
+                    entry.OccurredAt,
+                    entry.UpdatedAt))
                 .ToList());
+    }
+
+    private static int CountNotes(TaskItem taskItem)
+    {
+        return taskItem.TimelineEntries.Count(entry =>
+            entry.Kind == TaskTimelineEntryKind.NoteAdded &&
+            entry.DeletedAt == null);
     }
 
     private static TaskTemplateDetailResponse MapTaskTemplateForTask(

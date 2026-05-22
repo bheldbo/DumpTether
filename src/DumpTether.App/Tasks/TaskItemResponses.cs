@@ -9,12 +9,15 @@ public sealed record TaskItemSummaryResponse(
     Guid? TaskTemplateId,
     string Title,
     string? Status,
+    string? Category,
+    string? Color,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastViewedAt,
     DateTimeOffset LastTouchedAt,
     DateTimeOffset? FollowUpAt,
     DateTimeOffset? ArchivedAt,
     Guid? ArchiveResolutionId,
+    int NoteCount,
     TaskTimelineEntryResponse? LatestTimelineEntry);
 
 public sealed record TaskItemDetailResponse(
@@ -24,12 +27,15 @@ public sealed record TaskItemDetailResponse(
     Guid? TaskTemplateId,
     string Title,
     string? Status,
+    string? Category,
+    string? Color,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastViewedAt,
     DateTimeOffset LastTouchedAt,
     DateTimeOffset? FollowUpAt,
     DateTimeOffset? ArchivedAt,
     Guid? ArchiveResolutionId,
+    int NoteCount,
     TaskTemplateDetailResponse? Template,
     IReadOnlyList<FieldValueResponse> FieldValues,
     IReadOnlyList<TaskTimelineEntryResponse> TimelineEntries);
@@ -45,4 +51,5 @@ public sealed record TaskTimelineEntryResponse(
     string Kind,
     string Summary,
     string? Details,
-    DateTimeOffset OccurredAt);
+    DateTimeOffset OccurredAt,
+    DateTimeOffset UpdatedAt);

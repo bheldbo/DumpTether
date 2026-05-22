@@ -28,6 +28,17 @@ public interface ITaskItemService
         AddTaskTimelineEntryRequest request,
         CancellationToken cancellationToken);
 
+    Task<TaskItemDetailResponse?> UpdateTimelineEntryAsync(
+        Guid taskItemId,
+        Guid entryId,
+        UpdateTaskTimelineEntryRequest request,
+        CancellationToken cancellationToken);
+
+    Task<TaskItemDetailResponse?> DeleteTimelineEntryAsync(
+        Guid taskItemId,
+        Guid entryId,
+        CancellationToken cancellationToken);
+
     Task<TaskItemDetailResponse?> ArchiveAsync(
         Guid id,
         ArchiveTaskItemRequest request,

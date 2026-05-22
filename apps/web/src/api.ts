@@ -14,6 +14,7 @@ import type {
   TaskItemDetailResponse,
   TaskItemSummaryResponse,
   UpdateTaskItemRequest,
+  UpdateTaskTimelineEntryRequest,
   UpdateSavedViewRequest,
   UpdateTaskTemplateRequest,
 } from './types';
@@ -154,6 +155,32 @@ export function createSavedView(
     method: 'POST',
     body: JSON.stringify(requestBody),
   });
+}
+
+export function updateTaskTimelineEntry(
+  taskItemId: string,
+  entryId: string,
+  requestBody: UpdateTaskTimelineEntryRequest,
+): Promise<TaskItemDetailResponse> {
+  return request<TaskItemDetailResponse>(
+    `/api/tasks/${taskItemId}/timeline/${entryId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(requestBody),
+    },
+  );
+}
+
+export function deleteTaskTimelineEntry(
+  taskItemId: string,
+  entryId: string,
+): Promise<TaskItemDetailResponse> {
+  return request<TaskItemDetailResponse>(
+    `/api/tasks/${taskItemId}/timeline/${entryId}`,
+    {
+      method: 'DELETE',
+    },
+  );
 }
 
 export function updateSavedView(

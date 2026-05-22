@@ -39,6 +39,13 @@ internal sealed class TaskTimelineEntryConfiguration : IEntityTypeConfiguration<
             .HasColumnName("occurred_at")
             .IsRequired();
 
+        builder.Property(taskTimelineEntry => taskTimelineEntry.UpdatedAt)
+            .HasColumnName("updated_at")
+            .IsRequired();
+
+        builder.Property(taskTimelineEntry => taskTimelineEntry.DeletedAt)
+            .HasColumnName("deleted_at");
+
         builder.HasIndex(taskTimelineEntry => new
         {
             taskTimelineEntry.TaskItemId,

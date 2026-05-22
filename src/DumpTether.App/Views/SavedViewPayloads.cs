@@ -62,6 +62,8 @@ internal static class SavedViewPayloads
         return filter with
         {
             Status = NormalizeStatus(filter.Status),
+            Category = NormalizeNullableText(filter.Category),
+            Color = NormalizeColor(filter.Color),
             Archive = NormalizeOption(
                 filter.Archive,
                 ArchiveFilters,
@@ -121,6 +123,26 @@ internal static class SavedViewPayloads
     private static string? NormalizeNullableText(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? NormalizeColor(string? color)
+    {
+        var normalizedColor = NormalizeNullableText(color);
+
+        if (normalizedColor is null)
+        {
+            return null;
+        }
+
+        if (normalizedColor.Length != 7 ||
+            normalizedColor[0] != '#' ||
+            normalizedColor.Skip(1).Any(character => !Uri.IsHexDigit(character)))
+        {
+            throw new ValidationException(
+                "Color filter must be a hex color in #RRGGBB format.");
+        }
+
+        return normalizedColor.ToUpperInvariant();
     }
 
     private static string? NormalizeOption(

@@ -29,6 +29,8 @@ public sealed record TaskItemQuery(
     Guid WorkspaceId,
     Guid? ProjectId,
     string? Status,
+    string? Category,
+    string? Color,
     TaskItemArchiveFilter ArchiveFilter,
     TaskItemFollowUpFilter FollowUpFilter,
     int? NotViewedSinceDays,

@@ -12,6 +12,8 @@ This repository is the initial modular monolith scaffold with the first task ite
 - The product should feel like a personal task wall, not a Jira clone, timeline-heavy audit system, or complex import/parser tool.
 - AI, MCP, email, calendar, sharing, and desktop support are outside the MVP.
 
+See `docs/product/product-principles.md` and `docs/product/ui-principles.md` for the product and task-wall UX direction.
+
 ## Repository Layout
 
 ```text

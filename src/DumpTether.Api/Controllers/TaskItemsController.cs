@@ -41,6 +41,8 @@ public sealed class TaskItemsController : ControllerBase
         [FromQuery] Guid? viewId,
         [FromQuery] Guid? projectId,
         [FromQuery] string? status,
+        [FromQuery] string? category,
+        [FromQuery] string? color,
         [FromQuery] string? archive,
         [FromQuery] string? followUp,
         [FromQuery] int? notViewedSinceDays,
@@ -63,6 +65,8 @@ public sealed class TaskItemsController : ControllerBase
                     scope,
                     projectId,
                     status,
+                    category,
+                    color,
                     archive,
                     followUp,
                     notViewedSinceDays,
@@ -121,6 +125,64 @@ public sealed class TaskItemsController : ControllerBase
             return response is null ? NotFound() : Ok(response);
         }
         catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPatch("{id:guid}/timeline/{entryId:guid}")]
+    public async Task<ActionResult<TaskItemDetailResponse>> UpdateTimelineEntry(
+        Guid id,
+        Guid entryId,
+        UpdateTaskTimelineEntryRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.UpdateTimelineEntryAsync(
+                id,
+                entryId,
+                request,
+                cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpDelete("{id:guid}/timeline/{entryId:guid}")]
+    public async Task<ActionResult<TaskItemDetailResponse>> DeleteTimelineEntry(
+        Guid id,
+        Guid entryId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.DeleteTimelineEntryAsync(
+                id,
+                entryId,
+                cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
         {
             return BadRequest(new { error = exception.Message });
         }

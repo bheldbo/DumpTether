@@ -44,6 +44,10 @@ public sealed class TaskItem
 
     public string? Status { get; private set; }
 
+    public string? Category { get; private set; }
+
+    public string? Color { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset? LastViewedAt { get; private set; }
@@ -139,15 +143,72 @@ public sealed class TaskItem
             DomainGuards.NotBlank(note, nameof(note)));
     }
 
-    public void ChangeStatus(string status, DateTimeOffset occurredAt, string? note = null)
+    public void EditNote(Guid noteId, string note, DateTimeOffset occurredAt)
     {
-        Status = DomainGuards.NotBlank(status, nameof(status));
+        var entry = GetTimelineEntry(noteId);
+        entry.EditNote(note, occurredAt);
+        LastTouchedAt = occurredAt;
+    }
+
+    public void DeleteNote(Guid noteId, DateTimeOffset occurredAt)
+    {
+        var entry = GetTimelineEntry(noteId);
+        entry.SoftDeleteNote(occurredAt);
+        LastTouchedAt = occurredAt;
+    }
+
+    public void ChangeStatus(string? status, DateTimeOffset occurredAt, string? note = null)
+    {
+        var normalizedStatus = DomainGuards.OptionalTrimmed(status);
+
+        if (Status == normalizedStatus)
+        {
+            return;
+        }
+
+        Status = normalizedStatus;
 
         AddTimelineEntry(
             TaskTimelineEntryKind.StatusChanged,
-            $"Status changed to {Status}",
+            Status is null ? "Status cleared" : $"Status changed to {Status}",
             occurredAt,
             DomainGuards.OptionalTrimmed(note));
+    }
+
+    public void ChangeCategory(string? category, DateTimeOffset occurredAt)
+    {
+        var normalizedCategory = DomainGuards.OptionalTrimmed(category);
+
+        if (Category == normalizedCategory)
+        {
+            return;
+        }
+
+        Category = normalizedCategory;
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.CategoryChanged,
+            Category is null ? "Category cleared" : $"Category changed to {Category}",
+            occurredAt,
+            null);
+    }
+
+    public void ChangeColor(string? color, DateTimeOffset occurredAt)
+    {
+        var normalizedColor = NormalizeColor(color);
+
+        if (Color == normalizedColor)
+        {
+            return;
+        }
+
+        Color = normalizedColor;
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.ColorChanged,
+            Color is null ? "Color cleared" : "Color changed",
+            occurredAt,
+            Color);
     }
 
     public bool SetFieldValue(
@@ -246,5 +307,34 @@ public sealed class TaskItem
     {
         _timelineEntries.Add(TaskTimelineEntry.Create(Id, kind, summary, occurredAt, details));
         LastTouchedAt = occurredAt;
+    }
+
+    private TaskTimelineEntry GetTimelineEntry(Guid entryId)
+    {
+        DomainGuards.NotEmpty(entryId, nameof(entryId));
+
+        return _timelineEntries.FirstOrDefault(entry => entry.Id == entryId) ??
+            throw new InvalidOperationException("Timeline entry was not found.");
+    }
+
+    private static string? NormalizeColor(string? color)
+    {
+        var normalizedColor = DomainGuards.OptionalTrimmed(color);
+
+        if (normalizedColor is null)
+        {
+            return null;
+        }
+
+        if (normalizedColor.Length != 7 ||
+            normalizedColor[0] != '#' ||
+            normalizedColor.Skip(1).Any(character => !Uri.IsHexDigit(character)))
+        {
+            throw new ArgumentException(
+                "Task color must be a hex color in #RRGGBB format.",
+                nameof(color));
+        }
+
+        return normalizedColor.ToUpperInvariant();
     }
 }

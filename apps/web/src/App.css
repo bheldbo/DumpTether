@@ -363,6 +363,42 @@ label {
   background: #ffffff;
 }
 
+.quick-create-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #d3dce4;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.quick-create-form input {
+  min-height: 44px;
+  border-color: #bfcbd6;
+  font-size: 1rem;
+}
+
+.quick-create-form button {
+  min-height: 44px;
+}
+
+.filter-bar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.5fr) repeat(6, minmax(116px, 1fr)) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #d3dce4;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.filter-search {
+  display: block;
+}
+
 .create-fields {
   grid-column: 1 / -1;
   padding-top: 4px;
@@ -429,6 +465,54 @@ label {
   background: transparent;
   color: inherit;
   text-align: left;
+}
+
+.task-card-edits {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.7fr) minmax(110px, 0.8fr) minmax(160px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 0 12px 12px;
+}
+
+.task-card-edits input {
+  min-height: 32px;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+}
+
+.color-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(20, 32, 45, 0.22);
+  border-radius: 999px;
+}
+
+.color-swatch[data-selected="true"] {
+  outline: 2px solid #184c48;
+  outline-offset: 2px;
+}
+
+.clear-color-button {
+  min-height: 26px;
+  padding: 3px 7px;
+  border: 1px solid #d4dce4;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #536273;
+  font-size: 0.75rem;
+}
+
+.saving-copy {
+  color: #667586;
+  font-size: 0.75rem;
 }
 
 .task-card-button:hover {
@@ -517,7 +601,7 @@ label {
 
 .quick-edit-form {
   display: grid;
-  grid-template-columns: minmax(200px, 2fr) minmax(160px, 1fr) minmax(150px, 1fr) auto;
+  grid-template-columns: minmax(200px, 2fr) repeat(4, minmax(130px, 1fr)) auto;
   gap: 10px;
   align-items: end;
   padding: 12px;
@@ -564,6 +648,14 @@ label {
   border: 1px solid #d6dee6;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.fields-details summary {
+  cursor: pointer;
+}
+
+.fields-details summary::marker {
+  color: #567065;
 }
 
 .section-heading h3 {
@@ -628,45 +720,54 @@ label {
   list-style: none;
 }
 
-.timeline-entry {
+.note-entry {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-columns: 150px minmax(0, 1fr) auto;
   gap: 10px;
+  align-items: start;
+  padding: 8px 0;
+  border-top: 1px solid #edf1f4;
 }
 
-.timeline-dot {
-  width: 10px;
-  height: 10px;
-  margin-top: 6px;
-  border-radius: 999px;
-  background: #2f8b7d;
-}
-
-.timeline-entry-header {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.timeline-entry strong {
-  color: #1f2c39;
-}
-
-.timeline-entry time,
-.timeline-entry p {
+.note-entry time {
   color: #667586;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
 }
 
-.timeline-entry p {
-  margin: 5px 0;
+.note-body {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1f2c39;
+  text-align: left;
+  line-height: 1.45;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
-.timeline-kind {
-  font-size: 0.72rem;
+.note-body:hover,
+.note-body:focus-visible {
+  color: #184c48;
+  text-decoration: underline;
+}
+
+.note-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.note-actions {
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.note-entry:hover .note-actions,
+.note-entry:focus-within .note-actions,
+.note-edit .note-actions {
+  opacity: 1;
 }
 
 .reopen-form {
@@ -885,8 +986,11 @@ label {
   }
 
   .create-task-form,
+  .quick-create-form,
+  .filter-bar,
   .quick-edit-form,
   .templates-page,
+  .task-card-edits,
   .template-field-row {
     grid-template-columns: 1fr;
   }
@@ -928,5 +1032,13 @@ label {
 
   .reopen-form {
     grid-template-columns: 1fr;
+  }
+
+  .note-entry {
+    grid-template-columns: 1fr;
+  }
+
+  .note-actions {
+    opacity: 1;
   }
 }

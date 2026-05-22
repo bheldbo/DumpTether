@@ -1,4 +1,12 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  FormEvent,
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   addTaskTimelineEntry,
   archiveTaskItem,
@@ -6,6 +14,7 @@ import {
   createTaskItem,
   createTaskTemplate,
   deleteSavedView,
+  deleteTaskTimelineEntry,
   deleteTaskTemplate,
   getTaskItem,
   getTaskTemplate,
@@ -17,6 +26,7 @@ import {
   reopenTaskItem,
   updateSavedView,
   updateTaskItem,
+  updateTaskTimelineEntry,
   updateTaskTemplate,
 } from './api';
 import './App.css';
@@ -77,6 +87,8 @@ interface EditableViewDraft {
   projectId: string;
   statusMode: StatusFilterMode;
   statusValue: string;
+  category: string;
+  color: string;
   archive: SavedViewArchiveFilter;
   followUp: '' | SavedViewFollowUpFilter;
   notViewedSinceDays: string;
@@ -85,6 +97,16 @@ interface EditableViewDraft {
   sortField: SavedViewSortField;
   sortDirection: SavedViewSortDirection;
   sortOrder: string;
+}
+
+interface TaskWallFilters {
+  text: string;
+  status: string;
+  category: string;
+  color: string;
+  projectId: string;
+  notTouchedDays: string;
+  followUp: '' | SavedViewFollowUpFilter;
 }
 
 const fieldTypes: FieldDefinitionType[] = [
@@ -111,6 +133,15 @@ const sortFields: SavedViewSortField[] = [
 ];
 const sortDirections: SavedViewSortDirection[] = ['desc', 'asc'];
 const staleAfterDays = 14;
+const colorChoices = [
+  '#FDE68A',
+  '#FCA5A5',
+  '#93C5FD',
+  '#86EFAC',
+  '#C4B5FD',
+  '#FDBA74',
+  '#CBD5E1',
+];
 
 function App() {
   const [savedViews, setSavedViews] = useState<SavedViewResponse[]>([]);
@@ -250,24 +281,19 @@ function App() {
     updateUrl('templates', null);
   };
 
-  const handleCreateTaskItem = async (
-    title: string,
-    taskTemplateId: string | null,
-    fieldValues: FieldValueMap,
-  ) => {
+  const handleCreateTaskItem = async (title: string) => {
     try {
-      const created = await createTaskItem({
-        title,
-        taskTemplateId,
-        fieldValues,
-      });
-      const inboxViewId = findViewId(savedViews, 'Inbox') ?? currentViewId;
+      const created = await createTaskItem({ title });
       setMode('tasks');
-      setCurrentViewId(inboxViewId);
       setSelectedTaskId(created.id);
       setSelectedTask(created);
-      updateUrl('tasks', inboxViewId);
-      await loadWorkspace(inboxViewId);
+      setTaskItems((currentItems) => [created, ...currentItems]);
+      if (currentViewId) {
+        setViewCounts((counts) => ({
+          ...counts,
+          [currentViewId]: (counts[currentViewId] ?? 0) + 1,
+        }));
+      }
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -287,6 +313,25 @@ function App() {
     }
   };
 
+  const handleUpdateTaskItemById = async (
+    id: string,
+    requestBody: UpdateTaskItemRequest,
+  ) => {
+    try {
+      const updated = await updateTaskItem(id, requestBody);
+      setTaskItems((currentItems) =>
+        currentItems.map((taskItem) =>
+          taskItem.id === updated.id ? updated : taskItem,
+        ),
+      );
+      if (selectedTask?.id === updated.id) {
+        setSelectedTask(updated);
+      }
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
   const handleUpdateFieldValues = async (fieldValues: FieldValueMap) => {
     await handleUpdateTaskItem({ fieldValues });
   };
@@ -299,7 +344,47 @@ function App() {
     try {
       const updated = await addTaskTimelineEntry(selectedTask.id, { note });
       setSelectedTask(updated);
-      await loadWorkspace(currentViewId);
+      setTaskItems((currentItems) =>
+        currentItems.map((taskItem) =>
+          taskItem.id === updated.id ? updated : taskItem,
+        ),
+      );
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleUpdateTimelineEntry = async (entryId: string, note: string) => {
+    if (!selectedTask) {
+      return;
+    }
+
+    try {
+      const updated = await updateTaskTimelineEntry(selectedTask.id, entryId, { note });
+      setSelectedTask(updated);
+      setTaskItems((currentItems) =>
+        currentItems.map((taskItem) =>
+          taskItem.id === updated.id ? updated : taskItem,
+        ),
+      );
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleDeleteTimelineEntry = async (entryId: string) => {
+    if (!selectedTask) {
+      return;
+    }
+
+    try {
+      const updated = await deleteTaskTimelineEntry(selectedTask.id, entryId);
+      setSelectedTask(updated);
+      setTaskItems((currentItems) =>
+        currentItems.map((taskItem) =>
+          taskItem.id === updated.id ? updated : taskItem,
+        ),
+      );
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -446,6 +531,7 @@ function App() {
             onArchive={handleArchiveTaskItem}
             onCloseArchiveDialog={() => setArchiveDialogIsOpen(false)}
             onCreateTaskItem={handleCreateTaskItem}
+            onDeleteTimelineEntry={handleDeleteTimelineEntry}
             onEditView={() => {
               setEditingView(currentView);
               setViewEditorIsOpen(true);
@@ -456,12 +542,13 @@ function App() {
               setSelectedTaskId((currentId) => (currentId === id ? null : id));
             }}
             onUpdateFieldValues={handleUpdateFieldValues}
+            onUpdateTaskItemById={handleUpdateTaskItemById}
             onUpdateTaskItem={handleUpdateTaskItem}
+            onUpdateTimelineEntry={handleUpdateTimelineEntry}
             projects={projects}
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
             taskItems={taskItems}
-            templates={templates}
           />
         )}
       </section>
@@ -577,17 +664,19 @@ function TaskBoard({
   onArchive,
   onCloseArchiveDialog,
   onCreateTaskItem,
+  onDeleteTimelineEntry,
   onEditView,
   onOpenArchiveDialog,
   onReopen,
   onSelectTaskItem,
   onUpdateFieldValues,
+  onUpdateTaskItemById,
   onUpdateTaskItem,
+  onUpdateTimelineEntry,
   projects,
   selectedTask,
   selectedTaskId,
   taskItems,
-  templates,
 }: {
   archiveDialogIsOpen: boolean;
   archiveResolutions: ArchiveResolutionResponse[];
@@ -599,22 +688,32 @@ function TaskBoard({
   onCloseArchiveDialog: () => void;
   onCreateTaskItem: (
     title: string,
-    taskTemplateId: string | null,
-    fieldValues: FieldValueMap,
   ) => Promise<void>;
+  onDeleteTimelineEntry: (entryId: string) => Promise<void>;
   onEditView: () => void;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
   onSelectTaskItem: (id: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
+  onUpdateTaskItemById: (
+    id: string,
+    requestBody: UpdateTaskItemRequest,
+  ) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
+  onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
   projects: ProjectResponse[];
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
   taskItems: TaskItemSummaryResponse[];
-  templates: TaskTemplateDetailResponse[];
 }) {
   const canCreateTask = currentView?.filter.archive !== 'Archived';
+  const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
+  const visibleTaskItems = useMemo(
+    () => applyTaskWallFilters(taskItems, filters),
+    [filters, taskItems],
+  );
+  const filterOptions = useMemo(() => buildTaskFilterOptions(taskItems), [taskItems]);
+  const filtersAreActive = taskWallFiltersAreActive(filters);
 
   return (
     <section className="task-board" aria-labelledby="task-board-title">
@@ -637,16 +736,29 @@ function TaskBoard({
       </div>
 
       {canCreateTask ? (
-        <CreateTaskForm onCreateTaskItem={onCreateTaskItem} templates={templates} />
+        <QuickCreateTaskForm onCreateTaskItem={onCreateTaskItem} />
       ) : null}
+
+      <TaskFilterBar
+        filters={filters}
+        filtersAreActive={filtersAreActive}
+        onChange={setFilters}
+        onReset={() => setFilters(emptyTaskWallFilters)}
+        options={filterOptions}
+        projects={projects}
+      />
 
       <div className="task-grid" aria-busy={isLoading}>
         {isLoading ? <p className="empty-copy">Loading tasks...</p> : null}
-        {!isLoading && taskItems.length === 0 ? (
-          <p className="empty-copy board-empty">Nothing matches this view yet.</p>
+        {!isLoading && visibleTaskItems.length === 0 ? (
+          <p className="empty-copy board-empty">
+            {filtersAreActive
+              ? 'No tasks match these filters. Reset filters to see the whole wall again.'
+              : 'Nothing here yet. Type a task at the top, press Enter, and keep dumping.'}
+          </p>
         ) : null}
 
-        {taskItems.map((taskItem) => {
+        {visibleTaskItems.map((taskItem) => {
           const isExpanded = selectedTaskId === taskItem.id;
 
           return (
@@ -659,23 +771,33 @@ function TaskBoard({
               <button
                 className="task-card-button"
                 onClick={() => onSelectTaskItem(taskItem.id)}
+                style={getTaskCardStyle(taskItem.color)}
                 type="button"
               >
                 <span className="task-card-main">
                   <span className="task-card-title">{taskItem.title}</span>
                   <span className="task-card-latest">
-                    {taskItem.latestTimelineEntry?.summary ?? 'No timeline evidence yet'}
+                    {taskItem.latestTimelineEntry?.details ?? 'No notes yet'}
                   </span>
                 </span>
                 <span className="task-card-meta">
                   <span>{taskItem.status || 'No status'}</span>
+                  {taskItem.category ? <span>{taskItem.category}</span> : null}
                   <span>Touched {formatRelativeDate(taskItem.lastTouchedAt)}</span>
                   {taskItem.followUpAt ? (
                     <span>Follow-up {formatShortDate(taskItem.followUpAt)}</span>
                   ) : null}
+                  {taskItem.noteCount > 0 ? <span>{taskItem.noteCount} notes</span> : null}
                 </span>
                 <TaskBadges taskItem={taskItem} />
               </button>
+
+              <TaskCardQuickEdit
+                onUpdate={(requestBody) =>
+                  onUpdateTaskItemById(taskItem.id, requestBody)
+                }
+                taskItem={taskItem}
+              />
 
               {isExpanded ? (
                 <div className="task-card-detail">
@@ -690,8 +812,10 @@ function TaskBoard({
                       onCloseArchiveDialog={onCloseArchiveDialog}
                       onOpenArchiveDialog={onOpenArchiveDialog}
                       onReopen={onReopen}
+                      onDeleteTimelineEntry={onDeleteTimelineEntry}
                       onUpdateFieldValues={onUpdateFieldValues}
                       onUpdateTaskItem={onUpdateTaskItem}
+                      onUpdateTimelineEntry={onUpdateTimelineEntry}
                       taskItem={selectedTask}
                     />
                   )}
@@ -705,40 +829,14 @@ function TaskBoard({
   );
 }
 
-function CreateTaskForm({
+function QuickCreateTaskForm({
   onCreateTaskItem,
-  templates,
 }: {
-  onCreateTaskItem: (
-    title: string,
-    taskTemplateId: string | null,
-    fieldValues: FieldValueMap,
-  ) => Promise<void>;
-  templates: TaskTemplateDetailResponse[];
+  onCreateTaskItem: (title: string) => Promise<void>;
 }) {
   const [title, setTitle] = useState('');
-  const [taskTemplateId, setTaskTemplateId] = useState<string | null>(null);
-  const [fieldValues, setFieldValues] = useState<FieldValueMap>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (templates.length === 0) {
-      setTaskTemplateId(null);
-      return;
-    }
-
-    setTaskTemplateId((currentTemplateId) =>
-      currentTemplateId && templates.some((template) => template.id === currentTemplateId)
-        ? currentTemplateId
-        : templates[0].id,
-    );
-  }, [templates]);
-
-  const selectedTemplate = templates.find((template) => template.id === taskTemplateId) ?? null;
-
-  useEffect(() => {
-    setFieldValues({});
-  }, [taskTemplateId]);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -749,59 +847,229 @@ function CreateTaskForm({
     }
 
     setIsSubmitting(true);
-    await onCreateTaskItem(
-      trimmedTitle,
-      selectedTemplate?.id ?? null,
-      selectedTemplate ? withDefaultFieldValues(selectedTemplate, fieldValues) : {},
-    );
+    await onCreateTaskItem(trimmedTitle);
     setTitle('');
-    setFieldValues({});
     setIsSubmitting(false);
+    inputRef.current?.focus();
   };
 
   return (
-    <form className="create-task-form" onSubmit={handleSubmit}>
+    <form className="quick-create-form" onSubmit={handleSubmit}>
       <input
         aria-label="New task title"
+        ref={inputRef}
         onChange={(event) => setTitle(event.target.value)}
-        placeholder="Capture a task..."
+        placeholder="Add a task and press Enter..."
         type="text"
         value={title}
       />
-
-      <select
-        aria-label="Task template"
-        onChange={(event) => setTaskTemplateId(event.target.value || null)}
-        value={taskTemplateId ?? ''}
-      >
-        {templates.length === 0 ? <option value="">No templates</option> : null}
-        {templates.map((template) => (
-          <option key={template.id} value={template.id}>
-            {template.name}
-          </option>
-        ))}
-      </select>
-
-      {selectedTemplate && selectedTemplate.fields.length > 0 ? (
-        <div className="create-fields">
-          <FieldEditorList
-            fields={selectedTemplate.fields}
-            onChange={(fieldId, value) =>
-              setFieldValues((currentValues) => ({
-                ...currentValues,
-                [fieldId]: value,
-              }))
-            }
-            values={fieldValues}
-          />
-        </div>
-      ) : null}
 
       <button disabled={!title.trim() || isSubmitting} type="submit">
         <Icon name="plus" />
         <span>Add</span>
       </button>
     </form>
+  );
+}
+
+function TaskFilterBar({
+  filters,
+  filtersAreActive,
+  onChange,
+  onReset,
+  options,
+  projects,
+}: {
+  filters: TaskWallFilters;
+  filtersAreActive: boolean;
+  onChange: (filters: TaskWallFilters) => void;
+  onReset: () => void;
+  options: {
+    statuses: string[];
+    categories: string[];
+    colors: string[];
+  };
+  projects: ProjectResponse[];
+}) {
+  const updateFilter = (update: Partial<TaskWallFilters>) => {
+    onChange({ ...filters, ...update });
+  };
+
+  return (
+    <div className="filter-bar" aria-label="Temporary task filters">
+      <label className="filter-search">
+        <span className="sr-only">Search tasks</span>
+        <input
+          onChange={(event) => updateFilter({ text: event.target.value })}
+          placeholder="Filter wall..."
+          type="search"
+          value={filters.text}
+        />
+      </label>
+
+      <select
+        aria-label="Filter by status"
+        onChange={(event) => updateFilter({ status: event.target.value })}
+        value={filters.status}
+      >
+        <option value="">Any status</option>
+        {options.statuses.map((status) => (
+          <option key={status} value={status}>
+            {status}
+          </option>
+        ))}
+      </select>
+
+      <select
+        aria-label="Filter by category"
+        onChange={(event) => updateFilter({ category: event.target.value })}
+        value={filters.category}
+      >
+        <option value="">Any category</option>
+        {options.categories.map((category) => (
+          <option key={category} value={category}>
+            {category}
+          </option>
+        ))}
+      </select>
+
+      <select
+        aria-label="Filter by color"
+        onChange={(event) => updateFilter({ color: event.target.value })}
+        value={filters.color}
+      >
+        <option value="">Any color</option>
+        {options.colors.map((color) => (
+          <option key={color} value={color}>
+            {color}
+          </option>
+        ))}
+      </select>
+
+      <select
+        aria-label="Filter by project"
+        onChange={(event) => updateFilter({ projectId: event.target.value })}
+        value={filters.projectId}
+      >
+        <option value="">Any project</option>
+        {projects.map((project) => (
+          <option key={project.id} value={project.id}>
+            {project.name}
+          </option>
+        ))}
+      </select>
+
+      <select
+        aria-label="Filter by follow-up"
+        onChange={(event) =>
+          updateFilter({ followUp: event.target.value as '' | SavedViewFollowUpFilter })
+        }
+        value={filters.followUp}
+      >
+        <option value="">Any follow-up</option>
+        {followUpFilters.map((filter) => (
+          <option key={filter} value={filter}>
+            {formatFollowUpFilter(filter)}
+          </option>
+        ))}
+      </select>
+
+      <input
+        aria-label="Not touched for days"
+        min={1}
+        onChange={(event) => updateFilter({ notTouchedDays: event.target.value })}
+        placeholder="Not touched days"
+        type="number"
+        value={filters.notTouchedDays}
+      />
+
+      {filtersAreActive ? (
+        <button className="ghost-button" onClick={onReset} type="button">
+          Reset filters
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function TaskCardQuickEdit({
+  onUpdate,
+  taskItem,
+}: {
+  onUpdate: (requestBody: UpdateTaskItemRequest) => Promise<void>;
+  taskItem: TaskItemSummaryResponse;
+}) {
+  const [status, setStatus] = useState(taskItem.status ?? '');
+  const [category, setCategory] = useState(taskItem.category ?? '');
+  const [savingField, setSavingField] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStatus(taskItem.status ?? '');
+    setCategory(taskItem.category ?? '');
+  }, [taskItem]);
+
+  const save = async (field: string, requestBody: UpdateTaskItemRequest) => {
+    setSavingField(field);
+    await onUpdate(requestBody);
+    setSavingField(null);
+  };
+
+  const saveOnEnter = (
+    event: KeyboardEvent<HTMLInputElement>,
+    field: string,
+    requestBody: UpdateTaskItemRequest,
+  ) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    event.preventDefault();
+    void save(field, requestBody);
+    event.currentTarget.blur();
+  };
+
+  return (
+    <div className="task-card-edits" onClick={(event) => event.stopPropagation()}>
+      <input
+        aria-label="Task status"
+        onBlur={() => void save('status', { status })}
+        onChange={(event) => setStatus(event.target.value)}
+        onKeyDown={(event) => saveOnEnter(event, 'status', { status })}
+        placeholder="Status"
+        value={status}
+      />
+      <input
+        aria-label="Task category"
+        onBlur={() => void save('category', { category })}
+        onChange={(event) => setCategory(event.target.value)}
+        onKeyDown={(event) => saveOnEnter(event, 'category', { category })}
+        placeholder="Category"
+        value={category}
+      />
+      <div className="color-swatch-row" aria-label="Task color">
+        {colorChoices.map((color) => (
+          <button
+            aria-label={`Set color ${color}`}
+            className="color-swatch"
+            data-selected={taskItem.color === color}
+            key={color}
+            onClick={() => void save('color', { color })}
+            style={{ backgroundColor: color }}
+            type="button"
+          />
+        ))}
+        {taskItem.color ? (
+          <button
+            className="clear-color-button"
+            onClick={() => void save('color', { color: '' })}
+            type="button"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+      {savingField ? <span className="saving-copy">Saving {savingField}...</span> : null}
+    </div>
   );
 }
 
@@ -813,8 +1081,10 @@ function TaskDetail({
   onCloseArchiveDialog,
   onOpenArchiveDialog,
   onReopen,
+  onDeleteTimelineEntry,
   onUpdateFieldValues,
   onUpdateTaskItem,
+  onUpdateTimelineEntry,
   taskItem,
 }: {
   archiveDialogIsOpen: boolean;
@@ -824,8 +1094,10 @@ function TaskDetail({
   onCloseArchiveDialog: () => void;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
+  onDeleteTimelineEntry: (entryId: string) => Promise<void>;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
+  onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
   taskItem: TaskItemDetailResponse;
 }) {
   const [reopenNote, setReopenNote] = useState('');
@@ -879,6 +1151,8 @@ function TaskDetail({
       <div className="detail-meta">
         <MetaItem label="Template" value={taskItem.template?.name ?? 'None'} />
         <MetaItem label="Status" value={taskItem.status ?? 'No status'} />
+        <MetaItem label="Category" value={taskItem.category ?? 'None'} />
+        <MetaItem label="Color" value={taskItem.color ?? 'None'} />
         <MetaItem label="Created" value={formatDateTime(taskItem.createdAt)} />
         <MetaItem label="Viewed" value={taskItem.lastViewedAt ? formatDateTime(taskItem.lastViewedAt) : 'Never'} />
         <MetaItem label="Touched" value={formatDateTime(taskItem.lastTouchedAt)} />
@@ -888,9 +1162,9 @@ function TaskDetail({
         />
       </div>
 
-      <section className="detail-section" aria-labelledby="fields-title">
-        <div className="section-heading">
-          <h3 id="fields-title">Structured fields</h3>
+      <details className="detail-section fields-details">
+        <summary className="section-heading">
+          <h3 id="fields-title">Fields</h3>
           {fieldValuesCanBeEdited ? (
             <button
               disabled={isSavingFields}
@@ -907,7 +1181,7 @@ function TaskDetail({
               <span>Save fields</span>
             </button>
           ) : null}
-        </div>
+        </summary>
 
         {fieldValuesCanBeEdited ? (
           <FieldEditorList
@@ -923,10 +1197,12 @@ function TaskDetail({
         ) : (
           <FieldValueList fieldValues={taskItem.fieldValues} template={taskItem.template} />
         )}
-      </section>
+      </details>
 
       <TimelinePanel
+        onDeleteTimelineEntry={onDeleteTimelineEntry}
         onAddTimelineEntry={onAddTimelineEntry}
+        onUpdateTimelineEntry={onUpdateTimelineEntry}
         timelineEntries={taskItem.timelineEntries}
       />
 
@@ -951,12 +1227,16 @@ function TaskQuickEditForm({
 }) {
   const [title, setTitle] = useState(taskItem.title);
   const [status, setStatus] = useState(taskItem.status ?? '');
+  const [category, setCategory] = useState(taskItem.category ?? '');
+  const [color, setColor] = useState(taskItem.color ?? '');
   const [followUpDate, setFollowUpDate] = useState(toDateInputValue(taskItem.followUpAt));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     setTitle(taskItem.title);
     setStatus(taskItem.status ?? '');
+    setCategory(taskItem.category ?? '');
+    setColor(taskItem.color ?? '');
     setFollowUpDate(toDateInputValue(taskItem.followUpAt));
   }, [taskItem]);
 
@@ -970,7 +1250,9 @@ function TaskQuickEditForm({
     setIsSubmitting(true);
     await onUpdateTaskItem({
       title: title.trim(),
-      status: status.trim() || null,
+      status: status.trim(),
+      category: category.trim(),
+      color: color.trim(),
       followUpAt: followUpDate
         ? new Date(`${followUpDate}T12:00:00`).toISOString()
         : null,
@@ -1005,6 +1287,29 @@ function TaskQuickEditForm({
           type="date"
           value={followUpDate}
         />
+      </label>
+      <label>
+        Category
+        <input
+          onChange={(event) => setCategory(event.target.value)}
+          placeholder="No category"
+          type="text"
+          value={category}
+        />
+      </label>
+      <label>
+        Color
+        <select
+          onChange={(event) => setColor(event.target.value)}
+          value={color}
+        >
+          <option value="">No color</option>
+          {colorChoices.map((choice) => (
+            <option key={choice} value={choice}>
+              {choice}
+            </option>
+          ))}
+        </select>
       </label>
       <button disabled={!title.trim() || isSubmitting} type="submit">
         Save
@@ -1470,6 +1775,31 @@ function ViewEditorPanel({
             </label>
 
             <label>
+              Category
+              <input
+                onChange={(event) => updateDraft({ category: event.target.value })}
+                placeholder="Procurement"
+                type="text"
+                value={draft.category}
+              />
+            </label>
+
+            <label>
+              Color
+              <select
+                onChange={(event) => updateDraft({ color: event.target.value })}
+                value={draft.color}
+              >
+                <option value="">Any color</option>
+                {colorChoices.map((choice) => (
+                  <option key={choice} value={choice}>
+                    {choice}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
               Not viewed for days
               <input
                 min={1}
@@ -1579,36 +1909,139 @@ function MetaItem({ label, value }: { label: string; value: string }) {
 
 function TimelinePanel({
   onAddTimelineEntry,
+  onDeleteTimelineEntry,
+  onUpdateTimelineEntry,
   timelineEntries,
 }: {
   onAddTimelineEntry: (note: string) => Promise<void>;
+  onDeleteTimelineEntry: (entryId: string) => Promise<void>;
+  onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
   timelineEntries: TaskItemDetailResponse['timelineEntries'];
 }) {
+  const notes = timelineEntries.filter((entry) => entry.kind === 'NoteAdded');
+
   return (
-    <section className="timeline-panel" aria-labelledby="timeline-title">
+    <section className="timeline-panel notes-panel" aria-labelledby="timeline-title">
       <div className="section-heading">
-        <h3 id="timeline-title">Timeline</h3>
-        <span>{timelineEntries.length} entries</span>
+        <h3 id="timeline-title">Notes</h3>
+        <span>{notes.length} notes</span>
       </div>
 
       <AddTimelineEntryForm onAddTimelineEntry={onAddTimelineEntry} />
 
       <ol className="timeline-list">
-        {timelineEntries.map((entry) => (
-          <li className="timeline-entry" key={entry.id}>
-            <div className="timeline-dot" aria-hidden="true" />
-            <div>
-              <div className="timeline-entry-header">
-                <strong>{entry.summary}</strong>
-                <time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time>
-              </div>
-              {entry.details ? <p>{entry.details}</p> : null}
-              <span className="timeline-kind">{entry.kind}</span>
-            </div>
-          </li>
+        {notes.length === 0 ? <li className="empty-copy">No notes yet.</li> : null}
+        {notes.map((entry) => (
+          <NoteEntry
+            entry={entry}
+            key={entry.id}
+            onDeleteTimelineEntry={onDeleteTimelineEntry}
+            onUpdateTimelineEntry={onUpdateTimelineEntry}
+          />
         ))}
       </ol>
     </section>
+  );
+}
+
+function NoteEntry({
+  entry,
+  onDeleteTimelineEntry,
+  onUpdateTimelineEntry,
+}: {
+  entry: TaskItemDetailResponse['timelineEntries'][number];
+  onDeleteTimelineEntry: (entryId: string) => Promise<void>;
+  onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(entry.details ?? '');
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    setDraft(entry.details ?? '');
+    setIsEditing(false);
+    setIsConfirmingDelete(false);
+  }, [entry]);
+
+  const save = async () => {
+    const trimmedDraft = draft.trim();
+    if (!trimmedDraft) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    await onUpdateTimelineEntry(entry.id, trimmedDraft);
+    setIsSubmitting(false);
+    setIsEditing(false);
+  };
+
+  return (
+    <li className="note-entry">
+      <time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time>
+      {isEditing ? (
+        <div className="note-edit">
+          <textarea
+            aria-label="Edit note"
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                void save();
+              }
+            }}
+            rows={3}
+            value={draft}
+          />
+          <div className="note-actions">
+            <button disabled={!draft.trim() || isSubmitting} onClick={() => void save()} type="button">
+              Save
+            </button>
+            <button className="ghost-button" onClick={() => setIsEditing(false)} type="button">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="note-body"
+          onClick={() => setIsEditing(true)}
+          type="button"
+        >
+          {entry.details}
+        </button>
+      )}
+      {!isEditing ? (
+        <div className="note-actions">
+          {isConfirmingDelete ? (
+            <>
+              <button
+                className="danger-button"
+                onClick={() => void onDeleteTimelineEntry(entry.id)}
+                type="button"
+              >
+                Delete
+              </button>
+              <button
+                className="ghost-button"
+                onClick={() => setIsConfirmingDelete(false)}
+                type="button"
+              >
+                Keep
+              </button>
+            </>
+          ) : (
+            <button
+              className="ghost-button"
+              onClick={() => setIsConfirmingDelete(true)}
+              type="button"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      ) : null}
+    </li>
   );
 }
 
@@ -1619,6 +2052,7 @@ function AddTimelineEntryForm({
 }) {
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1632,14 +2066,22 @@ function AddTimelineEntryForm({
     await onAddTimelineEntry(trimmedNote);
     setNote('');
     setIsSubmitting(false);
+    textareaRef.current?.focus();
   };
 
   return (
     <form className="timeline-form" onSubmit={handleSubmit}>
       <textarea
         aria-label="Timeline note"
+        ref={textareaRef}
         onChange={(event) => setNote(event.target.value)}
-        placeholder="Add evidence, a status note, or a source detail..."
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
+        placeholder="Add a note and press Enter..."
         rows={3}
         value={note}
       />
@@ -1870,6 +2312,128 @@ function getViewIcon(view: SavedViewResponse): IconName {
   return 'list';
 }
 
+const emptyTaskWallFilters: TaskWallFilters = {
+  text: '',
+  status: '',
+  category: '',
+  color: '',
+  projectId: '',
+  notTouchedDays: '',
+  followUp: '',
+};
+
+function buildTaskFilterOptions(taskItems: TaskItemSummaryResponse[]) {
+  return {
+    statuses: uniqueSorted(taskItems.map((taskItem) => taskItem.status)),
+    categories: uniqueSorted(taskItems.map((taskItem) => taskItem.category)),
+    colors: uniqueSorted(taskItems.map((taskItem) => taskItem.color)),
+  };
+}
+
+function uniqueSorted(values: Array<string | null>) {
+  return Array.from(
+    new Set(values.filter((value): value is string => Boolean(value))),
+  ).sort((left, right) => left.localeCompare(right));
+}
+
+function applyTaskWallFilters(
+  taskItems: TaskItemSummaryResponse[],
+  filters: TaskWallFilters,
+) {
+  const text = filters.text.trim().toLowerCase();
+  const notTouchedDays = numberOrNull(filters.notTouchedDays);
+
+  return taskItems.filter((taskItem) => {
+    if (text && !taskMatchesText(taskItem, text)) {
+      return false;
+    }
+
+    if (filters.status && taskItem.status !== filters.status) {
+      return false;
+    }
+
+    if (filters.category && taskItem.category !== filters.category) {
+      return false;
+    }
+
+    if (filters.color && taskItem.color !== filters.color) {
+      return false;
+    }
+
+    if (filters.projectId && taskItem.projectId !== filters.projectId) {
+      return false;
+    }
+
+    if (filters.followUp && !taskMatchesFollowUp(taskItem, filters.followUp)) {
+      return false;
+    }
+
+    if (notTouchedDays && !isNotTouchedForDays(taskItem, notTouchedDays)) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function taskMatchesText(taskItem: TaskItemSummaryResponse, text: string) {
+  return [
+    taskItem.title,
+    taskItem.status,
+    taskItem.category,
+    taskItem.latestTimelineEntry?.details,
+  ].some((value) => value?.toLowerCase().includes(text));
+}
+
+function taskMatchesFollowUp(
+  taskItem: TaskItemSummaryResponse,
+  followUp: SavedViewFollowUpFilter,
+) {
+  if (!taskItem.followUpAt) {
+    return false;
+  }
+
+  const followUpAt = new Date(taskItem.followUpAt);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const nextWeek = new Date(today);
+  nextWeek.setDate(today.getDate() + 7);
+
+  switch (followUp) {
+    case 'Overdue':
+      return followUpAt.getTime() < now.getTime();
+    case 'Today':
+      return followUpAt >= today && followUpAt < tomorrow;
+    case 'ThisWeek':
+      return followUpAt >= today && followUpAt < nextWeek;
+    case 'Any':
+    default:
+      return true;
+  }
+}
+
+function isNotTouchedForDays(taskItem: TaskItemSummaryResponse, days: number) {
+  const threshold = Date.now() - days * 24 * 60 * 60 * 1000;
+  return new Date(taskItem.lastTouchedAt).getTime() <= threshold;
+}
+
+function taskWallFiltersAreActive(filters: TaskWallFilters) {
+  return Object.values(filters).some((value) => value.trim().length > 0);
+}
+
+function getTaskCardStyle(color: string | null) {
+  if (!color) {
+    return undefined;
+  }
+
+  return {
+    borderLeftColor: color,
+    background: `linear-gradient(90deg, ${color}22, #ffffff 42%)`,
+  };
+}
+
 function describeSavedView(view: SavedViewResponse, projects: ProjectResponse[]) {
   const pieces: string[] = [];
   const project = view.filter.projectId
@@ -1883,6 +2447,14 @@ function describeSavedView(view: SavedViewResponse, projects: ProjectResponse[])
     pieces.push('no status');
   } else if (view.filter.status) {
     pieces.push(`status ${view.filter.status}`);
+  }
+
+  if (view.filter.category) {
+    pieces.push(`category ${view.filter.category}`);
+  }
+
+  if (view.filter.color) {
+    pieces.push(`color ${view.filter.color}`);
   }
 
   if (view.filter.followUp) {
@@ -1975,6 +2547,8 @@ function toEditableViewDraft(savedView: SavedViewResponse | null): EditableViewD
     projectId: savedView?.filter.projectId ?? '',
     statusMode: status === '' ? 'empty' : status ? 'exact' : 'any',
     statusValue: status && status.length > 0 ? status : '',
+    category: savedView?.filter.category ?? '',
+    color: savedView?.filter.color ?? '',
     archive: savedView?.filter.archive ?? 'Active',
     followUp: savedView?.filter.followUp ?? '',
     notViewedSinceDays: savedView?.filter.notViewedSinceDays?.toString() ?? '',
@@ -2000,6 +2574,8 @@ function toSavedViewRequest(draft: EditableViewDraft) {
     filter: {
       projectId: draft.projectId || null,
       status,
+      category: draft.category.trim() || null,
+      color: draft.color || null,
       archive: draft.archive,
       followUp: draft.followUp || null,
       notViewedSinceDays: numberOrNull(draft.notViewedSinceDays),

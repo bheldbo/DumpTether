@@ -9,5 +9,7 @@ public enum TaskTimelineEntryKind
     TitleChanged = 5,
     FollowUpChanged = 6,
     FieldValueChanged = 7,
-    Reopened = 8
+    Reopened = 8,
+    CategoryChanged = 9,
+    ColorChanged = 10
 }

@@ -7,12 +7,15 @@ export interface TaskItemSummaryResponse {
   taskTemplateId: string | null;
   title: string;
   status: string | null;
+  category: string | null;
+  color: string | null;
   createdAt: string;
   lastViewedAt: string | null;
   lastTouchedAt: string;
   followUpAt: string | null;
   archivedAt: string | null;
   archiveResolutionId: string | null;
+  noteCount: number;
   latestTimelineEntry: TaskTimelineEntryResponse | null;
 }
 
@@ -35,6 +38,7 @@ export interface TaskTimelineEntryResponse {
   summary: string;
   details: string | null;
   occurredAt: string;
+  updatedAt: string;
 }
 
 export interface ArchiveResolutionResponse {
@@ -65,6 +69,8 @@ export type SavedViewSortDirection = 'asc' | 'desc';
 export interface SavedViewFilter {
   projectId?: string | null;
   status?: string | null;
+  category?: string | null;
+  color?: string | null;
   archive?: SavedViewArchiveFilter | null;
   followUp?: SavedViewFollowUpFilter | null;
   notViewedSinceDays?: number | null;
@@ -166,11 +172,17 @@ export interface CreateTaskItemRequest {
 export interface UpdateTaskItemRequest {
   title?: string | null;
   status?: string | null;
+  category?: string | null;
+  color?: string | null;
   followUpAt?: string | null;
   fieldValues?: FieldValueMap;
 }
 
 export interface AddTaskTimelineEntryRequest {
+  note: string;
+}
+
+export interface UpdateTaskTimelineEntryRequest {
   note: string;
 }
 
@@ -188,6 +200,8 @@ export interface TaskItemListQuery {
   scope?: TaskItemListScope;
   projectId?: string | null;
   status?: string | null;
+  category?: string | null;
+  color?: string | null;
   archive?: SavedViewArchiveFilter | null;
   followUp?: SavedViewFollowUpFilter | null;
   notViewedSinceDays?: number | null;

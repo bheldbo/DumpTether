@@ -8,6 +8,8 @@ public sealed record TaskItemListRequest(
     TaskItemListScope Scope = TaskItemListScope.Active,
     Guid? ProjectId = null,
     string? Status = null,
+    string? Category = null,
+    string? Color = null,
     string? Archive = null,
     string? FollowUp = null,
     int? NotViewedSinceDays = null,
@@ -26,10 +28,17 @@ public sealed record CreateTaskItemRequest(
 public sealed record UpdateTaskItemRequest(
     [MaxLength(500)] string? Title = null,
     [MaxLength(120)] string? Status = null,
+    [MaxLength(120)] string? Category = null,
+    [MaxLength(7)] string? Color = null,
     DateTimeOffset? FollowUpAt = null,
     Dictionary<Guid, JsonElement>? FieldValues = null);
 
 public sealed record AddTaskTimelineEntryRequest(
+    [Required]
+    [MaxLength(4000)]
+    string Note);
+
+public sealed record UpdateTaskTimelineEntryRequest(
     [Required]
     [MaxLength(4000)]
     string Note);

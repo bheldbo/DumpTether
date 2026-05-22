@@ -5,7 +5,6 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $webRoot = Join-Path $repoRoot "apps\web"
 $apiProject = Join-Path $repoRoot "src\DumpTether.Api\DumpTether.Api.csproj"
@@ -103,12 +102,17 @@ function Start-DevWindow {
         [string] $RunTarget
     )
 
+    $escapedTitle = $WindowTitle.Replace("'", "''")
+    $escapedPath = $PSCommandPath.Replace("'", "''")
+    $escapedTarget = $RunTarget.Replace("'", "''")
+    $command = "`$Host.UI.RawUI.WindowTitle = '$escapedTitle'; & '$escapedPath' -Target '$escapedTarget'"
+
     Start-Process powershell.exe -ArgumentList @(
         "-NoExit",
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        "title $WindowTitle; & '$PSCommandPath' -Target $RunTarget"
+        $command
     )
 }
 

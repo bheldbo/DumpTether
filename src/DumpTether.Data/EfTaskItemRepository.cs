@@ -29,6 +29,8 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
                 workspaceId,
                 projectId,
                 Status: null,
+                Category: null,
+                Color: null,
                 MapScope(scope),
                 TaskItemFollowUpFilter.None,
                 NotViewedSinceDays: null,
@@ -46,6 +48,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
     {
         var candidates = await _dbContext.TaskItems
             .AsNoTracking()
+            .Include("_fieldValues")
             .Include("_timelineEntries")
             .AsSplitQuery()
             .Where(taskItem => taskItem.WorkspaceId == query.WorkspaceId)
@@ -173,6 +176,8 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         return MatchesProject(taskItem, query.ProjectId) &&
             MatchesArchive(taskItem, query.ArchiveFilter) &&
             MatchesStatus(taskItem, query.Status) &&
+            MatchesCategory(taskItem, query.Category) &&
+            MatchesColor(taskItem, query.Color) &&
             MatchesFollowUp(taskItem, query.FollowUpFilter, query.Now) &&
             MatchesNotViewedSince(taskItem, query.NotViewedSinceDays, query.Now) &&
             MatchesNotTouchedSince(taskItem, query.NotTouchedSinceDays, query.Now) &&
@@ -207,6 +212,36 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         }
 
         return string.Equals(taskItem.Status, status, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesCategory(TaskItem taskItem, string? category)
+    {
+        if (category is null)
+        {
+            return true;
+        }
+
+        if (category.Length == 0)
+        {
+            return string.IsNullOrWhiteSpace(taskItem.Category);
+        }
+
+        return string.Equals(taskItem.Category, category, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesColor(TaskItem taskItem, string? color)
+    {
+        if (color is null)
+        {
+            return true;
+        }
+
+        if (color.Length == 0)
+        {
+            return string.IsNullOrWhiteSpace(taskItem.Color);
+        }
+
+        return string.Equals(taskItem.Color, color, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool MatchesFollowUp(
@@ -266,9 +301,13 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
 
         return ContainsText(taskItem.Title, text) ||
             ContainsText(taskItem.Status, text) ||
+            ContainsText(taskItem.Category, text) ||
+            ContainsText(taskItem.Color, text) ||
+            taskItem.FieldValues.Any(value => ContainsText(value.ValueJson, text)) ||
             taskItem.TimelineEntries.Any(entry =>
-                ContainsText(entry.Summary, text) ||
-                ContainsText(entry.Details, text));
+                entry.DeletedAt == null &&
+                (ContainsText(entry.Summary, text) ||
+                 ContainsText(entry.Details, text)));
     }
 
     private static bool ContainsText(string? value, string text)

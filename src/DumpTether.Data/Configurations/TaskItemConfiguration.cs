@@ -40,6 +40,14 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
             .HasColumnName("status")
             .HasMaxLength(120);
 
+        builder.Property(taskItem => taskItem.Category)
+            .HasColumnName("category")
+            .HasMaxLength(120);
+
+        builder.Property(taskItem => taskItem.Color)
+            .HasColumnName("color")
+            .HasMaxLength(7);
+
         builder.Property(taskItem => taskItem.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();
@@ -78,6 +86,18 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         });
 
         builder.HasIndex(taskItem => taskItem.FollowUpAt);
+
+        builder.HasIndex(taskItem => new
+        {
+            taskItem.WorkspaceId,
+            taskItem.Category
+        });
+
+        builder.HasIndex(taskItem => new
+        {
+            taskItem.WorkspaceId,
+            taskItem.Color
+        });
 
         builder.HasOne<Workspace>()
             .WithMany()

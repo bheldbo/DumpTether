@@ -5,6 +5,8 @@ namespace DumpTether.App.Views;
 public sealed record SavedViewFilterRequest(
     Guid? ProjectId = null,
     string? Status = null,
+    string? Category = null,
+    string? Color = null,
     string? Archive = null,
     string? FollowUp = null,
     int? NotViewedSinceDays = null,
