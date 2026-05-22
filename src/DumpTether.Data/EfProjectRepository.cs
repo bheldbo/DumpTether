@@ -23,4 +23,22 @@ internal sealed class EfProjectRepository : IProjectRepository
             .OrderBy(project => project.Name)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<Project?> GetByIdAsync(
+        Guid id,
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.Projects
+            .SingleOrDefaultAsync(
+                project =>
+                    project.Id == id &&
+                    project.WorkspaceId == workspaceId,
+                cancellationToken);
+    }
+
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
 }

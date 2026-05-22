@@ -22,6 +22,8 @@ public sealed class Project
 
     public string Name { get; private set; } = string.Empty;
 
+    public string? Color { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public IReadOnlyCollection<TaskItem> TaskItems => _taskItems.AsReadOnly();
@@ -35,6 +37,16 @@ public sealed class Project
             workspaceId,
             DomainGuards.NotBlank(name, nameof(name)),
             createdAt);
+    }
+
+    public void Rename(string name)
+    {
+        Name = DomainGuards.NotBlank(name, nameof(name));
+    }
+
+    public void ChangeColor(string? color)
+    {
+        Color = DomainGuards.OptionalHexColor(color, nameof(color));
     }
 
     public TaskItem AddTaskItem(string title, DateTimeOffset createdAt, Guid? taskTemplateId = null)

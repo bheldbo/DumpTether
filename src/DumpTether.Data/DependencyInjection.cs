@@ -3,6 +3,7 @@ using DumpTether.App.Projects;
 using DumpTether.App.Tasks;
 using DumpTether.App.Templates;
 using DumpTether.App.Views;
+using DumpTether.App.Workspaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<ISavedViewRepository, EfSavedViewRepository>();
         services.AddScoped<ITaskItemRepository, EfTaskItemRepository>();
         services.AddScoped<ITaskTemplateRepository, EfTaskTemplateRepository>();
+        services.AddScoped<IWorkspaceRepository, EfWorkspaceRepository>();
 
         return services;
     }

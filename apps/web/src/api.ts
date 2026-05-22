@@ -17,6 +17,9 @@ import type {
   UpdateTaskTimelineEntryRequest,
   UpdateSavedViewRequest,
   UpdateTaskTemplateRequest,
+  UpdateProjectRequest,
+  UpdateWorkspaceRequest,
+  WorkspaceResponse,
 } from './types';
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
@@ -138,6 +141,29 @@ export function listArchiveResolutions(): Promise<ArchiveResolutionResponse[]> {
 
 export function listProjects(): Promise<ProjectResponse[]> {
   return request<ProjectResponse[]>('/api/projects');
+}
+
+export function updateProject(
+  id: string,
+  requestBody: UpdateProjectRequest,
+): Promise<ProjectResponse> {
+  return request<ProjectResponse>(`/api/projects/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function getWorkspace(): Promise<WorkspaceResponse> {
+  return request<WorkspaceResponse>('/api/workspace');
+}
+
+export function updateWorkspace(
+  requestBody: UpdateWorkspaceRequest,
+): Promise<WorkspaceResponse> {
+  return request<WorkspaceResponse>('/api/workspace', {
+    method: 'PATCH',
+    body: JSON.stringify(requestBody),
+  });
 }
 
 export function listSavedViews(): Promise<SavedViewResponse[]> {

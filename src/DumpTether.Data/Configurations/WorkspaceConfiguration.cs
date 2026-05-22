@@ -21,6 +21,10 @@ internal sealed class WorkspaceConfiguration : IEntityTypeConfiguration<Workspac
             .HasMaxLength(200)
             .IsRequired();
 
+        builder.Property(workspace => workspace.Color)
+            .HasColumnName("color")
+            .HasMaxLength(7);
+
         builder.Property(workspace => workspace.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();

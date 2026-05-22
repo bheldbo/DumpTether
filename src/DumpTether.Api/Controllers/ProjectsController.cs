@@ -21,4 +21,22 @@ public sealed class ProjectsController : ControllerBase
         var response = await _projectService.ListAsync(cancellationToken);
         return Ok(response);
     }
+
+    [HttpPatch("{id:guid}")]
+    public async Task<ActionResult<ProjectResponse>> Update(
+        Guid id,
+        UpdateProjectRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _projectService.UpdateAsync(id, request, cancellationToken);
+
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
 }

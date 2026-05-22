@@ -5,6 +5,8 @@ DumpTether should feel like a lightweight personal sticker wall backed by a stru
 ## Task Wall
 
 - The task wall is the default working surface.
+- The top header should identify the current workspace, project context, and saved view without feeling like a dashboard.
+- Workspace and project colors are lightweight grouping cues.
 - Task cards should look and behave like plain post-it notes.
 - The task's chosen color belongs to the whole card, not a small label or category strip.
 - The wall card is for scanning, not editing.

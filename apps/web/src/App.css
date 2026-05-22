@@ -280,11 +280,8 @@ label {
   align-content: stretch;
 }
 
-.task-board[data-focus-mode="true"] .board-header {
-  display: none;
-}
-
 .board-header,
+.workspace-header,
 .detail-header,
 .dialog-header,
 .section-heading {
@@ -302,7 +299,34 @@ label {
   background: #ffffff;
 }
 
+.workspace-header {
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid rgba(24, 33, 44, 0.1);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--workspace-color, #e8f3f0) 48%, #ffffff), #ffffff 68%),
+    linear-gradient(90deg, var(--project-color, #e8f3f0), transparent 42%);
+  box-shadow: 0 12px 28px rgba(32, 45, 58, 0.06);
+}
+
+.workspace-title-block {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.workspace-title-row,
+.workspace-context-row {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .board-header h1,
+.workspace-header h1,
 .detail-header h2,
 .dialog-header h2,
 .template-editor h2 {
@@ -316,13 +340,41 @@ label {
   line-height: 1.1;
 }
 
+.workspace-header h1 {
+  font-size: 1.5rem;
+  line-height: 1.08;
+}
+
 .board-header p,
+.workspace-header p,
 .empty-copy,
 .resolution-description {
   margin: 6px 0 0;
   color: #667586;
   font-size: 0.9rem;
   line-height: 1.5;
+}
+
+.context-chip,
+.context-muted {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.context-chip {
+  border: 1px solid rgba(24, 33, 44, 0.1);
+  background: var(--context-chip-color, rgba(255, 255, 255, 0.68));
+  color: var(--context-chip-text, #263544);
+}
+
+.context-muted {
+  color: #5d6b7a;
+  background: rgba(255, 255, 255, 0.58);
 }
 
 .board-actions {
@@ -442,9 +494,12 @@ label {
   grid-template-rows: auto;
   border: 1px solid rgba(24, 33, 44, 0.12);
   border-radius: 3px;
-  background: var(--task-note-color, #fff3a6);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--task-note-color, #fff3a6) 84%, #ffffff), var(--task-note-color, #fff3a6) 56%, color-mix(in srgb, var(--task-note-color, #fff3a6) 72%, #b9a56a) 100%);
   color: var(--task-note-text, #18212c);
-  box-shadow: 0 14px 28px rgba(32, 45, 58, 0.13);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 14px 28px rgba(32, 45, 58, 0.13);
   overflow: hidden;
 }
 
@@ -495,20 +550,6 @@ label {
   padding: 18px 20px 10px;
 }
 
-.task-card-edits {
-  display: grid;
-  grid-template-columns: minmax(96px, 0.7fr) minmax(110px, 0.8fr) minmax(160px, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 0 12px 12px;
-}
-
-.task-card-edits input {
-  min-height: 32px;
-  padding: 6px 8px;
-  font-size: 0.82rem;
-}
-
 .color-swatch-row {
   display: flex;
   flex-wrap: wrap;
@@ -517,8 +558,8 @@ label {
 }
 
 .color-swatch {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: 1px solid rgba(20, 32, 45, 0.22);
   border-radius: 999px;
 }
@@ -642,7 +683,7 @@ label {
   min-height: 0;
   border-top: 1px solid var(--task-note-chip-border, rgba(24, 33, 44, 0.1));
   padding: 18px 20px 20px;
-  background: rgba(255, 255, 255, 0.82);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 251, 0.84));
   color: #17202c;
   overflow: auto;
 }
@@ -689,22 +730,58 @@ label {
   min-width: 0;
   display: grid;
   gap: 6px;
-  margin: 0;
-  padding: 0;
-  border: 0;
 }
 
-.task-color-picker legend {
-  padding: 0;
+.task-color-picker > span {
   color: #425161;
   font-size: 0.82rem;
   font-weight: 680;
 }
 
-.task-color-picker input[type="color"] {
+.color-popover {
+  position: relative;
+  width: max-content;
+}
+
+.color-popover summary {
+  list-style: none;
+}
+
+.color-popover summary::-webkit-details-marker {
+  display: none;
+}
+
+.color-trigger {
   width: 32px;
-  min-height: 32px;
-  padding: 2px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(24, 33, 44, 0.18);
+  border-radius: 999px;
+  color: #17202c;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+.color-popover-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  display: grid;
+  gap: 8px;
+  min-width: 188px;
+  padding: 10px;
+  border: 1px solid rgba(24, 33, 44, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 34px rgba(32, 45, 58, 0.16);
+}
+
+.color-popover-panel input[type="color"] {
+  width: 24px;
+  min-height: 24px;
+  padding: 1px;
   border-radius: 999px;
 }
 

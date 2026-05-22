@@ -25,6 +25,10 @@ internal sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
             .HasMaxLength(200)
             .IsRequired();
 
+        builder.Property(project => project.Color)
+            .HasColumnName("color")
+            .HasMaxLength(7);
+
         builder.Property(project => project.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();

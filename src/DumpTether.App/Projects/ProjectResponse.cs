@@ -4,4 +4,5 @@ public sealed record ProjectResponse(
     Guid Id,
     Guid WorkspaceId,
     string Name,
+    string? Color,
     DateTimeOffset CreatedAt);

@@ -4,6 +4,7 @@ using DumpTether.App.Projects;
 using DumpTether.App.Tasks;
 using DumpTether.App.Templates;
 using DumpTether.App.Views;
+using DumpTether.App.Workspaces;
 
 namespace DumpTether.App;
 
@@ -17,6 +18,7 @@ public static class DependencyInjection
         services.AddScoped<ITaskItemService, TaskItemService>();
         services.AddScoped<ITaskTemplateService, TaskTemplateService>();
         services.AddScoped<ISavedViewService, SavedViewService>();
+        services.AddScoped<IWorkspaceService, WorkspaceService>();
 
         return services;
     }

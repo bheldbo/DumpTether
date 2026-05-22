@@ -195,7 +195,7 @@ public sealed class TaskItem
 
     public void ChangeColor(string? color, DateTimeOffset occurredAt)
     {
-        var normalizedColor = NormalizeColor(color);
+        var normalizedColor = DomainGuards.OptionalHexColor(color, nameof(color));
 
         if (Color == normalizedColor)
         {
@@ -317,24 +317,4 @@ public sealed class TaskItem
             throw new InvalidOperationException("Timeline entry was not found.");
     }
 
-    private static string? NormalizeColor(string? color)
-    {
-        var normalizedColor = DomainGuards.OptionalTrimmed(color);
-
-        if (normalizedColor is null)
-        {
-            return null;
-        }
-
-        if (normalizedColor.Length != 7 ||
-            normalizedColor[0] != '#' ||
-            normalizedColor.Skip(1).Any(character => !Uri.IsHexDigit(character)))
-        {
-            throw new ArgumentException(
-                "Task color must be a hex color in #RRGGBB format.",
-                nameof(color));
-        }
-
-        return normalizedColor.ToUpperInvariant();
-    }
 }

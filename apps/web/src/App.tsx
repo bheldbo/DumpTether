@@ -18,6 +18,7 @@ import {
   deleteTaskTemplate,
   getTaskItem,
   getTaskTemplate,
+  getWorkspace,
   listArchiveResolutions,
   listProjects,
   listSavedViews,
@@ -25,9 +26,11 @@ import {
   listTaskTemplates,
   reopenTaskItem,
   updateSavedView,
+  updateProject,
   updateTaskItem,
   updateTaskTimelineEntry,
   updateTaskTemplate,
+  updateWorkspace,
 } from './api';
 import './App.css';
 import { FieldEditorList, FieldValueList } from './fieldRenderers';
@@ -49,6 +52,7 @@ import type {
   TaskTemplateDetailResponse,
   UpdateTaskItemRequest,
   UpsertFieldDefinitionRequest,
+  WorkspaceResponse,
 } from './types';
 
 type WorkspaceMode = 'tasks' | 'templates';
@@ -63,6 +67,7 @@ type IconName =
   | 'inbox'
   | 'list'
   | 'note'
+  | 'palette'
   | 'panel'
   | 'plus'
   | 'refresh'
@@ -145,6 +150,7 @@ const colorChoices = [
 
 function App() {
   const [savedViews, setSavedViews] = useState<SavedViewResponse[]>([]);
+  const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [taskItems, setTaskItems] = useState<TaskItemSummaryResponse[]>([]);
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
@@ -173,7 +179,8 @@ function App() {
       setIsLoadingWorkspace(true);
 
       try {
-        const [views, projectList, resolutions, templateSummaries] = await Promise.all([
+        const [workspaceInfo, views, projectList, resolutions, templateSummaries] = await Promise.all([
+          getWorkspace(),
           listSavedViews(),
           listProjects(),
           listArchiveResolutions(),
@@ -191,6 +198,7 @@ function App() {
           ),
         ]);
 
+        setWorkspace(workspaceInfo);
         setSavedViews(views);
         setProjects(projectList);
         setArchiveResolutions(resolutions);
@@ -467,6 +475,30 @@ function App() {
     }
   };
 
+  const handleUpdateWorkspaceColor = async (color: string) => {
+    try {
+      const updated = await updateWorkspace({ color });
+      setWorkspace(updated);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleUpdateProjectColor = async (id: string, color: string) => {
+    try {
+      const updated = await updateProject(id, { color });
+      setProjects((currentProjects) =>
+        currentProjects.map((project) =>
+          project.id === updated.id ? updated : project,
+        ),
+      );
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
   return (
     <main className="app-shell" data-sidebar-collapsed={sidebarIsCollapsed}>
       <Sidebar
@@ -529,10 +561,13 @@ function App() {
             onUpdateFieldValues={handleUpdateFieldValues}
             onUpdateTaskItem={handleUpdateTaskItem}
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
+            onUpdateProjectColor={handleUpdateProjectColor}
+            onUpdateWorkspaceColor={handleUpdateWorkspaceColor}
             projects={projects}
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
             taskItems={taskItems}
+            workspace={workspace}
           />
         )}
       </section>
@@ -657,10 +692,13 @@ function TaskBoard({
   onUpdateFieldValues,
   onUpdateTaskItem,
   onUpdateTimelineEntry,
+  onUpdateProjectColor,
+  onUpdateWorkspaceColor,
   projects,
   selectedTask,
   selectedTaskId,
   taskItems,
+  workspace,
 }: {
   archiveDialogIsOpen: boolean;
   archiveResolutions: ArchiveResolutionResponse[];
@@ -682,10 +720,13 @@ function TaskBoard({
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+  onUpdateProjectColor: (id: string, color: string) => Promise<void>;
+  onUpdateWorkspaceColor: (color: string) => Promise<void>;
   projects: ProjectResponse[];
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
   taskItems: TaskItemSummaryResponse[];
+  workspace: WorkspaceResponse | null;
 }) {
   const canCreateTask = currentView?.filter.archive !== 'Archived';
   const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
@@ -699,6 +740,12 @@ function TaskBoard({
   const displayedTaskItems = focusedTaskItem ? [focusedTaskItem] : visibleTaskItems;
   const filterOptions = useMemo(() => buildTaskFilterOptions(taskItems), [taskItems]);
   const filtersAreActive = taskWallFiltersAreActive(filters);
+  const currentProject = getCurrentProject(
+    currentView,
+    projects,
+    focusedTaskItem,
+    filters.projectId,
+  );
 
   useEffect(() => {
     if (!selectedTaskId || archiveDialogIsOpen) {
@@ -724,23 +771,15 @@ function TaskBoard({
       aria-labelledby="task-board-title"
       data-focus-mode={Boolean(focusedTaskItem)}
     >
-      <div className="board-header">
-        <div>
-          <p className="detail-kicker">Saved view</p>
-          <h1 id="task-board-title">{currentView?.name ?? 'Tasks'}</h1>
-          <p>{currentView ? describeSavedView(currentView, projects) : 'Loading views...'}</p>
-        </div>
-        <div className="board-actions">
-          <span className="sort-pill">
-            Sorted by {formatSortField(currentView?.sort.field)}{' '}
-            {currentView?.sort.direction === 'asc' ? 'ascending' : 'descending'}
-          </span>
-          <button className="secondary-action" disabled={!currentView} onClick={onEditView} type="button">
-            <Icon name="edit" />
-            <span>Edit view</span>
-          </button>
-        </div>
-      </div>
+      <WorkspaceHeader
+        currentProject={currentProject}
+        currentView={currentView}
+        onEditView={onEditView}
+        onUpdateProjectColor={onUpdateProjectColor}
+        onUpdateWorkspaceColor={onUpdateWorkspaceColor}
+        projects={projects}
+        workspace={workspace}
+      />
 
       {canCreateTask && !focusedTaskItem ? (
         <QuickCreateTaskForm onCreateTaskItem={onCreateTaskItem} />
@@ -834,6 +873,66 @@ function TaskBoard({
         })}
       </div>
     </section>
+  );
+}
+
+function WorkspaceHeader({
+  currentProject,
+  currentView,
+  onEditView,
+  onUpdateProjectColor,
+  onUpdateWorkspaceColor,
+  projects,
+  workspace,
+}: {
+  currentProject: ProjectResponse | null;
+  currentView: SavedViewResponse | null;
+  onEditView: () => void;
+  onUpdateProjectColor: (id: string, color: string) => Promise<void>;
+  onUpdateWorkspaceColor: (color: string) => Promise<void>;
+  projects: ProjectResponse[];
+  workspace: WorkspaceResponse | null;
+}) {
+  return (
+    <div
+      className="workspace-header"
+      style={getWorkspaceHeaderStyle(workspace?.color ?? null, currentProject?.color ?? null)}
+    >
+      <div className="workspace-title-block">
+        <div className="workspace-title-row">
+          <h1 id="task-board-title">{workspace?.name ?? 'DumpTether'}</h1>
+          <ColorPickerPopover
+            color={workspace?.color ?? ''}
+            label="Workspace color"
+            onChange={(color) => void onUpdateWorkspaceColor(color)}
+          />
+        </div>
+        <div className="workspace-context-row">
+          <span className="context-chip" style={getContextChipStyle(currentProject?.color ?? null)}>
+            {currentProject?.name ?? 'All projects'}
+          </span>
+          {currentProject ? (
+            <ColorPickerPopover
+              color={currentProject.color ?? ''}
+              label={`${currentProject.name} color`}
+              onChange={(color) => void onUpdateProjectColor(currentProject.id, color)}
+            />
+          ) : null}
+          <span className="context-muted">{currentView?.name ?? 'Tasks'}</span>
+        </div>
+        <p>{currentView ? describeSavedView(currentView, projects) : 'Loading views...'}</p>
+      </div>
+      <div className="board-actions">
+        <span className="sort-pill">
+          Sorted by {formatSortField(currentView?.sort.field)}{' '}
+          {currentView?.sort.direction === 'asc' ? 'ascending' : 'descending'}
+        </span>
+        <button className="secondary-action" disabled={!currentView} onClick={onEditView} type="button">
+          <Icon name="edit" />
+          <span>Edit view</span>
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1083,22 +1182,18 @@ function TaskDetail({
       <TaskQuickEditForm onUpdateTaskItem={onUpdateTaskItem} taskItem={taskItem} />
 
       <div className="detail-meta">
-        <MetaItem label="Template" value={taskItem.template?.name ?? 'None'} />
         <MetaItem label="Status" value={taskItem.status ?? 'No status'} />
         <MetaItem label="Category" value={taskItem.category ?? 'None'} />
-        <MetaItem label="Color" value={taskItem.color ?? 'None'} />
-        <MetaItem label="Created" value={formatDateTime(taskItem.createdAt)} />
-        <MetaItem label="Viewed" value={taskItem.lastViewedAt ? formatDateTime(taskItem.lastViewedAt) : 'Never'} />
-        <MetaItem label="Touched" value={formatDateTime(taskItem.lastTouchedAt)} />
         <MetaItem
           label="Follow-up"
           value={taskItem.followUpAt ? formatDateTime(taskItem.followUpAt) : 'None'}
         />
+        <MetaItem label="Touched" value={formatDateTime(taskItem.lastTouchedAt)} />
       </div>
 
       <details className="detail-section fields-details">
         <summary className="section-heading">
-          <h3 id="fields-title">Fields</h3>
+          <h3 id="fields-title">Fields for views</h3>
           {fieldValuesCanBeEdited ? (
             <button
               disabled={isSavingFields}
@@ -1246,40 +1341,70 @@ function TaskColorPicker({
   color: string;
   onChange: (color: string) => void;
 }) {
+  return (
+    <div className="task-color-picker">
+      <span>Color</span>
+      <ColorPickerPopover
+        color={color}
+        label="Task color"
+        onChange={onChange}
+      />
+    </div>
+  );
+}
+
+function ColorPickerPopover({
+  color,
+  label,
+  onChange,
+}: {
+  color: string;
+  label: string;
+  onChange: (color: string) => void;
+}) {
   const selectedColor = isHexColor(color) ? color : '#FDE68A';
 
   return (
-    <fieldset className="task-color-picker">
-      <legend>Color</legend>
-      <div className="color-swatch-row">
-        {colorChoices.map((choice) => (
-          <button
-            aria-label={`Use ${choice}`}
-            className="color-swatch"
-            data-selected={color.toUpperCase() === choice}
-            key={choice}
-            onClick={() => onChange(choice)}
-            style={{ backgroundColor: choice }}
-            type="button"
+    <details className="color-popover">
+      <summary
+        aria-label={label}
+        className="color-trigger"
+        style={{ backgroundColor: color || '#FFFFFF' }}
+        title={label}
+      >
+        <Icon name="palette" />
+      </summary>
+      <div className="color-popover-panel">
+        <div className="color-swatch-row" aria-label={label}>
+          {colorChoices.map((choice) => (
+            <button
+              aria-label={`Use ${choice}`}
+              className="color-swatch"
+              data-selected={color.toUpperCase() === choice}
+              key={choice}
+              onClick={() => onChange(choice)}
+              style={{ backgroundColor: choice }}
+              type="button"
+            />
+          ))}
+          <input
+            aria-label="Custom color"
+            onChange={(event) => onChange(event.target.value.toUpperCase())}
+            type="color"
+            value={selectedColor}
           />
-        ))}
-        <input
-          aria-label="Custom color"
-          onChange={(event) => onChange(event.target.value.toUpperCase())}
-          type="color"
-          value={selectedColor}
-        />
+        </div>
         {color ? (
           <button
             className="clear-color-button"
             onClick={() => onChange('')}
             type="button"
           >
-            Clear
+            Clear color
           </button>
         ) : null}
       </div>
-    </fieldset>
+    </details>
   );
 }
 
@@ -2190,6 +2315,7 @@ function Icon({ name }: { name: IconName }) {
     inbox: 'M4 5h16v10l-3 4H7l-3-4V5Zm0 10h5l1.5 2h3L15 15h5',
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
     note: 'M5 4h11l3 3v13H5V4Zm11 0v4h4M8 12h8M8 16h6',
+    palette: 'M12 4a8 8 0 0 0-1 15.94c.8.1 1.33-.55 1.14-1.33-.13-.55.28-1.04.85-1.04h1.36A5.65 5.65 0 0 0 20 11.92C20 7.55 16.42 4 12 4ZM8 11.5h.01M10 8h.01M14 8h.01M16 11h.01',
     panel: 'M4 5h16v14H4V5Zm5 0v14',
     plus: 'M12 5v14M5 12h14',
     refresh: 'M20 7v5h-5M4 17v-5h5M18 10a6 6 0 0 0-10-4L4 10m2 4a6 6 0 0 0 10 4l4-4',
@@ -2408,6 +2534,50 @@ function getTaskCardStyle(color: string | null) {
         ? 'rgba(255, 255, 255, 0.24)'
         : 'rgba(24, 33, 44, 0.1)',
   } as CSSProperties;
+}
+
+function getWorkspaceHeaderStyle(
+  workspaceColor: string | null,
+  projectColor: string | null,
+) {
+  const baseColor = workspaceColor && isHexColor(workspaceColor)
+    ? workspaceColor
+    : '#E8F3F0';
+  const accentColor = projectColor && isHexColor(projectColor)
+    ? projectColor
+    : baseColor;
+
+  return {
+    '--workspace-color': baseColor,
+    '--project-color': accentColor,
+    '--workspace-text': getReadableTextColor(baseColor),
+  } as CSSProperties;
+}
+
+function getContextChipStyle(color: string | null) {
+  if (!color || !isHexColor(color)) {
+    return undefined;
+  }
+
+  return {
+    '--context-chip-color': color,
+    '--context-chip-text': getReadableTextColor(color),
+  } as CSSProperties;
+}
+
+function getCurrentProject(
+  currentView: SavedViewResponse | null,
+  projects: ProjectResponse[],
+  focusedTaskItem: TaskItemSummaryResponse | null,
+  localProjectId: string,
+) {
+  const projectId =
+    focusedTaskItem?.projectId ??
+    (localProjectId || currentView?.filter.projectId);
+
+  return projectId
+    ? projects.find((project) => project.id === projectId) ?? null
+    : null;
 }
 
 function describeSavedView(view: SavedViewResponse, projects: ProjectResponse[]) {

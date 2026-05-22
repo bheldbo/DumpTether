@@ -52,7 +52,25 @@ export interface ProjectResponse {
   id: string;
   workspaceId: string;
   name: string;
+  color: string | null;
   createdAt: string;
+}
+
+export interface WorkspaceResponse {
+  id: string;
+  name: string;
+  color: string | null;
+  createdAt: string;
+}
+
+export interface UpdateWorkspaceRequest {
+  name?: string | null;
+  color?: string | null;
+}
+
+export interface UpdateProjectRequest {
+  name?: string | null;
+  color?: string | null;
 }
 
 export type SavedViewScope = 'Workspace' | 'Project';

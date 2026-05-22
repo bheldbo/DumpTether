@@ -22,6 +22,8 @@ public sealed class Workspace
 
     public string Name { get; private set; } = string.Empty;
 
+    public string? Color { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public IReadOnlyCollection<Project> Projects => _projects.AsReadOnly();
@@ -38,6 +40,16 @@ public sealed class Workspace
             Guid.NewGuid(),
             DomainGuards.NotBlank(name, nameof(name)),
             createdAt);
+    }
+
+    public void Rename(string name)
+    {
+        Name = DomainGuards.NotBlank(name, nameof(name));
+    }
+
+    public void ChangeColor(string? color)
+    {
+        Color = DomainGuards.OptionalHexColor(color, nameof(color));
     }
 
     public Project AddProject(string name, DateTimeOffset createdAt)
