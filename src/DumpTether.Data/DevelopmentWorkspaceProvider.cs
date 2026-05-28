@@ -8,11 +8,11 @@ namespace DumpTether.Data;
 
 internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvider
 {
-    private const string DevelopmentProjectName = "Development Project";
-    private const string DevelopmentWorkspaceName = "Development Workspace";
+    private const string DefaultProjectName = "General";
+    private const string DevelopmentWorkspaceName = "All Tasks";
+    private const string LegacyDevelopmentProjectName = "Development Project";
+    private const string LegacyDevelopmentWorkspaceName = "Development Workspace";
     private const string GeneralProjectName = "General";
-    private const string JobProjectName = "Job";
-    private const string PersonalProjectName = "Personal";
     private static readonly SemaphoreSlim SeedLock = new(1, 1);
     private static readonly JsonSerializerOptions JsonSerializerOptions =
         new(JsonSerializerDefaults.Web);
@@ -64,9 +64,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
     private static readonly string[] DevelopmentProjectNames =
     [
-        DevelopmentProjectName,
-        JobProjectName,
-        PersonalProjectName
+        DefaultProjectName
     ];
 
     private static readonly string[] LegacyDevelopmentSavedViewNames =
@@ -121,27 +119,46 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             await _dbContext.Workspaces.AddAsync(workspace, cancellationToken);
         }
 
-        var defaultProjectName = string.Equals(
-            workspace.Name,
-            DevelopmentWorkspaceName,
-            StringComparison.OrdinalIgnoreCase)
-            ? DevelopmentProjectName
-            : GeneralProjectName;
-        var seedProjectNames = string.Equals(
-            workspace.Name,
-            DevelopmentWorkspaceName,
-            StringComparison.OrdinalIgnoreCase)
-            ? DevelopmentProjectNames
-            : [GeneralProjectName];
+        if (string.Equals(
+                workspace.Name,
+                LegacyDevelopmentWorkspaceName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            workspace.Rename(DevelopmentWorkspaceName);
+        }
+
+        var legacyDefaultProject = await _dbContext.Projects
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.WorkspaceId == workspace.Id &&
+                    candidate.Name == LegacyDevelopmentProjectName,
+                cancellationToken);
+        var generalProjectExists = await _dbContext.Projects
+            .AnyAsync(
+                candidate =>
+                    candidate.WorkspaceId == workspace.Id &&
+                    candidate.Name == GeneralProjectName,
+                cancellationToken);
+
+        if (legacyDefaultProject is not null && !generalProjectExists)
+        {
+            legacyDefaultProject.Rename(GeneralProjectName);
+            generalProjectExists = true;
+        }
+
+        var defaultProjectName = GeneralProjectName;
+        var seedProjectNames = DevelopmentProjectNames;
 
         foreach (var projectName in seedProjectNames)
         {
-            var exists = await _dbContext.Projects
-                .AnyAsync(
-                    candidate =>
-                        candidate.WorkspaceId == workspace.Id &&
-                        candidate.Name == projectName,
-                    cancellationToken);
+            var exists =
+                projectName == GeneralProjectName && generalProjectExists ||
+                await _dbContext.Projects
+                    .AnyAsync(
+                        candidate =>
+                            candidate.WorkspaceId == workspace.Id &&
+                            candidate.Name == projectName,
+                        cancellationToken);
 
             if (!exists)
             {
@@ -241,9 +258,11 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         }
 
         return await _dbContext.Workspaces
-            .SingleOrDefaultAsync(
-                candidate => candidate.Name == DevelopmentWorkspaceName,
-                cancellationToken);
+            .Where(candidate =>
+                candidate.Name == DevelopmentWorkspaceName ||
+                candidate.Name == LegacyDevelopmentWorkspaceName)
+            .OrderBy(candidate => candidate.Name == DevelopmentWorkspaceName ? 0 : 1)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     private async Task DeactivateDuplicateDevelopmentTemplatesAsync(
@@ -274,21 +293,22 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         IReadOnlyDictionary<string, Project> projects,
         CancellationToken cancellationToken)
     {
-        var overviewExists = await _dbContext.SavedViews
+        var allTasksExists = await _dbContext.SavedViews
             .AnyAsync(
                 savedView =>
                     savedView.WorkspaceId == workspaceId &&
                     savedView.DeletedAt == null &&
-                    savedView.Name == "Overview",
+                    savedView.Name == "All Tasks",
                 cancellationToken);
 
-        if (!overviewExists)
+        if (!allTasksExists)
         {
             var legacyViews = await _dbContext.SavedViews
                 .Where(savedView =>
                     savedView.WorkspaceId == workspaceId &&
                     savedView.DeletedAt == null &&
-                    LegacyDevelopmentSavedViewNames.Contains(savedView.Name))
+                    (LegacyDevelopmentSavedViewNames.Contains(savedView.Name) ||
+                        savedView.Name == "Overview"))
                 .ToListAsync(cancellationToken);
 
             foreach (var legacyView in legacyViews)
@@ -300,7 +320,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         var definitions = new DevelopmentSavedView[]
         {
             new(
-                "Overview",
+                "All Tasks",
                 SavedViewScope.Workspace,
                 null,
                 new DevelopmentSavedViewFilter(),

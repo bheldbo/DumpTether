@@ -95,8 +95,13 @@ public sealed class SavedViewsApiTests
         using var factory = new DumpTetherApiFactory();
         using var client = factory.CreateClient();
         var projects = await GetProjectsAsync(client);
-        var developmentProject = projects.Single(project => project.Name == "Development Project");
-        var jobProject = projects.Single(project => project.Name == "Job");
+        var developmentProject = projects.Single(project => project.Name == "General");
+        var jobProjectResponse = await client.PostAsJsonAsync(
+            "/api/projects",
+            new { name = "Job" });
+        jobProjectResponse.EnsureSuccessStatusCode();
+        var jobProject = await jobProjectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
+        Assert.NotNull(jobProject);
 
         await AddTaskItemAsync(factory, developmentProject, "Development-only task");
         var jobTask = await AddTaskItemAsync(factory, jobProject, "Job-only task");
@@ -166,7 +171,7 @@ public sealed class SavedViewsApiTests
         using var factory = new DumpTetherApiFactory();
         using var client = factory.CreateClient();
         var project = (await GetProjectsAsync(client))
-            .Single(candidate => candidate.Name == "Development Project");
+            .Single(candidate => candidate.Name == "General");
         var now = DateTimeOffset.UtcNow;
         var oldTask = await AddTaskItemAsync(
             factory,
@@ -195,7 +200,7 @@ public sealed class SavedViewsApiTests
         using var factory = new DumpTetherApiFactory();
         using var client = factory.CreateClient();
         var project = (await GetProjectsAsync(client))
-            .Single(candidate => candidate.Name == "Development Project");
+            .Single(candidate => candidate.Name == "General");
         var oldTask = await AddTaskItemAsync(
             factory,
             project,

@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   FormEvent,
   type KeyboardEvent,
+  type MouseEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -211,7 +212,7 @@ const translations = {
     noFollowUp: 'No follow-up',
     noStatus: 'No status',
     notTouchedDays: 'Not touched days',
-    overview: 'Overview',
+    overview: 'All tasks',
     refresh: 'Refresh',
     resetFilters: 'Reset filters',
     saved: 'Saved',
@@ -237,6 +238,10 @@ const translations = {
     workspaceColor: 'Workspace color',
     taskColor: 'Task color',
     deleteNote: 'Delete note',
+    done: 'Done',
+    editMode: 'Edit mode',
+    archiveSelected: 'Archive selected',
+    selectedTasks: 'selected',
     undo: 'Undo',
     addNotePlaceholder: 'Add a note and press Enter...',
     clearColor: 'Clear color',
@@ -304,7 +309,7 @@ const translations = {
     noFollowUp: 'Ingen opfolgning',
     noStatus: 'Ingen status',
     notTouchedDays: 'Ikke roert i dage',
-    overview: 'Overblik',
+    overview: 'Alle opgaver',
     refresh: 'Opdater',
     resetFilters: 'Nulstil filtre',
     saved: 'Gemt',
@@ -330,6 +335,10 @@ const translations = {
     workspaceColor: 'Tavlefarve',
     taskColor: 'Opgavefarve',
     deleteNote: 'Slet note',
+    done: 'Faerdig',
+    editMode: 'Rediger',
+    archiveSelected: 'Arkiver valgte',
+    selectedTasks: 'valgt',
     undo: 'Fortryd',
     addNotePlaceholder: 'Tilfoj en note og tryk Enter...',
     clearColor: 'Ryd farve',
@@ -666,6 +675,27 @@ function App() {
     }
   };
 
+  const handleArchiveTaskItems = async (
+    taskItemIds: string[],
+    requestBody: ArchiveTaskItemRequest,
+  ) => {
+    if (taskItemIds.length === 0) {
+      return;
+    }
+
+    try {
+      await Promise.all(
+        taskItemIds.map((taskItemId) => archiveTaskItem(taskItemId, requestBody)),
+      );
+      setSelectedTaskId(null);
+      setSelectedTask(null);
+      setArchiveDialogIsOpen(false);
+      await loadWorkspace(currentViewId);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
   const handleReopenTaskItem = async (note?: string) => {
     if (!selectedTask) {
       return;
@@ -673,7 +703,9 @@ function App() {
 
     try {
       const reopened = await reopenTaskItem(selectedTask.id, { note });
-      const activeViewId = findViewId(savedViews, 'Overview') ?? currentViewId;
+      const activeViewId = findViewId(savedViews, 'All Tasks') ??
+        findViewId(savedViews, 'Overview') ??
+        currentViewId;
       setCurrentViewId(activeViewId);
       setSelectedTaskId(reopened.id);
       setSelectedTask(reopened);
@@ -820,6 +852,7 @@ function App() {
             isLoadingDetail={isLoadingDetail}
             onAddTimelineEntry={handleAddTimelineEntry}
             onArchive={handleArchiveTaskItem}
+            onArchiveTaskItems={handleArchiveTaskItems}
             onCloseArchiveDialog={() => setArchiveDialogIsOpen(false)}
             onCreateTaskItem={handleCreateTaskItem}
             onCreateProject={handleCreateProject}
@@ -917,7 +950,7 @@ function Sidebar({
   const [workspaceIsSubmitting, setWorkspaceIsSubmitting] = useState(false);
   const workspaceInputRef = useRef<HTMLInputElement>(null);
   const visibleSavedViews = useMemo(
-    () => savedViews.filter((view) => ['overview', 'archive'].includes(view.name.toLowerCase())),
+    () => savedViews.filter((view) => ['all tasks', 'overview', 'archive'].includes(view.name.toLowerCase())),
     [savedViews],
   );
 
@@ -1071,6 +1104,7 @@ function TaskBoard({
   isLoadingDetail,
   onAddTimelineEntry,
   onArchive,
+  onArchiveTaskItems,
   onCloseArchiveDialog,
   onCreateProject,
   onCreateTaskItem,
@@ -1099,6 +1133,7 @@ function TaskBoard({
   isLoadingDetail: boolean;
   onAddTimelineEntry: (note: string) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
+  onArchiveTaskItems: (taskItemIds: string[], requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onCloseArchiveDialog: () => void;
   onCreateProject: () => void;
   onCreateTaskItem: (
@@ -1124,6 +1159,9 @@ function TaskBoard({
   const canCreateTask = currentView?.filter.archive !== 'Archived';
   const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
   const [pendingDeletedNoteIds, setPendingDeletedNoteIds] = useState<string[]>([]);
+  const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [batchArchiveIsOpen, setBatchArchiveIsOpen] = useState(false);
   const visibleTaskItems = useMemo(
     () => applyTaskWallFilters(taskItems, filters),
     [filters, taskItems],
@@ -1137,16 +1175,29 @@ function TaskBoard({
     [colorOptions, taskItems],
   );
   const filtersAreActive = taskWallFiltersAreActive(filters);
-  const currentProject = getCurrentProject(
-    currentView,
-    projects,
-    focusedTaskItem,
-    filters.projectId,
-  );
-
   useEffect(() => {
     setPendingDeletedNoteIds([]);
   }, [selectedTaskId]);
+
+  useEffect(() => {
+    setSelectedTaskIds((currentIds) =>
+      currentIds.filter((id) => visibleTaskItems.some((taskItem) => taskItem.id === id)),
+    );
+  }, [visibleTaskItems]);
+
+  const toggleSelectedTask = (taskItemId: string) => {
+    setSelectedTaskIds((currentIds) =>
+      currentIds.includes(taskItemId)
+        ? currentIds.filter((currentId) => currentId !== taskItemId)
+        : [...currentIds, taskItemId],
+    );
+  };
+
+  const closeEditMode = () => {
+    setEditModeIsEnabled(false);
+    setSelectedTaskIds([]);
+    setBatchArchiveIsOpen(false);
+  };
 
   const closeFocusedTask = useCallback(async () => {
     const idsToDelete = pendingDeletedNoteIds;
@@ -1184,22 +1235,26 @@ function TaskBoard({
       aria-labelledby="task-board-title"
       data-focus-mode={Boolean(focusedTaskItem)}
     >
-      <WorkspaceHeader
-        currentProject={currentProject}
-        currentView={currentView}
-        onCreateProject={onCreateProject}
-        onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
-          ...currentFilters,
-          projectId,
-        }))}
-        onUpdateProject={onUpdateProject}
-        onUpdateWorkspace={onUpdateWorkspace}
-        colorOptions={colorOptions}
-        projects={projects}
-        selectedProjectId={filters.projectId}
-        t={t}
-        workspace={workspace}
-      />
+      {!focusedTaskItem ? (
+        <WorkspaceHeader
+          currentView={currentView}
+          editModeIsEnabled={editModeIsEnabled}
+          onCreateProject={onCreateProject}
+          onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
+            ...currentFilters,
+            projectId,
+          }))}
+          onToggleEditMode={() =>
+            editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
+          onUpdateProject={onUpdateProject}
+          onUpdateWorkspace={onUpdateWorkspace}
+          colorOptions={colorOptions}
+          projects={projects}
+          selectedProjectId={filters.projectId}
+          t={t}
+          workspace={workspace}
+        />
+      ) : null}
 
       {!focusedTaskItem ? (
         <TaskFilterBar
@@ -1223,25 +1278,45 @@ function TaskBoard({
           </p>
         ) : null}
 
-        {!isLoading && canCreateTask && !focusedTaskItem ? (
-          <QuickCreateTaskCard onCreateTaskItem={onCreateTaskItem} t={t} />
-        ) : null}
-
         {displayedTaskItems.map((taskItem) => {
           const isExpanded = selectedTaskId === taskItem.id;
+          const isSelectedForEdit = selectedTaskIds.includes(taskItem.id);
 
           return (
             <article
               className="task-card"
               data-expanded={isExpanded}
+              data-edit-selected={isSelectedForEdit}
+              data-edit-mode={editModeIsEnabled}
               data-state={getTaskState(taskItem)}
               key={taskItem.id}
               style={getTaskCardStyle(taskItem.color)}
             >
+              {editModeIsEnabled && !isExpanded ? (
+                <span
+                  className="task-edit-selector"
+                  aria-hidden="true"
+                  data-selected={isSelectedForEdit}
+                >
+                  {isSelectedForEdit ? <Icon name="check" /> : null}
+                </span>
+              ) : null}
               <button
                 aria-expanded={isExpanded}
+                aria-pressed={editModeIsEnabled ? isSelectedForEdit : undefined}
                 className="task-card-button"
-                onClick={() => (isExpanded ? void closeFocusedTask() : onSelectTaskItem(taskItem.id))}
+                onClick={() => {
+                  if (editModeIsEnabled) {
+                    toggleSelectedTask(taskItem.id);
+                    return;
+                  }
+
+                  if (isExpanded) {
+                    void closeFocusedTask();
+                  } else {
+                    onSelectTaskItem(taskItem.id);
+                  }
+                }}
                 title={isExpanded ? t('backToWall') : taskItem.title}
                 type="button"
               >
@@ -1256,7 +1331,7 @@ function TaskBoard({
                     {taskItem.latestTimelineEntry ? (
                       <>
                         <span className="task-card-latest-date">
-                          {formatShortDate(taskItem.latestTimelineEntry.occurredAt)}
+                          {formatFullDate(taskItem.latestTimelineEntry.occurredAt)}
                         </span>
                         {taskItem.latestTimelineEntry.details ?? taskItem.latestTimelineEntry.summary}
                       </>
@@ -1266,13 +1341,19 @@ function TaskBoard({
                   </span>
                 </span>
                 <span className="task-card-meta">
+                  <span>{t('created')}: {formatFullDate(taskItem.createdAt)}</span>
                   {taskItem.status ? <span>{taskItem.status}</span> : null}
                   {taskItem.category ? <span>{taskItem.category}</span> : null}
                   <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
                     {formatRelativeDate(taskItem.lastTouchedAt)}
                   </span>
                   {taskItem.followUpAt ? (
-                    <span>{t('followUp')} {formatShortDate(taskItem.followUpAt)}</span>
+                    <span
+                      className="follow-up-chip"
+                      data-tone={getFollowUpTone(taskItem.followUpAt)}
+                    >
+                      {t('followUp')} {formatFullDate(taskItem.followUpAt)}
+                    </span>
                   ) : null}
                 </span>
                 <TaskBadges taskItem={taskItem} />
@@ -1315,16 +1396,48 @@ function TaskBoard({
           );
         })}
       </div>
+      {!isLoading && canCreateTask && !focusedTaskItem && !editModeIsEnabled ? (
+        <QuickCreateTaskButton onCreateTaskItem={onCreateTaskItem} t={t} />
+      ) : null}
+      {editModeIsEnabled && !focusedTaskItem ? (
+        <div className="edit-mode-bar">
+          <span>{selectedTaskIds.length} {t('selectedTasks')}</span>
+          <button
+            disabled={selectedTaskIds.length === 0}
+            onClick={() => setBatchArchiveIsOpen(true)}
+            type="button"
+          >
+            <Icon name="archive" />
+            <span>{t('archiveSelected')}</span>
+          </button>
+          <button className="ghost-button" onClick={closeEditMode} type="button">
+            {t('done')}
+          </button>
+        </div>
+      ) : null}
+      {batchArchiveIsOpen ? (
+        <ArchiveDialog
+          archiveResolutions={archiveResolutions}
+          onArchive={async (requestBody) => {
+            await onArchiveTaskItems(selectedTaskIds, requestBody);
+            closeEditMode();
+          }}
+          onClose={() => setBatchArchiveIsOpen(false)}
+          t={t}
+          taskTitle={`${selectedTaskIds.length} ${t('selectedTasks')}`}
+        />
+      ) : null}
     </section>
   );
 }
 
 function WorkspaceHeader({
   colorOptions,
-  currentProject,
   currentView,
+  editModeIsEnabled,
   onCreateProject,
   onSelectProjectFilter,
+  onToggleEditMode,
   onUpdateProject,
   onUpdateWorkspace,
   projects,
@@ -1333,10 +1446,11 @@ function WorkspaceHeader({
   workspace,
 }: {
   colorOptions: string[];
-  currentProject: ProjectResponse | null;
   currentView: SavedViewResponse | null;
+  editModeIsEnabled: boolean;
   onCreateProject: () => void;
   onSelectProjectFilter: (projectId: string) => void;
+  onToggleEditMode: () => void;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
   projects: ProjectResponse[];
@@ -1347,9 +1461,9 @@ function WorkspaceHeader({
   const [workspaceIsEditing, setWorkspaceIsEditing] = useState(false);
   const [workspaceName, setWorkspaceName] = useState(workspace?.name ?? '');
   const [workspaceColor, setWorkspaceColor] = useState(workspace?.color ?? '');
-  const [projectIsEditing, setProjectIsEditing] = useState(false);
-  const [projectName, setProjectName] = useState(currentProject?.name ?? '');
-  const [projectColor, setProjectColor] = useState(currentProject?.color ?? '');
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState('');
+  const [projectColor, setProjectColor] = useState('');
 
   useEffect(() => {
     setWorkspaceName(workspace?.name ?? '');
@@ -1357,11 +1471,17 @@ function WorkspaceHeader({
     setWorkspaceIsEditing(false);
   }, [workspace]);
 
-  useEffect(() => {
-    setProjectName(currentProject?.name ?? '');
-    setProjectColor(currentProject?.color ?? '');
-    setProjectIsEditing(false);
-  }, [currentProject]);
+  const startProjectEditing = (project: ProjectResponse) => {
+    setEditingProjectId(project.id);
+    setProjectName(project.name);
+    setProjectColor(project.color ?? '');
+  };
+
+  const cancelProjectEditing = () => {
+    setEditingProjectId(null);
+    setProjectName('');
+    setProjectColor('');
+  };
 
   const saveWorkspace = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1382,21 +1502,21 @@ function WorkspaceHeader({
     event.preventDefault();
 
     const trimmedName = projectName.trim();
-    if (!currentProject || !trimmedName) {
+    if (!editingProjectId || !trimmedName) {
       return;
     }
 
-    await onUpdateProject(currentProject.id, {
+    await onUpdateProject(editingProjectId, {
       name: trimmedName,
       color: projectColor.trim() || null,
     });
-    setProjectIsEditing(false);
+    cancelProjectEditing();
   };
 
   return (
     <div
       className="workspace-header"
-      style={getWorkspaceHeaderStyle(workspace?.color ?? null, currentProject?.color ?? null)}
+      style={getWorkspaceHeaderStyle(workspace?.color ?? null, null)}
     >
       <div className="workspace-title-block">
         <div className="workspace-title-row">
@@ -1457,61 +1577,6 @@ function WorkspaceHeader({
             </>
           )}
         </div>
-        <div className="workspace-context-row">
-          {projectIsEditing && currentProject ? (
-            <form className="inline-heading-editor project-heading-editor" onSubmit={(event) => void saveProject(event)}>
-              <input
-                aria-label={t('editProject')}
-                onChange={(event) => setProjectName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    setProjectIsEditing(false);
-                    setProjectName(currentProject.name);
-                    setProjectColor(currentProject.color ?? '');
-                  }
-                }}
-                required
-                type="text"
-                value={projectName}
-              />
-              <ColorPickerPopover
-                color={projectColor}
-                colorOptions={colorOptions}
-                label={`${currentProject.name} ${t('color')}`}
-                onChange={setProjectColor}
-                t={t}
-              />
-              <button className="icon-button" title={t('saved')} type="submit">
-                <Icon name="check" />
-              </button>
-              <button
-                className="icon-button"
-                onClick={() => setProjectIsEditing(false)}
-                title={t('cancel')}
-                type="button"
-              >
-                <Icon name="close" />
-              </button>
-            </form>
-          ) : (
-            <button
-              className="context-chip context-edit-button"
-              disabled={!currentProject}
-              onClick={() => currentProject && setProjectIsEditing(true)}
-              style={getContextChipStyle(currentProject?.color ?? null)}
-              title={currentProject ? t('editProject') : t('allProjects')}
-              type="button"
-            >
-              <span>{currentProject?.name ?? t('allProjects')}</span>
-              {currentProject ? <Icon name="edit" /> : null}
-            </button>
-          )}
-          {!projectIsEditing ? (
-            <span className="context-muted">
-              {currentView ? formatSavedViewName(currentView.name, t) : t('board')}
-            </span>
-          ) : null}
-        </div>
         <div className="project-tag-strip" aria-label={t('projectTags')}>
           <button
             className="project-tag"
@@ -1522,17 +1587,65 @@ function WorkspaceHeader({
             {t('allProjects')}
           </button>
           {projects.map((project) => (
-            <button
-              className="project-tag"
-              data-selected={selectedProjectId === project.id}
-              key={project.id}
-              onClick={() => onSelectProjectFilter(project.id)}
-              style={getContextChipStyle(project.color)}
-              title={project.name}
-              type="button"
-            >
-              {project.name}
-            </button>
+            editingProjectId === project.id ? (
+              <form
+                className="project-tag-editor"
+                key={project.id}
+                onSubmit={(event) => void saveProject(event)}
+              >
+                <input
+                  aria-label={t('editProject')}
+                  onChange={(event) => setProjectName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      cancelProjectEditing();
+                    }
+                  }}
+                  required
+                  type="text"
+                  value={projectName}
+                />
+                <ColorPickerPopover
+                  color={projectColor}
+                  colorOptions={colorOptions}
+                  label={`${project.name} ${t('color')}`}
+                  onChange={setProjectColor}
+                  t={t}
+                />
+                <button className="tiny-icon-button" title={t('saved')} type="submit">
+                  <Icon name="check" />
+                </button>
+                <button
+                  className="tiny-icon-button"
+                  onClick={cancelProjectEditing}
+                  title={t('cancel')}
+                  type="button"
+                >
+                  <Icon name="close" />
+                </button>
+              </form>
+            ) : (
+              <span className="project-tag-wrap" key={project.id}>
+                <button
+                  className="project-tag"
+                  data-selected={selectedProjectId === project.id}
+                  onClick={() => onSelectProjectFilter(project.id)}
+                  style={getContextChipStyle(project.color)}
+                  title={project.name}
+                  type="button"
+                >
+                  {project.name}
+                </button>
+                <button
+                  className="tiny-icon-button project-tag-edit"
+                  onClick={() => startProjectEditing(project)}
+                  title={t('editProject')}
+                  type="button"
+                >
+                  <Icon name="edit" />
+                </button>
+              </span>
+            )
           ))}
           <button
             className="project-tag project-tag-add"
@@ -1547,6 +1660,15 @@ function WorkspaceHeader({
         <p>{t('wallHelp')}</p>
       </div>
       <div className="board-actions">
+        <button
+          className="secondary-action"
+          data-active={editModeIsEnabled}
+          onClick={onToggleEditMode}
+          type="button"
+        >
+          <Icon name={editModeIsEnabled ? 'check' : 'edit'} />
+          <span>{editModeIsEnabled ? t('done') : t('editMode')}</span>
+        </button>
         <span className="sort-pill">
           {t('sortedBy')} {formatSortField(currentView?.sort.field, t)}{' '}
           {currentView?.sort.direction === 'asc' ? t('sortAscending') : t('sortDescending')}
@@ -1556,7 +1678,7 @@ function WorkspaceHeader({
   );
 }
 
-function QuickCreateTaskCard({
+function QuickCreateTaskButton({
   onCreateTaskItem,
   t,
 }: {
@@ -1592,7 +1714,7 @@ function QuickCreateTaskCard({
   if (!isOpen) {
     return (
       <button
-        className="task-card task-card-create"
+        className="quick-create-fab"
         onClick={() => setIsOpen(true)}
         title={t('newTask')}
         type="button"
@@ -1604,7 +1726,7 @@ function QuickCreateTaskCard({
   }
 
   return (
-    <form className="task-card task-card-create task-card-create-form" onSubmit={handleSubmit}>
+    <form className="quick-create-popover" onSubmit={handleSubmit}>
       <input
         aria-label="New task title"
         ref={inputRef}
@@ -1909,10 +2031,20 @@ function TaskDetail({
   }, [taskItem]);
 
   const fieldValuesCanBeEdited = !taskItem.archivedAt && Boolean(taskItem.template);
+  const closeFromHeader = (event: MouseEvent<HTMLDivElement>) => {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest('button, input, select, textarea, label, .color-popover')
+    ) {
+      return;
+    }
+
+    void onClose();
+  };
 
   return (
     <section className="task-detail" aria-label="Task detail">
-      <div className="detail-header">
+      <div className="detail-header task-detail-header" onClick={closeFromHeader}>
         <button
           className="icon-button task-detail-back-button"
           onClick={() => void onClose()}
@@ -1923,13 +2055,21 @@ function TaskDetail({
           <span className="sr-only">{t('backToWall')}</span>
         </button>
         <TaskHeaderEditor
-          colorOptions={colorOptions}
           onUpdateTaskItem={onUpdateTaskItem}
           t={t}
           taskItem={taskItem}
         />
 
         <div className="detail-actions">
+          {!taskItem.archivedAt ? (
+            <ColorPickerPopover
+              color={taskItem.color ?? ''}
+              colorOptions={colorOptions}
+              label={t('taskColor')}
+              onChange={(color) => void onUpdateTaskItem({ color })}
+              t={t}
+            />
+          ) : null}
           {taskItem.archivedAt ? (
             <form
               className="reopen-form"
@@ -2020,12 +2160,10 @@ function TaskDetail({
 }
 
 function TaskHeaderEditor({
-  colorOptions,
   onUpdateTaskItem,
   t,
   taskItem,
 }: {
-  colorOptions: string[];
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   t: Translate;
   taskItem: TaskItemDetailResponse;
@@ -2033,30 +2171,29 @@ function TaskHeaderEditor({
   const [title, setTitle] = useState(taskItem.title);
   const [status, setStatus] = useState(taskItem.status ?? '');
   const [category, setCategory] = useState(taskItem.category ?? '');
-  const [color, setColor] = useState(taskItem.color ?? '');
   const [followUpDate, setFollowUpDate] = useState(toDateInputValue(taskItem.followUpAt));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [isEditing, setIsEditing] = useState(false);
+  const [editingField, setEditingField] = useState<
+    'title' | 'status' | 'category' | 'followUp' | null
+  >(null);
 
   useEffect(() => {
     setTitle(taskItem.title);
     setStatus(taskItem.status ?? '');
     setCategory(taskItem.category ?? '');
-    setColor(taskItem.color ?? '');
     setFollowUpDate(toDateInputValue(taskItem.followUpAt));
     setSaveState('idle');
   }, [taskItem]);
 
   useEffect(() => {
-    setIsEditing(false);
+    setEditingField(null);
   }, [taskItem.id]);
 
   const saveChanges = async (overrides: Partial<{
     title: string;
     status: string;
     category: string;
-    color: string;
     followUpDate: string;
   }> = {}) => {
     if (taskItem.archivedAt) {
@@ -2066,7 +2203,6 @@ function TaskHeaderEditor({
     const nextTitle = (overrides.title ?? title).trim();
     const nextStatus = (overrides.status ?? status).trim();
     const nextCategory = (overrides.category ?? category).trim();
-    const nextColor = (overrides.color ?? color).trim();
     const nextFollowUpDate = overrides.followUpDate ?? followUpDate;
     const normalizedFollowUpAt = nextFollowUpDate
       ? new Date(`${nextFollowUpDate}T12:00:00`).toISOString()
@@ -2081,10 +2217,10 @@ function TaskHeaderEditor({
       nextTitle !== taskItem.title ||
       nextStatus !== (taskItem.status ?? '') ||
       nextCategory !== (taskItem.category ?? '') ||
-      nextColor !== (taskItem.color ?? '') ||
       normalizedFollowUpAt !== taskItem.followUpAt;
 
     if (!hasChanges) {
+      setEditingField(null);
       return;
     }
 
@@ -2095,15 +2231,14 @@ function TaskHeaderEditor({
         title: nextTitle,
         status: nextStatus,
         category: nextCategory,
-        color: nextColor,
         followUpAt: normalizedFollowUpAt,
       });
       setSaveState('saved');
       setTitle(nextTitle);
       setStatus(nextStatus);
       setCategory(nextCategory);
-      setColor(nextColor);
       setFollowUpDate(nextFollowUpDate);
+      setEditingField(null);
     } catch {
       setSaveState('error');
     } finally {
@@ -2120,9 +2255,8 @@ function TaskHeaderEditor({
       setTitle(taskItem.title);
       setStatus(taskItem.status ?? '');
       setCategory(taskItem.category ?? '');
-      setColor(taskItem.color ?? '');
       setFollowUpDate(toDateInputValue(taskItem.followUpAt));
-      setIsEditing(false);
+      setEditingField(null);
       event.currentTarget.blur();
     }
   };
@@ -2133,13 +2267,13 @@ function TaskHeaderEditor({
         <p className="detail-kicker">{t('archivedTask')}</p>
         <h2>{taskItem.title}</h2>
         <div className="task-header-fields">
-          <span>{t('created')}: {formatShortDate(taskItem.createdAt)}</span>
+          <span>{t('created')}: {formatFullDate(taskItem.createdAt)}</span>
           <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
             {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
           </span>
           <span>{t('status')}: {taskItem.status ?? t('noStatus')}</span>
           <span>{t('category')}: {taskItem.category ?? t('noCategory')}</span>
-          <span>{t('followUpDate')}: {taskItem.followUpAt ? formatShortDate(taskItem.followUpAt) : t('noFollowUp')}</span>
+          <span>{t('followUpDate')}: {taskItem.followUpAt ? formatFullDate(taskItem.followUpAt) : t('noFollowUp')}</span>
         </div>
       </div>
     );
@@ -2148,118 +2282,111 @@ function TaskHeaderEditor({
   return (
     <div className="task-header-editor">
       <p className="detail-kicker">{t('activeTask')}</p>
-      {isEditing ? (
-        <>
-          <div className="task-title-row">
-            <input
-              aria-label={t('editTask')}
-              className="task-title-input"
-              disabled={isSubmitting}
-              onBlur={() => void saveChanges()}
-              onChange={(event) => setTitle(event.target.value)}
-              onKeyDown={handleTextKeyDown}
-              required
-              type="text"
-              value={title}
-            />
-            <ColorPickerPopover
-              color={color}
-              colorOptions={colorOptions}
-              label={t('taskColor')}
-              onChange={(nextColor) => {
-                setColor(nextColor);
-                void saveChanges({ color: nextColor });
-              }}
-              t={t}
-            />
-            <button
-              className="icon-button"
-              onClick={() => setIsEditing(false)}
-              title={t('saved')}
-              type="button"
-            >
-              <Icon name="check" />
-            </button>
-          </div>
-          <div className="task-header-fields task-header-fields-edit">
-            <label>
-              {t('status')}
-              <input
-                aria-label={t('status')}
-                disabled={isSubmitting}
-                onBlur={() => void saveChanges()}
-                onChange={(event) => setStatus(event.target.value)}
-                onKeyDown={handleTextKeyDown}
-                placeholder={t('noStatus')}
-                type="text"
-                value={status}
-              />
-            </label>
-            <label>
-              {t('followUpDate')}
-              <input
-                aria-label={t('followUpDate')}
-                disabled={isSubmitting}
-                onChange={(event) => {
-                  setFollowUpDate(event.target.value);
-                  void saveChanges({ followUpDate: event.target.value });
-                }}
-                type="date"
-                value={followUpDate}
-              />
-            </label>
-            <label>
-              {t('category')}
-              <input
-                aria-label={t('category')}
-                disabled={isSubmitting}
-                onBlur={() => void saveChanges()}
-                onChange={(event) => setCategory(event.target.value)}
-                onKeyDown={handleTextKeyDown}
-                placeholder={t('noCategory')}
-                type="text"
-                value={category}
-              />
-            </label>
-            <span className="saving-copy" data-state={saveState}>
-              {saveState === 'saving'
-                ? t('saving')
-                : saveState === 'saved'
-                  ? t('saved')
-                  : saveState === 'error'
-                    ? t('saveFailed')
-                    : t('lastUpdated')}
-            </span>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="task-title-row task-title-display-row">
-            <h2>{taskItem.title}</h2>
-            <button
-              className="icon-button header-edit-button"
-              onClick={() => setIsEditing(true)}
-              title={t('editTask')}
-              type="button"
-            >
-              <span
-                className="header-color-dot"
-                style={{ backgroundColor: taskItem.color ?? '#ffffff' }}
-              />
-              <Icon name="edit" />
-            </button>
-          </div>
-          <div className="task-header-fields">
-            <span>{t('created')}: {formatShortDate(taskItem.createdAt)}</span>
-            <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
-              {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
-            </span>
-            <span>{t('status')}: {taskItem.status ?? t('noStatus')}</span>
-            <span>{t('category')}: {taskItem.category ?? t('noCategory')}</span>
-            <span>{t('followUpDate')}: {taskItem.followUpAt ? formatShortDate(taskItem.followUpAt) : t('noFollowUp')}</span>
-          </div>
-        </>
-      )}
+      <div className="task-title-row task-title-display-row">
+        {editingField === 'title' ? (
+          <input
+            aria-label={t('editTask')}
+            className="task-title-input"
+            disabled={isSubmitting}
+            onBlur={() => void saveChanges()}
+            onChange={(event) => setTitle(event.target.value)}
+            onKeyDown={handleTextKeyDown}
+            required
+            type="text"
+            value={title}
+          />
+        ) : (
+          <h2>{taskItem.title}</h2>
+        )}
+        <button
+          className="icon-button header-edit-button"
+          onClick={() => setEditingField('title')}
+          title={t('editTask')}
+          type="button"
+        >
+          <Icon name="edit" />
+        </button>
+      </div>
+      <div className="task-header-fields">
+        <span>{t('created')}: {formatFullDate(taskItem.createdAt)}</span>
+        <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
+          {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
+        </span>
+        {editingField === 'status' ? (
+          <input
+            aria-label={t('status')}
+            autoFocus
+            disabled={isSubmitting}
+            onBlur={() => void saveChanges()}
+            onChange={(event) => setStatus(event.target.value)}
+            onKeyDown={handleTextKeyDown}
+            placeholder={t('noStatus')}
+            type="text"
+            value={status}
+          />
+        ) : (
+          <button
+            className="task-meta-chip"
+            onClick={() => setEditingField('status')}
+            type="button"
+          >
+            {t('status')}: {taskItem.status ?? t('noStatus')}
+          </button>
+        )}
+        {editingField === 'category' ? (
+          <input
+            aria-label={t('category')}
+            autoFocus
+            disabled={isSubmitting}
+            onBlur={() => void saveChanges()}
+            onChange={(event) => setCategory(event.target.value)}
+            onKeyDown={handleTextKeyDown}
+            placeholder={t('noCategory')}
+            type="text"
+            value={category}
+          />
+        ) : (
+          <button
+            className="task-meta-chip"
+            onClick={() => setEditingField('category')}
+            type="button"
+          >
+            {t('category')}: {taskItem.category ?? t('noCategory')}
+          </button>
+        )}
+        {editingField === 'followUp' ? (
+          <input
+            aria-label={t('followUpDate')}
+            autoFocus
+            disabled={isSubmitting}
+            onBlur={() => void saveChanges()}
+            onChange={(event) => {
+              setFollowUpDate(event.target.value);
+              void saveChanges({ followUpDate: event.target.value });
+            }}
+            type="date"
+            value={followUpDate}
+          />
+        ) : (
+          <button
+            className="task-meta-chip follow-up-chip"
+            data-tone={getFollowUpTone(taskItem.followUpAt)}
+            onClick={() => setEditingField('followUp')}
+            type="button"
+          >
+            {t('followUpDate')}: {taskItem.followUpAt ? formatFullDate(taskItem.followUpAt) : t('noFollowUp')}
+          </button>
+        )}
+        <span className="saving-copy" data-state={saveState}>
+          {saveState === 'saving'
+            ? t('saving')
+            : saveState === 'saved'
+              ? t('saved')
+              : saveState === 'error'
+                ? t('saveFailed')
+                : null}
+        </span>
+      </div>
     </div>
   );
 }
@@ -2321,7 +2448,7 @@ function ColorPickerPopover({
         title={label}
         type="button"
       >
-        <Icon name="palette" />
+        <Icon name="edit" />
       </button>
       {isOpen ? (
         <div className="color-popover-panel">
@@ -3381,7 +3508,7 @@ function pickSavedViewId(
     return preferredViewId;
   }
 
-  return findViewId(views, 'Overview') ?? views[0]?.id ?? null;
+  return findViewId(views, 'All Tasks') ?? findViewId(views, 'Overview') ?? views[0]?.id ?? null;
 }
 
 function findViewId(views: SavedViewResponse[], name: string) {
@@ -3561,7 +3688,7 @@ function taskMatchesFollowUp(
 
   switch (followUp) {
     case 'Overdue':
-      return followUpAt.getTime() < now.getTime();
+      return getFollowUpTone(taskItem.followUpAt) === 'overdue';
     case 'Today':
       return followUpAt >= today && followUpAt < tomorrow;
     case 'ThisWeek':
@@ -3639,21 +3766,6 @@ function getContextChipStyle(color: string | null) {
   } as CSSProperties;
 }
 
-function getCurrentProject(
-  currentView: SavedViewResponse | null,
-  projects: ProjectResponse[],
-  focusedTaskItem: TaskItemSummaryResponse | null,
-  localProjectId: string,
-) {
-  const projectId =
-    focusedTaskItem?.projectId ??
-    (localProjectId || currentView?.filter.projectId);
-
-  return projectId
-    ? projects.find((project) => project.id === projectId) ?? null
-    : null;
-}
-
 function getTaskState(taskItem: TaskItemSummaryResponse) {
   if (taskItem.archivedAt) {
     return 'archived';
@@ -3693,10 +3805,6 @@ function getTaskBadges(taskItem: TaskItemSummaryResponse) {
     badges.push('Stale');
   }
 
-  if (taskItem.followUpAt && !isFollowUpOverdue(taskItem)) {
-    badges.push('Follow-up');
-  }
-
   return badges;
 }
 
@@ -3734,7 +3842,34 @@ function isWaiting(taskItem: TaskItemSummaryResponse) {
 function isFollowUpOverdue(taskItem: TaskItemSummaryResponse) {
   return Boolean(taskItem.followUpAt) &&
     !taskItem.archivedAt &&
-    new Date(taskItem.followUpAt!).getTime() < Date.now();
+    getFollowUpTone(taskItem.followUpAt) === 'overdue';
+}
+
+function getFollowUpTone(value: string | null) {
+  if (!value) {
+    return 'none';
+  }
+
+  const followUpDate = new Date(value);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const followUpDay = new Date(
+    followUpDate.getFullYear(),
+    followUpDate.getMonth(),
+    followUpDate.getDate(),
+  );
+
+  if (followUpDay.getTime() < today.getTime()) {
+    return 'overdue';
+  }
+
+  if (followUpDay.getTime() < tomorrow.getTime()) {
+    return 'today';
+  }
+
+  return 'future';
 }
 
 function isStale(taskItem: TaskItemSummaryResponse) {
@@ -3862,6 +3997,7 @@ function formatSortField(value: SavedViewSortField | null | undefined, t: Transl
 function formatSavedViewName(name: string, t: Translate) {
   switch (name.toLowerCase()) {
     case 'overview':
+    case 'all tasks':
       return t('overview');
     case 'archive':
       return t('archive');
@@ -3877,8 +4013,9 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function formatShortDate(value: string) {
+function formatFullDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
     month: 'short',
     day: 'numeric',
   }).format(new Date(value));

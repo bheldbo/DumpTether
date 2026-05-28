@@ -66,7 +66,7 @@ public sealed class WorkspaceProjectMetadataApiTests
         using var factory = new DumpTetherApiFactory();
         using var client = factory.CreateClient();
         var projects = await client.GetFromJsonAsync<List<ProjectResponse>>("/api/projects");
-        var project = Assert.Single(projects!, candidate => candidate.Name == "Development Project");
+        var project = Assert.Single(projects!, candidate => candidate.Name == "General");
 
         var response = await client.PatchAsJsonAsync(
             $"/api/projects/{project.Id}",
