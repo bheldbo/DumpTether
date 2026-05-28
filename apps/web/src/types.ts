@@ -195,6 +195,8 @@ export interface CreateTaskItemRequest {
   title: string;
   taskTemplateId?: string | null;
   fieldValues?: FieldValueMap;
+  projectId?: string | null;
+  category?: string | null;
 }
 
 export interface UpdateTaskItemRequest {
@@ -204,6 +206,7 @@ export interface UpdateTaskItemRequest {
   color?: string | null;
   followUpAt?: string | null;
   fieldValues?: FieldValueMap;
+  projectId?: string | null;
 }
 
 export interface AddTaskTimelineEntryRequest {

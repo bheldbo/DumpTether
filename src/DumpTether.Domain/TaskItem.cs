@@ -134,6 +134,16 @@ public sealed class TaskItem
                 : "Follow-up cleared");
     }
 
+    public void AssignProject(Guid? projectId)
+    {
+        if (projectId == Guid.Empty)
+        {
+            throw new ArgumentException("Value cannot be empty.", nameof(projectId));
+        }
+
+        ProjectId = projectId;
+    }
+
     public void AddNote(string note, DateTimeOffset occurredAt)
     {
         AddTimelineEntry(

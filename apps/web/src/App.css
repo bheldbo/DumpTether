@@ -599,6 +599,8 @@ label {
 }
 
 .header-edit-button {
+  position: relative;
+  z-index: 4;
   width: auto;
   min-width: 38px;
   display: inline-flex;
@@ -745,9 +747,9 @@ label {
 }
 
 .quick-create-popover {
-  width: min(420px, calc(100vw - 56px));
+  width: min(720px, calc(100vw - 56px));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(130px, 0.75fr) minmax(150px, 0.85fr) auto auto;
   gap: 8px;
   align-items: center;
   padding: 10px;
@@ -760,7 +762,7 @@ label {
 
 .filter-bar {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) minmax(112px, 1fr) minmax(112px, 1fr) minmax(138px, 1fr) minmax(112px, 1fr) minmax(112px, 1fr) minmax(112px, 1fr) auto;
+  grid-template-columns: minmax(180px, 1.5fr) minmax(112px, 1fr) minmax(138px, 1fr) minmax(112px, 1fr) minmax(112px, 1fr) minmax(112px, 1fr) auto;
   gap: 8px;
   align-items: center;
   padding: 10px;
@@ -1170,6 +1172,14 @@ label {
     linear-gradient(135deg, rgba(240, 247, 255, 0.96), rgba(226, 237, 248, 0.92)),
     linear-gradient(90deg, color-mix(in srgb, var(--task-note-color, #e6eef8) 28%, transparent), transparent 60%);
   cursor: zoom-out;
+  transition: border-color 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.task-detail-header:hover {
+  border-color: rgba(24, 76, 72, 0.22);
+  box-shadow:
+    0 0 0 2px rgba(24, 76, 72, 0.05),
+    0 12px 26px rgba(32, 45, 58, 0.08);
 }
 
 .detail-header h2 {
@@ -1319,6 +1329,7 @@ label {
 
 .color-popover {
   position: relative;
+  z-index: 5;
   width: max-content;
 }
 
@@ -1714,6 +1725,14 @@ label {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.field-order-actions button {
+  width: 34px;
+  min-height: 34px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
 }
 
 .field-order-actions button,

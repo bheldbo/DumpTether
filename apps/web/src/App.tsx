@@ -44,6 +44,7 @@ import { toFieldValueMap } from './fieldValues';
 import type {
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CreateTaskItemRequest,
   FieldDefinitionType,
   FieldValueMap,
   ProjectResponse,
@@ -70,6 +71,8 @@ type Translate = (key: TranslationKey) => string;
 
 type IconName =
   | 'archive'
+  | 'arrowDown'
+  | 'arrowUp'
   | 'back'
   | 'check'
   | 'clock'
@@ -165,11 +168,11 @@ const workspaceStorageKey = 'dumptether.workspace';
 const translations = {
   en: {
     addTask: 'Add task',
-    allProjects: 'All projects',
+    allProjects: 'All categories',
     anyCategory: 'Any category',
     anyColor: 'Any color',
     anyFollowUp: 'Any follow-up',
-    anyProject: 'Any project',
+    anyProject: 'Any category',
     anyStatus: 'Any status',
     archive: 'Archive',
     archiveAction: 'Archive',
@@ -233,13 +236,13 @@ const translations = {
     sortLastTouched: 'Last updated',
     sortStatus: 'Status',
     sortTitle: 'Title',
-    projectTags: 'Project tags',
+    projectTags: 'Categories',
     noNotesYet: 'No notes yet',
     followUp: 'Follow-up',
     workspaceColor: 'Workspace color',
     taskColor: 'Task color',
     deleteNote: 'Delete note',
-    done: 'Done',
+    done: 'Stop selecting',
     editMode: 'Edit mode',
     archiveSelected: 'Archive selected',
     selectedTasks: 'selected',
@@ -247,11 +250,11 @@ const translations = {
     addNotePlaceholder: 'Add a note and press Enter...',
     clearColor: 'Clear color',
     noColor: 'No color',
-    wallHelp: 'Search tasks by text, project tag, status, field values, color, and dates.',
+    wallHelp: 'Search tasks by text, category, status, field values, color, and dates.',
     workspaces: 'Boards',
     allWorkspaces: 'All boards',
     newWorkspace: 'New board',
-    newProjectTag: 'New project tag',
+    newProjectTag: 'New category',
     removeFilters: 'Remove filters',
     cleanup: 'Cleanup',
     clearArchive: 'Clear archive',
@@ -262,16 +265,16 @@ const translations = {
     cleanupFuture: 'Cleanup actions will land with board safety checks.',
   },
   da: {
-    addTask: 'Tilfoj opgave',
-    allProjects: 'Alle projekter',
+    addTask: 'Tilføj opgave',
+    allProjects: 'Alle kategorier',
     anyCategory: 'Alle kategorier',
     anyColor: 'Alle farver',
-    anyFollowUp: 'Alle opfolgninger',
-    anyProject: 'Alle projekter',
+    anyFollowUp: 'Alle opfølgninger',
+    anyProject: 'Alle kategorier',
     anyStatus: 'Alle statusser',
     archive: 'Arkiv',
-    archiveAction: 'Arkiver',
-    archiveTasks: 'Arkiver opgave(r)',
+    archiveAction: 'Arkivér',
+    archiveTasks: 'Arkivér opgave(r)',
     collapseSidebar: 'Skjul sidebar',
     color: 'Farve',
     danish: 'Dansk',
@@ -291,26 +294,26 @@ const translations = {
     english: 'Engelsk',
     expandSidebar: 'Vis sidebar',
     fieldsForFiltering: 'Felter',
-    fieldsHelp: 'Strukturerede felter gor det muligt at filtrere uden at gore tavlen til en stor formular.',
+    fieldsHelp: 'Strukturerede felter gør det muligt at filtrere uden at gøre tavlen til en stor formular.',
     filterWall: 'Filtrer tavlen...',
-    followUpDate: 'Opfolgning',
+    followUpDate: 'Opfølgning',
     keep: 'Behold',
     language: 'Sprog',
     lastUpdated: 'Sidst opdateret',
-    loadingTasks: 'Indlaeser opgaver...',
+    loadingTasks: 'Indlæser opgaver...',
     newTask: 'Ny opgave',
-    newTaskPlaceholder: 'Tilfoj en opgave og tryk Enter...',
+    newTaskPlaceholder: 'Tilføj en opgave og tryk Enter...',
     newView: 'Gem filter',
     note: 'Note',
     noteCount: 'noter',
     notes: 'Noter',
     noTaskColors: 'Ingen opgavefarver endnu',
-    noTasks: 'Her er tomt endnu. Brug + for at tilfoje din forste opgave.',
+    noTasks: 'Her er tomt endnu. Brug + for at tilføje din første opgave.',
     noTasksMatch: 'Ingen opgaver matcher filtrene. Nulstil filtrene for at se hele tavlen igen.',
     noCategory: 'Ingen kategori',
-    noFollowUp: 'Ingen opfolgning',
+    noFollowUp: 'Ingen opfølgning',
     noStatus: 'Ingen status',
-    notTouchedDays: 'Ikke roert i dage',
+    notTouchedDays: 'Ikke rørt i dage',
     overview: 'Alle opgaver',
     refresh: 'Opdater',
     resetFilters: 'Nulstil filtre',
@@ -327,36 +330,36 @@ const translations = {
     status: 'Status',
     templates: 'Opgaveskabeloner',
     sortCreated: 'Oprettet',
-    sortFollowUp: 'Opfolgning',
+    sortFollowUp: 'Opfølgning',
     sortLastTouched: 'Sidst opdateret',
     sortStatus: 'Status',
     sortTitle: 'Titel',
-    projectTags: 'Projekt-tags',
+    projectTags: 'Kategorier',
     noNotesYet: 'Ingen noter endnu',
-    followUp: 'Opfolgning',
+    followUp: 'Opfølgning',
     workspaceColor: 'Tavlefarve',
     taskColor: 'Opgavefarve',
     deleteNote: 'Slet note',
-    done: 'Faerdig',
+    done: 'Stop valg',
     editMode: 'Rediger',
-    archiveSelected: 'Arkiver valgte',
+    archiveSelected: 'Arkivér valgte',
     selectedTasks: 'valgt',
     undo: 'Fortryd',
-    addNotePlaceholder: 'Tilfoj en note og tryk Enter...',
+    addNotePlaceholder: 'Tilføj en note og tryk Enter...',
     clearColor: 'Ryd farve',
     noColor: 'Ingen farve',
-    wallHelp: 'Sog i opgaver efter tekst, projekt-tag, status, feltvaerdier, farve og datoer.',
+    wallHelp: 'Søg i opgaver efter tekst, kategori, status, feltværdier, farve og datoer.',
     workspaces: 'Tavler',
     allWorkspaces: 'Alle tavler',
     newWorkspace: 'Ny tavle',
-    newProjectTag: 'Nyt projekt-tag',
+    newProjectTag: 'Ny kategori',
     removeFilters: 'Fjern filtre',
     cleanup: 'Oprydning',
     clearArchive: 'Ryd arkiv',
     clearOldTasks: 'Ryd gamle opgaver...',
     clearWorkspaceTasks: 'Ryd opgaver i tavle...',
     deleteBoard: 'Slet tavle...',
-    deleteProjectTag: 'Slet projekt-tag...',
+    deleteProjectTag: 'Slet kategori...',
     cleanupFuture: 'Oprydning kommer med sikkerhedstjek for tavler.',
   },
 } as const;
@@ -568,9 +571,17 @@ function App() {
     updateUrl('templates', null);
   };
 
-  const handleCreateTaskItem = async (title: string) => {
+  const handleCreateTaskItem = async (
+    title: string,
+    options: Partial<CreateTaskItemRequest> = {},
+  ) => {
     try {
-      const created = await createTaskItem({ title });
+      const created = await createTaskItem({
+        title,
+        projectId: options.projectId ?? null,
+        category: options.category ?? null,
+        taskTemplateId: options.taskTemplateId ?? null,
+      });
       setMode('tasks');
       setSelectedTaskId(null);
       setSelectedTask(null);
@@ -877,6 +888,7 @@ function App() {
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
             taskItems={taskItems}
+            templates={templates}
             t={t}
             workspace={workspace}
           />
@@ -1124,6 +1136,7 @@ function TaskBoard({
   selectedTask,
   selectedTaskId,
   taskItems,
+  templates,
   t,
   workspace,
 }: {
@@ -1140,6 +1153,7 @@ function TaskBoard({
   onCreateProject: () => void;
   onCreateTaskItem: (
     title: string,
+    options?: Partial<CreateTaskItemRequest>,
   ) => Promise<void>;
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
   onOpenArchiveDialog: () => void;
@@ -1155,6 +1169,7 @@ function TaskBoard({
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
   taskItems: TaskItemSummaryResponse[];
+  templates: TaskTemplateDetailResponse[];
   t: Translate;
   workspace: WorkspaceResponse | null;
 }) {
@@ -1243,6 +1258,7 @@ function TaskBoard({
           onCreateProject={onCreateProject}
           onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
             ...currentFilters,
+            category: '',
             projectId,
           }))}
           onUpdateProject={onUpdateProject}
@@ -1390,6 +1406,7 @@ function TaskBoard({
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
                       colorOptions={colorOptions}
                       pendingDeletedNoteIds={pendingDeletedNoteIds}
+                      projects={projects}
                       t={t}
                       taskItem={selectedTask}
                     />
@@ -1408,6 +1425,9 @@ function TaskBoard({
           onToggleEditMode={() =>
             editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
           selectedTaskCount={selectedTaskIds.length}
+          selectedProjectId={filters.projectId}
+          projects={projects}
+          templates={templates}
           t={t}
         />
       ) : null}
@@ -1666,22 +1686,52 @@ function FloatingBoardActions({
   onCreateTaskItem,
   onOpenBatchArchive,
   onToggleEditMode,
+  projects,
+  selectedProjectId,
   selectedTaskCount,
+  templates,
   t,
 }: {
   editModeIsEnabled: boolean;
-  onCreateTaskItem: (title: string) => Promise<void>;
+  onCreateTaskItem: (title: string, options?: Partial<CreateTaskItemRequest>) => Promise<void>;
   onOpenBatchArchive: () => void;
   onToggleEditMode: () => void;
+  projects: ProjectResponse[];
+  selectedProjectId: string;
   selectedTaskCount: number;
+  templates: TaskTemplateDetailResponse[];
   t: Translate;
 }) {
   const [title, setTitle] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [createIsOpen, setCreateIsOpen] = useState(false);
+  const [selectedCreateProjectId, setSelectedCreateProjectId] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSelectedCreateProjectId((currentId) => {
+      if (currentId && projects.some((project) => project.id === currentId)) {
+        return currentId;
+      }
+
+      if (selectedProjectId && projects.some((project) => project.id === selectedProjectId)) {
+        return selectedProjectId;
+      }
+
+      return projects[0]?.id ?? '';
+    });
+  }, [projects, selectedProjectId]);
+
+  useEffect(() => {
+    setSelectedTemplateId((currentId) =>
+      currentId && templates.some((template) => template.id === currentId)
+        ? currentId
+        : templates[0]?.id ?? '',
+    );
+  }, [templates]);
 
   useEffect(() => {
     if (createIsOpen) {
@@ -1719,7 +1769,12 @@ function FloatingBoardActions({
     }
 
     setIsSubmitting(true);
-    await onCreateTaskItem(trimmedTitle);
+    const selectedProject = projects.find((project) => project.id === selectedCreateProjectId);
+    await onCreateTaskItem(trimmedTitle, {
+      projectId: selectedProject?.id ?? null,
+      category: selectedProject?.name ?? null,
+      taskTemplateId: selectedTemplateId || null,
+    });
     setTitle('');
     setIsSubmitting(false);
     inputRef.current?.focus();
@@ -1806,9 +1861,35 @@ function FloatingBoardActions({
             value={title}
           />
 
+          <select
+            aria-label={t('category')}
+            onChange={(event) => setSelectedCreateProjectId(event.target.value)}
+            value={selectedCreateProjectId}
+          >
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+
+          {templates.length > 0 ? (
+            <select
+              aria-label={t('templates')}
+              onChange={(event) => setSelectedTemplateId(event.target.value)}
+              value={selectedTemplateId}
+            >
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+
           <button disabled={!title.trim() || isSubmitting} type="submit">
             <Icon name="plus" />
-            <span>{t('addTask')}</span>
+            <span className="sr-only">{t('addTask')}</span>
           </button>
           <button
             className="ghost-button"
@@ -1878,19 +1959,6 @@ function TaskFilterBar({
         ))}
       </select>
 
-      <select
-        aria-label="Filter by category"
-        onChange={(event) => updateFilter({ category: event.target.value })}
-        value={filters.category}
-      >
-        <option value="">{t('anyCategory')}</option>
-        {options.categories.map((category) => (
-          <option key={category} value={category}>
-            {category}
-          </option>
-        ))}
-      </select>
-
       <ColorOptionPicker
         emptyLabel={t('noTaskColors')}
         label={t('color')}
@@ -1901,7 +1969,7 @@ function TaskFilterBar({
       />
 
       <select
-        aria-label="Filter by project"
+        aria-label="Filter by category"
         onChange={(event) => updateFilter({ projectId: event.target.value })}
         value={filters.projectId}
       >
@@ -2067,6 +2135,7 @@ function TaskDetail({
   onUpdateTaskItem,
   onUpdateTimelineEntry,
   pendingDeletedNoteIds,
+  projects,
   t,
   taskItem,
 }: {
@@ -2085,6 +2154,7 @@ function TaskDetail({
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
   pendingDeletedNoteIds: string[];
+  projects: ProjectResponse[];
   t: Translate;
   taskItem: TaskItemDetailResponse;
 }) {
@@ -2123,6 +2193,7 @@ function TaskDetail({
         </button>
         <TaskHeaderEditor
           onUpdateTaskItem={onUpdateTaskItem}
+          projects={projects}
           t={t}
           taskItem={taskItem}
         />
@@ -2228,16 +2299,19 @@ function TaskDetail({
 
 function TaskHeaderEditor({
   onUpdateTaskItem,
+  projects,
   t,
   taskItem,
 }: {
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
+  projects: ProjectResponse[];
   t: Translate;
   taskItem: TaskItemDetailResponse;
 }) {
   const [title, setTitle] = useState(taskItem.title);
   const [status, setStatus] = useState(taskItem.status ?? '');
   const [category, setCategory] = useState(taskItem.category ?? '');
+  const [categoryProjectId, setCategoryProjectId] = useState(taskItem.projectId ?? '');
   const [followUpDate, setFollowUpDate] = useState(toDateInputValue(taskItem.followUpAt));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -2249,9 +2323,14 @@ function TaskHeaderEditor({
     setTitle(taskItem.title);
     setStatus(taskItem.status ?? '');
     setCategory(taskItem.category ?? '');
+    setCategoryProjectId(
+      taskItem.projectId ??
+      projects.find((project) => project.name === taskItem.category)?.id ??
+      '',
+    );
     setFollowUpDate(toDateInputValue(taskItem.followUpAt));
     setSaveState('idle');
-  }, [taskItem]);
+  }, [projects, taskItem]);
 
   useEffect(() => {
     setEditingField(null);
@@ -2261,6 +2340,7 @@ function TaskHeaderEditor({
     title: string;
     status: string;
     category: string;
+    projectId: string | null;
     followUpDate: string;
   }> = {}) => {
     if (taskItem.archivedAt) {
@@ -2270,6 +2350,9 @@ function TaskHeaderEditor({
     const nextTitle = (overrides.title ?? title).trim();
     const nextStatus = (overrides.status ?? status).trim();
     const nextCategory = (overrides.category ?? category).trim();
+    const nextProjectId = Object.prototype.hasOwnProperty.call(overrides, 'projectId')
+      ? overrides.projectId
+      : categoryProjectId;
     const nextFollowUpDate = overrides.followUpDate ?? followUpDate;
     const normalizedFollowUpAt = nextFollowUpDate
       ? new Date(`${nextFollowUpDate}T12:00:00`).toISOString()
@@ -2284,6 +2367,7 @@ function TaskHeaderEditor({
       nextTitle !== taskItem.title ||
       nextStatus !== (taskItem.status ?? '') ||
       nextCategory !== (taskItem.category ?? '') ||
+      nextProjectId !== (taskItem.projectId ?? '') ||
       normalizedFollowUpAt !== taskItem.followUpAt;
 
     if (!hasChanges) {
@@ -2298,12 +2382,14 @@ function TaskHeaderEditor({
         title: nextTitle,
         status: nextStatus,
         category: nextCategory,
+        projectId: nextProjectId || null,
         followUpAt: normalizedFollowUpAt,
       });
       setSaveState('saved');
       setTitle(nextTitle);
       setStatus(nextStatus);
       setCategory(nextCategory);
+      setCategoryProjectId(nextProjectId ?? '');
       setFollowUpDate(nextFollowUpDate);
       setEditingField(null);
     } catch {
@@ -2322,6 +2408,7 @@ function TaskHeaderEditor({
       setTitle(taskItem.title);
       setStatus(taskItem.status ?? '');
       setCategory(taskItem.category ?? '');
+      setCategoryProjectId(taskItem.projectId ?? '');
       setFollowUpDate(toDateInputValue(taskItem.followUpAt));
       setEditingField(null);
       event.currentTarget.blur();
@@ -2367,7 +2454,10 @@ function TaskHeaderEditor({
         )}
         <button
           className="icon-button header-edit-button"
-          onClick={() => setEditingField('title')}
+          onClick={(event) => {
+            event.stopPropagation();
+            setEditingField('title');
+          }}
           title={t('editTask')}
           type="button"
         >
@@ -2401,17 +2491,30 @@ function TaskHeaderEditor({
           </button>
         )}
         {editingField === 'category' ? (
-          <input
+          <select
             aria-label={t('category')}
             autoFocus
             disabled={isSubmitting}
             onBlur={() => void saveChanges()}
-            onChange={(event) => setCategory(event.target.value)}
-            onKeyDown={handleTextKeyDown}
-            placeholder={t('noCategory')}
-            type="text"
-            value={category}
-          />
+            onChange={(event) => {
+              const project = projects.find((candidate) => candidate.id === event.target.value);
+              const nextCategory = project?.name ?? '';
+              setCategoryProjectId(project?.id ?? '');
+              setCategory(nextCategory);
+              void saveChanges({
+                category: nextCategory,
+                projectId: project?.id ?? null,
+              });
+            }}
+            value={categoryProjectId}
+          >
+            <option value="">{t('noCategory')}</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
         ) : (
           <button
             className="task-meta-chip"
@@ -2510,7 +2613,10 @@ function ColorPickerPopover({
         aria-expanded={isOpen}
         aria-label={label}
         className="color-trigger"
-        onClick={() => setIsOpen((open) => !open)}
+        onClick={(event) => {
+          event.stopPropagation();
+          setIsOpen((open) => !open);
+        }}
         style={{ '--picker-color': color || '#FFFFFF' } as CSSProperties}
         title={label}
         type="button"
@@ -2804,23 +2910,29 @@ function TemplateEditor({
               <button
                 disabled={index === 0}
                 onClick={() => moveField(field.clientId, -1)}
+                title="Move up"
                 type="button"
               >
-                Up
+                <Icon name="arrowUp" />
+                <span className="sr-only">Move up</span>
               </button>
               <button
                 disabled={index === fields.length - 1}
                 onClick={() => moveField(field.clientId, 1)}
+                title="Move down"
                 type="button"
               >
-                Down
+                <Icon name="arrowDown" />
+                <span className="sr-only">Move down</span>
               </button>
               <button
                 className="ghost-button"
                 onClick={() => removeField(field.clientId)}
+                title="Remove field"
                 type="button"
               >
-                Remove
+                <Icon name="trash" />
+                <span className="sr-only">Remove field</span>
               </button>
             </div>
 
@@ -3529,6 +3641,8 @@ function TaskBadges({ taskItem }: { taskItem: TaskItemSummaryResponse }) {
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     archive: 'M4 7h16v13H4V7Zm2-4h12l2 4H4l2-4Zm5 8h2',
+    arrowDown: 'M12 5v14m0 0 6-6m-6 6-6-6',
+    arrowUp: 'M12 19V5m0 0 6 6m-6-6-6 6',
     back: 'M15 6 9 12l6 6M10 12h10',
     check: 'm5 13 4 4L19 7',
     clock: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 4v5l3 2',

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using DumpTether.App.Projects;
 using DumpTether.App.Tasks;
+using DumpTether.App.Templates;
 using Xunit;
 
 namespace DumpTether.Api.Tests;
@@ -18,6 +20,59 @@ public sealed class TaskWallApiTests
 
         Assert.NotNull(taskItems);
         Assert.Contains(taskItems, taskItem => taskItem.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task PostTaskItems_CanCreateTaskWithCategoryProjectAndTemplate()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var project = await CreateProjectAsync(client, "Procurement");
+        var template = (await client.GetFromJsonAsync<List<TaskTemplateSummaryResponse>>(
+            "/api/templates"))!
+            .Single(candidate => candidate.Name == "Basic Task");
+
+        var response = await client.PostAsJsonAsync(
+            "/api/tasks",
+            new
+            {
+                title = "Order trackers",
+                projectId = project.Id,
+                category = project.Name,
+                taskTemplateId = template.Id
+            });
+        response.EnsureSuccessStatusCode();
+
+        var created = await response.Content.ReadFromJsonAsync<TaskItemDetailResponse>();
+
+        Assert.NotNull(created);
+        Assert.Equal(project.Id, created.ProjectId);
+        Assert.Equal(project.Name, created.Category);
+        Assert.Equal(template.Id, created.TaskTemplateId);
+    }
+
+    [Fact]
+    public async Task PatchTaskItem_ProjectSelectionUpdatesCategory()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var project = await CreateProjectAsync(client, "Travel");
+        var created = await CreateTaskItemAsync(client, "Book hotel");
+
+        var updated = await PatchTaskItemAsync(
+            client,
+            created.Id,
+            new
+            {
+                projectId = project.Id,
+                category = project.Name
+            });
+
+        Assert.Equal(project.Id, updated.ProjectId);
+        Assert.Equal(project.Name, updated.Category);
+        Assert.Contains(updated.TimelineEntries, entry =>
+            entry.Kind == "CategoryChanged" &&
+            entry.Summary.Contains(project.Name, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -177,6 +232,19 @@ public sealed class TaskWallApiTests
         response.EnsureSuccessStatusCode();
 
         var created = await response.Content.ReadFromJsonAsync<TaskItemDetailResponse>();
+        Assert.NotNull(created);
+
+        return created;
+    }
+
+    private static async Task<ProjectResponse> CreateProjectAsync(
+        HttpClient client,
+        string name)
+    {
+        var response = await client.PostAsJsonAsync("/api/projects", new { name });
+        response.EnsureSuccessStatusCode();
+
+        var created = await response.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(created);
 
         return created;

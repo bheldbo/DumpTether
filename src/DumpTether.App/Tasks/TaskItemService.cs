@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using DumpTether.App.Projects;
 using DumpTether.App.Templates;
 using DumpTether.App.Views;
 using DumpTether.Domain;
@@ -10,17 +11,20 @@ internal sealed class TaskItemService : ITaskItemService
 {
     private readonly IClock _clock;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
+    private readonly IProjectRepository _projectRepository;
     private readonly ISavedViewRepository _savedViewRepository;
     private readonly ITaskItemRepository _taskItemRepository;
 
     public TaskItemService(
         IClock clock,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
+        IProjectRepository projectRepository,
         ISavedViewRepository savedViewRepository,
         ITaskItemRepository taskItemRepository)
     {
         _clock = clock;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
+        _projectRepository = projectRepository;
         _savedViewRepository = savedViewRepository;
         _taskItemRepository = taskItemRepository;
     }
@@ -37,12 +41,24 @@ internal sealed class TaskItemService : ITaskItemService
             context.WorkspaceId,
             request.TaskTemplateId,
             cancellationToken);
+        var project = await ResolveProjectAsync(
+            context.WorkspaceId,
+            request.ProjectId ?? context.ProjectId,
+            cancellationToken);
         var taskItem = TaskItem.Create(
             context.WorkspaceId,
-            context.ProjectId,
+            project?.Id,
             request.Title,
             now,
             taskTemplate?.Id);
+        var category = string.IsNullOrWhiteSpace(request.Category)
+            ? request.ProjectId.HasValue ? project?.Name : null
+            : request.Category;
+
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            taskItem.ChangeCategory(category, now);
+        }
 
         ValidateRequiredFieldValues(taskTemplate, request.FieldValues);
         ApplyFieldValues(taskItem, taskTemplate, request.FieldValues, now);
@@ -128,6 +144,20 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem,
             includeDeleted: true,
             cancellationToken);
+        Project? project = null;
+
+        if (request.ProjectId.HasValue)
+        {
+            project = await ResolveProjectAsync(
+                context.WorkspaceId,
+                request.ProjectId,
+                cancellationToken);
+            taskItem.AssignProject(project?.Id);
+        }
+        else if (request.Category is not null && string.IsNullOrWhiteSpace(request.Category))
+        {
+            taskItem.AssignProject(null);
+        }
 
         if (request.Title is not null)
         {
@@ -141,7 +171,15 @@ internal sealed class TaskItemService : ITaskItemService
 
         if (request.Category is not null)
         {
-            taskItem.ChangeCategory(request.Category, now);
+            taskItem.ChangeCategory(
+                string.IsNullOrWhiteSpace(request.Category)
+                    ? project?.Name
+                    : request.Category,
+                now);
+        }
+        else if (project is not null)
+        {
+            taskItem.ChangeCategory(project.Name, now);
         }
 
         if (request.Color is not null)
@@ -499,6 +537,28 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.WorkspaceId,
             includeDeleted,
             cancellationToken);
+    }
+
+    private async Task<Project?> ResolveProjectAsync(
+        Guid workspaceId,
+        Guid? requestedProjectId,
+        CancellationToken cancellationToken)
+    {
+        if (!requestedProjectId.HasValue)
+        {
+            return null;
+        }
+
+        if (requestedProjectId.Value == Guid.Empty)
+        {
+            return null;
+        }
+
+        return await _projectRepository.GetByIdAsync(
+                requestedProjectId.Value,
+                workspaceId,
+                cancellationToken) ??
+            throw new ValidationException("Category was not found.");
     }
 
     private static void ValidateRequiredFieldValues(
