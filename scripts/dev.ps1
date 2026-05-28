@@ -10,8 +10,8 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $webRoot = Join-Path $repoRoot "apps\web"
 $apiProject = Join-Path $repoRoot "src\DumpTether.Api\DumpTether.Api.csproj"
 $connectionString = "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
-$apiHealthUrl = "http://localhost:55868/health"
-$webUrl = "http://localhost:5173"
+$apiHealthUrl = "http://127.0.0.1:55868/health"
+$webUrl = "http://127.0.0.1:5173"
 
 try {
     $consoleTitle = if ([string]::IsNullOrWhiteSpace($WindowTitle)) {
@@ -246,6 +246,7 @@ switch ($Target) {
         Start-Database
         Invoke-Migrations
         Start-DevWindow "DumpTether API" "Api"
+        Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether API" -TimeoutSeconds 90 | Out-Null
         Start-DevWindow "DumpTether Web" "Web"
 
         Write-Host "DumpTether API: $apiHealthUrl"
@@ -259,6 +260,7 @@ switch ($Target) {
         Start-Database
         Invoke-Migrations
         Start-DevWindow "DumpTether API" "Api"
+        Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether API" -TimeoutSeconds 90 | Out-Null
         Start-DevWindow "DumpTether Web" "Web"
 
         Write-Host "DumpTether API: $apiHealthUrl"

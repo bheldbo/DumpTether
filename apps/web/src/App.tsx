@@ -55,7 +55,9 @@ import type {
   TaskItemDetailResponse,
   TaskItemSummaryResponse,
   TaskTemplateDetailResponse,
+  UpdateProjectRequest,
   UpdateTaskItemRequest,
+  UpdateWorkspaceRequest,
   UpsertFieldDefinitionRequest,
   WorkspaceResponse,
 } from './types';
@@ -169,21 +171,39 @@ const translations = {
     anyProject: 'Any project',
     anyStatus: 'Any status',
     archive: 'Archive',
+    archiveAction: 'Archive',
     collapseSidebar: 'Collapse sidebar',
     color: 'Color',
     danish: 'Danish',
     activeTask: 'Active task',
     archivedTask: 'Archived task',
     backToWall: 'Back to wall',
+    board: 'Board',
+    boardColor: 'Board color',
+    cancel: 'Cancel',
+    category: 'Category',
+    confirmDelete: 'Sure?',
+    created: 'Created',
     editView: 'Edit filter',
+    editBoard: 'Edit board',
+    editProject: 'Edit project',
+    editTask: 'Edit task',
     english: 'English',
     expandSidebar: 'Expand sidebar',
+    fieldsForFiltering: 'Fields',
+    fieldsHelp: 'Structured fields make filtering possible without turning the wall into a form.',
     filterWall: 'Filter wall...',
+    followUpDate: 'Follow-up date',
+    keep: 'Keep',
     language: 'Language',
+    lastUpdated: 'Last updated',
     loadingTasks: 'Loading tasks...',
     newTask: 'New task',
     newTaskPlaceholder: 'Add a task and press Enter...',
     newView: 'Save filter',
+    note: 'Note',
+    noteCount: 'notes',
+    notes: 'Notes',
     noTaskColors: 'No task colors yet',
     noTasks: 'Nothing here yet. Use + to add your first task.',
     noTasksMatch: 'No tasks match these filters. Reset filters to see the whole wall again.',
@@ -197,15 +217,18 @@ const translations = {
     saved: 'Saved',
     saveFailed: 'Save failed',
     savedViews: 'Wall',
+    saveFields: 'Save fields',
+    save: 'Save',
     saving: 'Saving...',
     settings: 'Settings',
     sortAscending: 'ascending',
     sortDescending: 'descending',
     sortedBy: 'Sorted by',
+    status: 'Status',
     templates: 'Task templates',
     sortCreated: 'Created',
     sortFollowUp: 'Follow-up',
-    sortLastTouched: 'Last touched',
+    sortLastTouched: 'Last updated',
     sortStatus: 'Status',
     sortTitle: 'Title',
     projectTags: 'Project tags',
@@ -213,19 +236,24 @@ const translations = {
     followUp: 'Follow-up',
     workspaceColor: 'Workspace color',
     taskColor: 'Task color',
+    deleteNote: 'Delete note',
+    undo: 'Undo',
+    addNotePlaceholder: 'Add a note and press Enter...',
     clearColor: 'Clear color',
     noColor: 'No color',
-    wallHelp: 'Search tasks by text, project tag, status, color, and dates.',
-    workspaces: 'Workspaces',
-    allWorkspaces: 'All workspaces',
-    newWorkspace: 'New workspace',
+    wallHelp: 'Search tasks by text, project tag, status, field values, color, and dates.',
+    workspaces: 'Boards',
+    allWorkspaces: 'All boards',
+    newWorkspace: 'New board',
     newProjectTag: 'New project tag',
     removeFilters: 'Remove filters',
     cleanup: 'Cleanup',
     clearArchive: 'Clear archive',
     clearOldTasks: 'Clear old tasks...',
-    clearWorkspaceTasks: 'Clear workspace tasks...',
-    cleanupFuture: 'Cleanup actions will land with workspace safety checks.',
+    clearWorkspaceTasks: 'Clear board tasks...',
+    deleteBoard: 'Delete board...',
+    deleteProjectTag: 'Delete project tag...',
+    cleanupFuture: 'Cleanup actions will land with board safety checks.',
   },
   da: {
     addTask: 'Tilfoj opgave',
@@ -236,21 +264,39 @@ const translations = {
     anyProject: 'Alle projekter',
     anyStatus: 'Alle statusser',
     archive: 'Arkiv',
+    archiveAction: 'Arkiver',
     collapseSidebar: 'Skjul sidebar',
     color: 'Farve',
     danish: 'Dansk',
     activeTask: 'Aktiv opgave',
     archivedTask: 'Arkiveret opgave',
     backToWall: 'Tilbage til tavlen',
+    board: 'Tavle',
+    boardColor: 'Tavlefarve',
+    cancel: 'Annuller',
+    category: 'Kategori',
+    confirmDelete: 'Sikker?',
+    created: 'Oprettet',
     editView: 'Rediger filter',
+    editBoard: 'Rediger tavle',
+    editProject: 'Rediger projekt',
+    editTask: 'Rediger opgave',
     english: 'Engelsk',
     expandSidebar: 'Vis sidebar',
+    fieldsForFiltering: 'Felter',
+    fieldsHelp: 'Strukturerede felter gor det muligt at filtrere uden at gore tavlen til en stor formular.',
     filterWall: 'Filtrer tavlen...',
+    followUpDate: 'Opfolgning',
+    keep: 'Behold',
     language: 'Sprog',
+    lastUpdated: 'Sidst opdateret',
     loadingTasks: 'Indlaeser opgaver...',
     newTask: 'Ny opgave',
     newTaskPlaceholder: 'Tilfoj en opgave og tryk Enter...',
     newView: 'Gem filter',
+    note: 'Note',
+    noteCount: 'noter',
+    notes: 'Noter',
     noTaskColors: 'Ingen opgavefarver endnu',
     noTasks: 'Her er tomt endnu. Brug + for at tilfoje din forste opgave.',
     noTasksMatch: 'Ingen opgaver matcher filtrene. Nulstil filtrene for at se hele tavlen igen.',
@@ -264,35 +310,43 @@ const translations = {
     saved: 'Gemt',
     saveFailed: 'Kunne ikke gemme',
     savedViews: 'Tavle',
+    saveFields: 'Gem felter',
+    save: 'Gem',
     saving: 'Gemmer...',
     settings: 'Indstillinger',
     sortAscending: 'stigende',
     sortDescending: 'faldende',
     sortedBy: 'Sorteret efter',
+    status: 'Status',
     templates: 'Opgaveskabeloner',
     sortCreated: 'Oprettet',
     sortFollowUp: 'Opfolgning',
-    sortLastTouched: 'Sidst roert',
+    sortLastTouched: 'Sidst opdateret',
     sortStatus: 'Status',
     sortTitle: 'Titel',
     projectTags: 'Projekt-tags',
     noNotesYet: 'Ingen noter endnu',
     followUp: 'Opfolgning',
-    workspaceColor: 'Workspace-farve',
+    workspaceColor: 'Tavlefarve',
     taskColor: 'Opgavefarve',
+    deleteNote: 'Slet note',
+    undo: 'Fortryd',
+    addNotePlaceholder: 'Tilfoj en note og tryk Enter...',
     clearColor: 'Ryd farve',
     noColor: 'Ingen farve',
-    wallHelp: 'Sog i opgaver efter tekst, projekt-tag, status, farve og datoer.',
-    workspaces: 'Workspaces',
-    allWorkspaces: 'Alle workspaces',
-    newWorkspace: 'Nyt workspace',
+    wallHelp: 'Sog i opgaver efter tekst, projekt-tag, status, feltvaerdier, farve og datoer.',
+    workspaces: 'Tavler',
+    allWorkspaces: 'Alle tavler',
+    newWorkspace: 'Ny tavle',
     newProjectTag: 'Nyt projekt-tag',
     removeFilters: 'Fjern filtre',
     cleanup: 'Oprydning',
     clearArchive: 'Ryd arkiv',
     clearOldTasks: 'Ryd gamle opgaver...',
-    clearWorkspaceTasks: 'Ryd opgaver i workspace...',
-    cleanupFuture: 'Oprydning kommer med sikkerhedstjek for workspace.',
+    clearWorkspaceTasks: 'Ryd opgaver i tavle...',
+    deleteBoard: 'Slet tavle...',
+    deleteProjectTag: 'Slet projekt-tag...',
+    cleanupFuture: 'Oprydning kommer med sikkerhedstjek for tavler.',
   },
 } as const;
 type TranslationKey = keyof typeof translations.en;
@@ -689,19 +743,24 @@ function App() {
     }
   };
 
-  const handleUpdateWorkspaceColor = async (color: string) => {
+  const handleUpdateWorkspace = async (requestBody: UpdateWorkspaceRequest) => {
     try {
-      const updated = await updateWorkspace({ color });
+      const updated = await updateWorkspace(requestBody);
       setWorkspace(updated);
+      setWorkspaces((currentWorkspaces) =>
+        currentWorkspaces.map((currentWorkspace) =>
+          currentWorkspace.id === updated.id ? updated : currentWorkspace,
+        ),
+      );
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
   };
 
-  const handleUpdateProjectColor = async (id: string, color: string) => {
+  const handleUpdateProject = async (id: string, requestBody: UpdateProjectRequest) => {
     try {
-      const updated = await updateProject(id, { color });
+      const updated = await updateProject(id, requestBody);
       setProjects((currentProjects) =>
         currentProjects.map((project) =>
           project.id === updated.id ? updated : project,
@@ -777,8 +836,8 @@ function App() {
             onUpdateFieldValues={handleUpdateFieldValues}
             onUpdateTaskItem={handleUpdateTaskItem}
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
-            onUpdateProjectColor={handleUpdateProjectColor}
-            onUpdateWorkspaceColor={handleUpdateWorkspaceColor}
+            onUpdateProject={handleUpdateProject}
+            onUpdateWorkspace={handleUpdateWorkspace}
             projects={projects}
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
@@ -968,11 +1027,11 @@ function Sidebar({
             className="nav-item"
             key={view.id}
             onClick={() => onSelectView(view.id)}
-            title={view.name}
+            title={formatSavedViewName(view.name, t)}
             type="button"
           >
             <Icon name={getViewIcon(view)} />
-            <span className="nav-label">{view.name}</span>
+            <span className="nav-label">{formatSavedViewName(view.name, t)}</span>
             <span className="nav-count">{counts[view.id] ?? 0}</span>
           </button>
         ))}
@@ -1021,10 +1080,10 @@ function TaskBoard({
   onCloseTaskItem,
   onSelectTaskItem,
   onUpdateFieldValues,
+  onUpdateProject,
   onUpdateTaskItem,
   onUpdateTimelineEntry,
-  onUpdateProjectColor,
-  onUpdateWorkspaceColor,
+  onUpdateWorkspace,
   projects,
   selectedTask,
   selectedTaskId,
@@ -1051,10 +1110,10 @@ function TaskBoard({
   onCloseTaskItem: () => void;
   onSelectTaskItem: (id: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
+  onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
-  onUpdateProjectColor: (id: string, color: string) => Promise<void>;
-  onUpdateWorkspaceColor: (color: string) => Promise<void>;
+  onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
   projects: ProjectResponse[];
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
@@ -1129,13 +1188,12 @@ function TaskBoard({
         currentProject={currentProject}
         currentView={currentView}
         onCreateProject={onCreateProject}
-        onCreateTaskItem={canCreateTask && !focusedTaskItem ? onCreateTaskItem : null}
         onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
           ...currentFilters,
           projectId,
         }))}
-        onUpdateProjectColor={onUpdateProjectColor}
-        onUpdateWorkspaceColor={onUpdateWorkspaceColor}
+        onUpdateProject={onUpdateProject}
+        onUpdateWorkspace={onUpdateWorkspace}
         colorOptions={colorOptions}
         projects={projects}
         selectedProjectId={filters.projectId}
@@ -1165,6 +1223,10 @@ function TaskBoard({
           </p>
         ) : null}
 
+        {!isLoading && canCreateTask && !focusedTaskItem ? (
+          <QuickCreateTaskCard onCreateTaskItem={onCreateTaskItem} t={t} />
+        ) : null}
+
         {displayedTaskItems.map((taskItem) => {
           const isExpanded = selectedTaskId === taskItem.id;
 
@@ -1180,7 +1242,7 @@ function TaskBoard({
                 aria-expanded={isExpanded}
                 className="task-card-button"
                 onClick={() => (isExpanded ? void closeFocusedTask() : onSelectTaskItem(taskItem.id))}
-                title={isExpanded ? 'Back to wall' : taskItem.title}
+                title={isExpanded ? t('backToWall') : taskItem.title}
                 type="button"
               >
                 <span className="task-card-topline">
@@ -1191,13 +1253,24 @@ function TaskBoard({
                 </span>
                 <span className="task-card-main">
                   <span className="task-card-latest">
-                    {taskItem.latestTimelineEntry?.details ?? t('noNotesYet')}
+                    {taskItem.latestTimelineEntry ? (
+                      <>
+                        <span className="task-card-latest-date">
+                          {formatShortDate(taskItem.latestTimelineEntry.occurredAt)}
+                        </span>
+                        {taskItem.latestTimelineEntry.details ?? taskItem.latestTimelineEntry.summary}
+                      </>
+                    ) : (
+                      t('noNotesYet')
+                    )}
                   </span>
                 </span>
                 <span className="task-card-meta">
                   {taskItem.status ? <span>{taskItem.status}</span> : null}
                   {taskItem.category ? <span>{taskItem.category}</span> : null}
-                  <span>{formatRelativeDate(taskItem.lastTouchedAt)}</span>
+                  <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
+                    {formatRelativeDate(taskItem.lastTouchedAt)}
+                  </span>
                   {taskItem.followUpAt ? (
                     <span>{t('followUp')} {formatShortDate(taskItem.followUpAt)}</span>
                   ) : null}
@@ -1251,10 +1324,9 @@ function WorkspaceHeader({
   currentProject,
   currentView,
   onCreateProject,
-  onCreateTaskItem,
   onSelectProjectFilter,
-  onUpdateProjectColor,
-  onUpdateWorkspaceColor,
+  onUpdateProject,
+  onUpdateWorkspace,
   projects,
   selectedProjectId,
   t,
@@ -1264,15 +1336,63 @@ function WorkspaceHeader({
   currentProject: ProjectResponse | null;
   currentView: SavedViewResponse | null;
   onCreateProject: () => void;
-  onCreateTaskItem: ((title: string) => Promise<void>) | null;
   onSelectProjectFilter: (projectId: string) => void;
-  onUpdateProjectColor: (id: string, color: string) => Promise<void>;
-  onUpdateWorkspaceColor: (color: string) => Promise<void>;
+  onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
+  onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
   projects: ProjectResponse[];
   selectedProjectId: string;
   t: Translate;
   workspace: WorkspaceResponse | null;
 }) {
+  const [workspaceIsEditing, setWorkspaceIsEditing] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState(workspace?.name ?? '');
+  const [workspaceColor, setWorkspaceColor] = useState(workspace?.color ?? '');
+  const [projectIsEditing, setProjectIsEditing] = useState(false);
+  const [projectName, setProjectName] = useState(currentProject?.name ?? '');
+  const [projectColor, setProjectColor] = useState(currentProject?.color ?? '');
+
+  useEffect(() => {
+    setWorkspaceName(workspace?.name ?? '');
+    setWorkspaceColor(workspace?.color ?? '');
+    setWorkspaceIsEditing(false);
+  }, [workspace]);
+
+  useEffect(() => {
+    setProjectName(currentProject?.name ?? '');
+    setProjectColor(currentProject?.color ?? '');
+    setProjectIsEditing(false);
+  }, [currentProject]);
+
+  const saveWorkspace = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedName = workspaceName.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    await onUpdateWorkspace({
+      name: trimmedName,
+      color: workspaceColor.trim() || null,
+    });
+    setWorkspaceIsEditing(false);
+  };
+
+  const saveProject = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedName = projectName.trim();
+    if (!currentProject || !trimmedName) {
+      return;
+    }
+
+    await onUpdateProject(currentProject.id, {
+      name: trimmedName,
+      color: projectColor.trim() || null,
+    });
+    setProjectIsEditing(false);
+  };
+
   return (
     <div
       className="workspace-header"
@@ -1280,29 +1400,117 @@ function WorkspaceHeader({
     >
       <div className="workspace-title-block">
         <div className="workspace-title-row">
-          <h1 id="task-board-title">{workspace?.name ?? 'DumpTether'}</h1>
-          <ColorPickerPopover
-            color={workspace?.color ?? ''}
-            colorOptions={colorOptions}
-            label={t('workspaceColor')}
-            onChange={(color) => void onUpdateWorkspaceColor(color)}
-            t={t}
-          />
+          {workspaceIsEditing ? (
+            <form className="inline-heading-editor" onSubmit={(event) => void saveWorkspace(event)}>
+              <input
+                aria-label={t('editBoard')}
+                onChange={(event) => setWorkspaceName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setWorkspaceIsEditing(false);
+                    setWorkspaceName(workspace?.name ?? '');
+                    setWorkspaceColor(workspace?.color ?? '');
+                  }
+                }}
+                required
+                type="text"
+                value={workspaceName}
+              />
+              <ColorPickerPopover
+                color={workspaceColor}
+                colorOptions={colorOptions}
+                label={t('boardColor')}
+                onChange={setWorkspaceColor}
+                t={t}
+              />
+              <button className="icon-button" title={t('saved')} type="submit">
+                <Icon name="check" />
+              </button>
+              <button
+                className="icon-button"
+                onClick={() => {
+                  setWorkspaceIsEditing(false);
+                  setWorkspaceName(workspace?.name ?? '');
+                  setWorkspaceColor(workspace?.color ?? '');
+                }}
+                title={t('cancel')}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </form>
+          ) : (
+            <>
+              <h1 id="task-board-title">{workspace?.name ?? 'DumpTether'}</h1>
+              <button
+                className="icon-button header-edit-button"
+                onClick={() => setWorkspaceIsEditing(true)}
+                title={t('editBoard')}
+                type="button"
+              >
+                <span
+                  className="header-color-dot"
+                  style={{ backgroundColor: workspace?.color ?? '#ffffff' }}
+                />
+                <Icon name="edit" />
+              </button>
+            </>
+          )}
         </div>
         <div className="workspace-context-row">
-          <span className="context-chip" style={getContextChipStyle(currentProject?.color ?? null)}>
-            {currentProject?.name ?? t('allProjects')}
-          </span>
-          {currentProject ? (
-            <ColorPickerPopover
-              color={currentProject.color ?? ''}
-              colorOptions={colorOptions}
-              label={`${currentProject.name} color`}
-              onChange={(color) => void onUpdateProjectColor(currentProject.id, color)}
-              t={t}
-            />
+          {projectIsEditing && currentProject ? (
+            <form className="inline-heading-editor project-heading-editor" onSubmit={(event) => void saveProject(event)}>
+              <input
+                aria-label={t('editProject')}
+                onChange={(event) => setProjectName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setProjectIsEditing(false);
+                    setProjectName(currentProject.name);
+                    setProjectColor(currentProject.color ?? '');
+                  }
+                }}
+                required
+                type="text"
+                value={projectName}
+              />
+              <ColorPickerPopover
+                color={projectColor}
+                colorOptions={colorOptions}
+                label={`${currentProject.name} ${t('color')}`}
+                onChange={setProjectColor}
+                t={t}
+              />
+              <button className="icon-button" title={t('saved')} type="submit">
+                <Icon name="check" />
+              </button>
+              <button
+                className="icon-button"
+                onClick={() => setProjectIsEditing(false)}
+                title={t('cancel')}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </form>
+          ) : (
+            <button
+              className="context-chip context-edit-button"
+              disabled={!currentProject}
+              onClick={() => currentProject && setProjectIsEditing(true)}
+              style={getContextChipStyle(currentProject?.color ?? null)}
+              title={currentProject ? t('editProject') : t('allProjects')}
+              type="button"
+            >
+              <span>{currentProject?.name ?? t('allProjects')}</span>
+              {currentProject ? <Icon name="edit" /> : null}
+            </button>
+          )}
+          {!projectIsEditing ? (
+            <span className="context-muted">
+              {currentView ? formatSavedViewName(currentView.name, t) : t('board')}
+            </span>
           ) : null}
-          <span className="context-muted">{currentView?.name ?? 'Tasks'}</span>
         </div>
         <div className="project-tag-strip" aria-label={t('projectTags')}>
           <button
@@ -1343,15 +1551,12 @@ function WorkspaceHeader({
           {t('sortedBy')} {formatSortField(currentView?.sort.field, t)}{' '}
           {currentView?.sort.direction === 'asc' ? t('sortAscending') : t('sortDescending')}
         </span>
-        {onCreateTaskItem ? (
-          <QuickCreateTaskForm onCreateTaskItem={onCreateTaskItem} t={t} />
-        ) : null}
       </div>
     </div>
   );
 }
 
-function QuickCreateTaskForm({
+function QuickCreateTaskCard({
   onCreateTaskItem,
   t,
 }: {
@@ -1387,7 +1592,7 @@ function QuickCreateTaskForm({
   if (!isOpen) {
     return (
       <button
-        className="new-task-button"
+        className="task-card task-card-create"
         onClick={() => setIsOpen(true)}
         title={t('newTask')}
         type="button"
@@ -1399,7 +1604,7 @@ function QuickCreateTaskForm({
   }
 
   return (
-    <form className="quick-create-form" onSubmit={handleSubmit}>
+    <form className="task-card task-card-create task-card-create-form" onSubmit={handleSubmit}>
       <input
         aria-label="New task title"
         ref={inputRef}
@@ -1708,6 +1913,15 @@ function TaskDetail({
   return (
     <section className="task-detail" aria-label="Task detail">
       <div className="detail-header">
+        <button
+          className="icon-button task-detail-back-button"
+          onClick={() => void onClose()}
+          title={t('backToWall')}
+          type="button"
+        >
+          <Icon name="back" />
+          <span className="sr-only">{t('backToWall')}</span>
+        </button>
         <TaskHeaderEditor
           colorOptions={colorOptions}
           onUpdateTaskItem={onUpdateTaskItem}
@@ -1716,15 +1930,6 @@ function TaskDetail({
         />
 
         <div className="detail-actions">
-          <button
-            className="icon-button"
-            onClick={() => void onClose()}
-            title={t('backToWall')}
-            type="button"
-          >
-            <Icon name="back" />
-            <span className="sr-only">{t('backToWall')}</span>
-          </button>
           {taskItem.archivedAt ? (
             <form
               className="reopen-form"
@@ -1745,7 +1950,7 @@ function TaskDetail({
           ) : (
             <button className="secondary-action" onClick={onOpenArchiveDialog} type="button">
               <Icon name="archive" />
-              <span>Archive</span>
+              <span>{t('archiveAction')}</span>
             </button>
           )}
         </div>
@@ -1753,7 +1958,10 @@ function TaskDetail({
 
       <details className="detail-section fields-details">
         <summary className="section-heading">
-          <h3 id="fields-title">Fields for views</h3>
+          <span>
+            <h3 id="fields-title">{t('fieldsForFiltering')}</h3>
+            <small>{t('fieldsHelp')}</small>
+          </span>
           {fieldValuesCanBeEdited ? (
             <button
               disabled={isSavingFields}
@@ -1767,7 +1975,7 @@ function TaskDetail({
               type="button"
             >
               <Icon name="check" />
-              <span>Save fields</span>
+              <span>{t('saveFields')}</span>
             </button>
           ) : null}
         </summary>
@@ -1794,6 +2002,7 @@ function TaskDetail({
         onUndoDeleteTimelineEntry={onUndoDeleteTimelineEntry}
         onUpdateTimelineEntry={onUpdateTimelineEntry}
         pendingDeletedNoteIds={pendingDeletedNoteIds}
+        t={t}
         timelineEntries={taskItem.timelineEntries}
       />
 
@@ -1802,6 +2011,7 @@ function TaskDetail({
           archiveResolutions={archiveResolutions}
           onArchive={onArchive}
           onClose={onCloseArchiveDialog}
+          t={t}
           taskTitle={taskItem.title}
         />
       ) : null}
@@ -1827,6 +2037,7 @@ function TaskHeaderEditor({
   const [followUpDate, setFollowUpDate] = useState(toDateInputValue(taskItem.followUpAt));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     setTitle(taskItem.title);
@@ -1836,6 +2047,10 @@ function TaskHeaderEditor({
     setFollowUpDate(toDateInputValue(taskItem.followUpAt));
     setSaveState('idle');
   }, [taskItem]);
+
+  useEffect(() => {
+    setIsEditing(false);
+  }, [taskItem.id]);
 
   const saveChanges = async (overrides: Partial<{
     title: string;
@@ -1884,6 +2099,11 @@ function TaskHeaderEditor({
         followUpAt: normalizedFollowUpAt,
       });
       setSaveState('saved');
+      setTitle(nextTitle);
+      setStatus(nextStatus);
+      setCategory(nextCategory);
+      setColor(nextColor);
+      setFollowUpDate(nextFollowUpDate);
     } catch {
       setSaveState('error');
     } finally {
@@ -1900,6 +2120,9 @@ function TaskHeaderEditor({
       setTitle(taskItem.title);
       setStatus(taskItem.status ?? '');
       setCategory(taskItem.category ?? '');
+      setColor(taskItem.color ?? '');
+      setFollowUpDate(toDateInputValue(taskItem.followUpAt));
+      setIsEditing(false);
       event.currentTarget.blur();
     }
   };
@@ -1910,9 +2133,13 @@ function TaskHeaderEditor({
         <p className="detail-kicker">{t('archivedTask')}</p>
         <h2>{taskItem.title}</h2>
         <div className="task-header-fields">
-          <span>{taskItem.status ?? t('noStatus')}</span>
-          <span>{taskItem.category ?? t('noCategory')}</span>
-          <span>{taskItem.followUpAt ? formatShortDate(taskItem.followUpAt) : t('noFollowUp')}</span>
+          <span>{t('created')}: {formatShortDate(taskItem.createdAt)}</span>
+          <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
+            {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
+          </span>
+          <span>{t('status')}: {taskItem.status ?? t('noStatus')}</span>
+          <span>{t('category')}: {taskItem.category ?? t('noCategory')}</span>
+          <span>{t('followUpDate')}: {taskItem.followUpAt ? formatShortDate(taskItem.followUpAt) : t('noFollowUp')}</span>
         </div>
       </div>
     );
@@ -1921,94 +2148,118 @@ function TaskHeaderEditor({
   return (
     <div className="task-header-editor">
       <p className="detail-kicker">{t('activeTask')}</p>
-      <div className="task-title-row">
-        <input
-          aria-label="Task title"
-          className="task-title-input"
-          disabled={isSubmitting}
-          onBlur={() => void saveChanges()}
-          onChange={(event) => setTitle(event.target.value)}
-          onKeyDown={handleTextKeyDown}
-          required
-          type="text"
-          value={title}
-        />
-        <TaskColorPicker
-          color={color}
-          colorOptions={colorOptions}
-          onChange={(nextColor) => {
-            setColor(nextColor);
-            void saveChanges({ color: nextColor });
-          }}
-          t={t}
-        />
-      </div>
-      <div className="task-header-fields">
-        <input
-          aria-label="Task status"
-          disabled={isSubmitting}
-          onBlur={() => void saveChanges()}
-          onChange={(event) => setStatus(event.target.value)}
-          onKeyDown={handleTextKeyDown}
-          placeholder={t('noStatus')}
-          type="text"
-          value={status}
-        />
-        <input
-          aria-label="Task follow-up"
-          disabled={isSubmitting}
-          onChange={(event) => {
-            setFollowUpDate(event.target.value);
-            void saveChanges({ followUpDate: event.target.value });
-          }}
-          type="date"
-          value={followUpDate}
-        />
-        <input
-          aria-label="Task category"
-          disabled={isSubmitting}
-          onBlur={() => void saveChanges()}
-          onChange={(event) => setCategory(event.target.value)}
-          onKeyDown={handleTextKeyDown}
-          placeholder={t('noCategory')}
-          type="text"
-          value={category}
-        />
-        <span className="saving-copy" data-state={saveState}>
-          {saveState === 'saving'
-            ? t('saving')
-            : saveState === 'saved'
-              ? t('saved')
-              : saveState === 'error'
-                ? t('saveFailed')
-                : formatRelativeDate(taskItem.lastTouchedAt)}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function TaskColorPicker({
-  color,
-  colorOptions,
-  onChange,
-  t,
-}: {
-  color: string;
-  colorOptions: string[];
-  onChange: (color: string) => void;
-  t: Translate;
-}) {
-  return (
-    <div className="task-color-picker">
-      <span>Color</span>
-      <ColorPickerPopover
-        color={color}
-        colorOptions={colorOptions}
-        label={t('taskColor')}
-        onChange={onChange}
-        t={t}
-      />
+      {isEditing ? (
+        <>
+          <div className="task-title-row">
+            <input
+              aria-label={t('editTask')}
+              className="task-title-input"
+              disabled={isSubmitting}
+              onBlur={() => void saveChanges()}
+              onChange={(event) => setTitle(event.target.value)}
+              onKeyDown={handleTextKeyDown}
+              required
+              type="text"
+              value={title}
+            />
+            <ColorPickerPopover
+              color={color}
+              colorOptions={colorOptions}
+              label={t('taskColor')}
+              onChange={(nextColor) => {
+                setColor(nextColor);
+                void saveChanges({ color: nextColor });
+              }}
+              t={t}
+            />
+            <button
+              className="icon-button"
+              onClick={() => setIsEditing(false)}
+              title={t('saved')}
+              type="button"
+            >
+              <Icon name="check" />
+            </button>
+          </div>
+          <div className="task-header-fields task-header-fields-edit">
+            <label>
+              {t('status')}
+              <input
+                aria-label={t('status')}
+                disabled={isSubmitting}
+                onBlur={() => void saveChanges()}
+                onChange={(event) => setStatus(event.target.value)}
+                onKeyDown={handleTextKeyDown}
+                placeholder={t('noStatus')}
+                type="text"
+                value={status}
+              />
+            </label>
+            <label>
+              {t('followUpDate')}
+              <input
+                aria-label={t('followUpDate')}
+                disabled={isSubmitting}
+                onChange={(event) => {
+                  setFollowUpDate(event.target.value);
+                  void saveChanges({ followUpDate: event.target.value });
+                }}
+                type="date"
+                value={followUpDate}
+              />
+            </label>
+            <label>
+              {t('category')}
+              <input
+                aria-label={t('category')}
+                disabled={isSubmitting}
+                onBlur={() => void saveChanges()}
+                onChange={(event) => setCategory(event.target.value)}
+                onKeyDown={handleTextKeyDown}
+                placeholder={t('noCategory')}
+                type="text"
+                value={category}
+              />
+            </label>
+            <span className="saving-copy" data-state={saveState}>
+              {saveState === 'saving'
+                ? t('saving')
+                : saveState === 'saved'
+                  ? t('saved')
+                  : saveState === 'error'
+                    ? t('saveFailed')
+                    : t('lastUpdated')}
+            </span>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="task-title-row task-title-display-row">
+            <h2>{taskItem.title}</h2>
+            <button
+              className="icon-button header-edit-button"
+              onClick={() => setIsEditing(true)}
+              title={t('editTask')}
+              type="button"
+            >
+              <span
+                className="header-color-dot"
+                style={{ backgroundColor: taskItem.color ?? '#ffffff' }}
+              />
+              <Icon name="edit" />
+            </button>
+          </div>
+          <div className="task-header-fields">
+            <span>{t('created')}: {formatShortDate(taskItem.createdAt)}</span>
+            <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
+              {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
+            </span>
+            <span>{t('status')}: {taskItem.status ?? t('noStatus')}</span>
+            <span>{t('category')}: {taskItem.category ?? t('noCategory')}</span>
+            <span>{t('followUpDate')}: {taskItem.followUpAt ? formatShortDate(taskItem.followUpAt) : t('noFollowUp')}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2690,6 +2941,7 @@ function TimelinePanel({
   onUndoDeleteTimelineEntry,
   onUpdateTimelineEntry,
   pendingDeletedNoteIds,
+  t,
   timelineEntries,
 }: {
   onAddTimelineEntry: (note: string) => Promise<void>;
@@ -2697,6 +2949,7 @@ function TimelinePanel({
   onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
   pendingDeletedNoteIds: string[];
+  t: Translate;
   timelineEntries: TaskItemDetailResponse['timelineEntries'];
 }) {
   const notes = timelineEntries.filter((entry) => entry.kind === 'NoteAdded');
@@ -2704,14 +2957,14 @@ function TimelinePanel({
   return (
     <section className="timeline-panel notes-panel" aria-labelledby="timeline-title">
       <div className="section-heading">
-        <h3 id="timeline-title">Notes</h3>
-        <span>{notes.length} notes</span>
+        <h3 id="timeline-title">{t('notes')}</h3>
+        <span>{notes.length} {t('noteCount')}</span>
       </div>
 
-      <AddTimelineEntryForm onAddTimelineEntry={onAddTimelineEntry} />
+      <AddTimelineEntryForm onAddTimelineEntry={onAddTimelineEntry} t={t} />
 
       <ol className="timeline-list">
-        {notes.length === 0 ? <li className="empty-copy">No notes yet.</li> : null}
+        {notes.length === 0 ? <li className="empty-copy">{t('noNotesYet')}</li> : null}
         {notes.map((entry) => (
           <NoteEntry
             entry={entry}
@@ -2720,6 +2973,7 @@ function TimelinePanel({
             onQueueDeleteTimelineEntry={onQueueDeleteTimelineEntry}
             onUndoDeleteTimelineEntry={onUndoDeleteTimelineEntry}
             onUpdateTimelineEntry={onUpdateTimelineEntry}
+            t={t}
           />
         ))}
       </ol>
@@ -2733,12 +2987,14 @@ function NoteEntry({
   onQueueDeleteTimelineEntry,
   onUndoDeleteTimelineEntry,
   onUpdateTimelineEntry,
+  t,
 }: {
   entry: TaskItemDetailResponse['timelineEntries'][number];
   isPendingDelete: boolean;
   onQueueDeleteTimelineEntry: (entryId: string) => void;
   onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+  t: Translate;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(entry.details ?? '');
@@ -2765,53 +3021,11 @@ function NoteEntry({
 
   return (
     <li className="note-entry" data-pending-delete={isPendingDelete}>
-      <div className="note-delete-cell">
-        {isPendingDelete ? (
-          <button
-            className="ghost-button note-undo-button"
-            onClick={() => onUndoDeleteTimelineEntry(entry.id)}
-            type="button"
-          >
-            Undo
-          </button>
-        ) : isConfirmingDelete ? (
-          <div className="note-confirm-delete">
-            <span>Sure?</span>
-            <button
-              className="icon-button"
-              onClick={() => {
-                onQueueDeleteTimelineEntry(entry.id);
-                setIsConfirmingDelete(false);
-              }}
-              title="Delete note"
-              type="button"
-            >
-              <Icon name="close" />
-            </button>
-            <button
-              className="ghost-button"
-              onClick={() => setIsConfirmingDelete(false)}
-              type="button"
-            >
-              Keep
-            </button>
-          </div>
-        ) : (
-          <button
-            className="icon-button note-delete-button"
-            onClick={() => setIsConfirmingDelete(true)}
-            title="Delete note"
-            type="button"
-          >
-            <Icon name="close" />
-          </button>
-        )}
-      </div>
       <time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time>
       {isEditing ? (
         <div className="note-edit">
           <textarea
-            aria-label="Edit note"
+            aria-label={t('note')}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
@@ -2824,10 +3038,10 @@ function NoteEntry({
           />
           <div className="note-actions">
             <button disabled={!draft.trim() || isSubmitting} onClick={() => void save()} type="button">
-              Save
+              {t('save')}
             </button>
             <button className="ghost-button" onClick={() => setIsEditing(false)} type="button">
-              Cancel
+              {t('cancel')}
             </button>
           </div>
         </div>
@@ -2840,14 +3054,58 @@ function NoteEntry({
           {entry.details}
         </button>
       )}
+      <div className="note-delete-cell">
+        {isPendingDelete ? (
+          <button
+            className="ghost-button note-undo-button"
+            onClick={() => onUndoDeleteTimelineEntry(entry.id)}
+            type="button"
+          >
+            {t('undo')}
+          </button>
+        ) : isConfirmingDelete ? (
+          <div className="note-confirm-delete">
+            <span>{t('confirmDelete')}</span>
+            <button
+              className="icon-button"
+              onClick={() => {
+                onQueueDeleteTimelineEntry(entry.id);
+                setIsConfirmingDelete(false);
+              }}
+              title={t('deleteNote')}
+              type="button"
+            >
+              <Icon name="close" />
+            </button>
+            <button
+              className="ghost-button"
+              onClick={() => setIsConfirmingDelete(false)}
+              type="button"
+            >
+              {t('keep')}
+            </button>
+          </div>
+        ) : (
+          <button
+            className="icon-button note-delete-button"
+            onClick={() => setIsConfirmingDelete(true)}
+            title={t('deleteNote')}
+            type="button"
+          >
+            <Icon name="close" />
+          </button>
+        )}
+      </div>
     </li>
   );
 }
 
 function AddTimelineEntryForm({
   onAddTimelineEntry,
+  t,
 }: {
   onAddTimelineEntry: (note: string) => Promise<void>;
+  t: Translate;
 }) {
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2871,7 +3129,7 @@ function AddTimelineEntryForm({
   return (
     <form className="timeline-form" onSubmit={handleSubmit}>
       <textarea
-        aria-label="Timeline note"
+        aria-label={t('note')}
         ref={textareaRef}
         onChange={(event) => setNote(event.target.value)}
         onKeyDown={(event) => {
@@ -2880,13 +3138,13 @@ function AddTimelineEntryForm({
             event.currentTarget.form?.requestSubmit();
           }
         }}
-        placeholder="Add a note and press Enter..."
+        placeholder={t('addNotePlaceholder')}
         rows={3}
         value={note}
       />
       <button disabled={!note.trim() || isSubmitting} type="submit">
         <Icon name="note" />
-        <span>Add note</span>
+        <span>{t('note')}</span>
       </button>
     </form>
   );
@@ -2896,11 +3154,13 @@ function ArchiveDialog({
   archiveResolutions,
   onArchive,
   onClose,
+  t,
   taskTitle,
 }: {
   archiveResolutions: ArchiveResolutionResponse[];
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onClose: () => void;
+  t: Translate;
   taskTitle: string;
 }) {
   const [archiveResolutionId, setArchiveResolutionId] = useState(
@@ -2940,12 +3200,12 @@ function ArchiveDialog({
       >
         <div className="dialog-header">
           <div>
-            <p className="detail-kicker">Archive task</p>
+            <p className="detail-kicker">{t('archiveAction')}</p>
             <h2 id="archive-dialog-title">{taskTitle}</h2>
           </div>
           <button className="icon-button" onClick={onClose} type="button">
             <Icon name="close" />
-            <span className="sr-only">Close archive dialog</span>
+            <span className="sr-only">{t('cancel')}</span>
           </button>
         </div>
 
@@ -2984,10 +3244,10 @@ function ArchiveDialog({
 
           <div className="dialog-actions">
             <button className="ghost-button" onClick={onClose} type="button">
-              Cancel
+              {t('cancel')}
             </button>
             <button disabled={!canSubmit || isSubmitting} type="submit">
-              Archive
+              {t('archiveAction')}
             </button>
           </div>
         </form>
@@ -3044,6 +3304,8 @@ function SettingsPanel({
             <button disabled type="button">{t('clearArchive')}</button>
             <button disabled type="button">{t('clearOldTasks')}</button>
             <button disabled type="button">{t('clearWorkspaceTasks')}</button>
+            <button disabled type="button">{t('deleteProjectTag')}</button>
+            <button disabled type="button">{t('deleteBoard')}</button>
           </div>
         </div>
       </section>
@@ -3594,6 +3856,17 @@ function formatSortField(value: SavedViewSortField | null | undefined, t: Transl
     case 'lastTouchedAt':
     default:
       return t('sortLastTouched');
+  }
+}
+
+function formatSavedViewName(name: string, t: Translate) {
+  switch (name.toLowerCase()) {
+    case 'overview':
+      return t('overview');
+    case 'archive':
+      return t('archive');
+    default:
+      return name;
   }
 }
 

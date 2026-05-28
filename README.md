@@ -232,7 +232,7 @@ For the easiest full-stack run from Visual Studio:
 2. Choose the `DumpTether.FullStack` launch profile.
 3. Press Ctrl+F5 or F5.
 
-That profile opens separate PowerShell windows for the API and Vite frontend and opens `http://localhost:5173`. It is a run helper, not an API debugger attach. For backend breakpoints, use `DumpTether.Api` and start the frontend separately with `DumpTether.Web` or `.\scripts\dev.ps1 -Target Web -OpenBrowser`.
+That profile opens separate PowerShell windows for the API and Vite frontend and opens `http://127.0.0.1:5173`. The script waits for the API health endpoint before starting Vite so the frontend proxy does not race the backend startup. It is a run helper, not an API debugger attach. For backend breakpoints, use `DumpTether.Api` and start the frontend separately with `DumpTether.Web` or `.\scripts\dev.ps1 -Target Web -OpenBrowser`.
 
 Visual Studio's true "Multiple startup projects" selection is stored in local `.vs`/`.suo` state, so it is not a good repo setting to commit. The committed launch profiles above are the portable version.
 
