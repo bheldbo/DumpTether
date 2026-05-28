@@ -173,6 +173,7 @@ const translations = {
     anyStatus: 'Any status',
     archive: 'Archive',
     archiveAction: 'Archive',
+    archiveTasks: 'Archive task(s)',
     collapseSidebar: 'Collapse sidebar',
     color: 'Color',
     danish: 'Danish',
@@ -270,6 +271,7 @@ const translations = {
     anyStatus: 'Alle statusser',
     archive: 'Arkiv',
     archiveAction: 'Arkiver',
+    archiveTasks: 'Arkiver opgave(r)',
     collapseSidebar: 'Skjul sidebar',
     color: 'Farve',
     danish: 'Dansk',
@@ -1238,14 +1240,11 @@ function TaskBoard({
       {!focusedTaskItem ? (
         <WorkspaceHeader
           currentView={currentView}
-          editModeIsEnabled={editModeIsEnabled}
           onCreateProject={onCreateProject}
           onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
             ...currentFilters,
             projectId,
           }))}
-          onToggleEditMode={() =>
-            editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
           onUpdateProject={onUpdateProject}
           onUpdateWorkspace={onUpdateWorkspace}
           colorOptions={colorOptions}
@@ -1341,7 +1340,6 @@ function TaskBoard({
                   </span>
                 </span>
                 <span className="task-card-meta">
-                  <span>{t('created')}: {formatFullDate(taskItem.createdAt)}</span>
                   {taskItem.status ? <span>{taskItem.status}</span> : null}
                   {taskItem.category ? <span>{taskItem.category}</span> : null}
                   <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
@@ -1357,6 +1355,12 @@ function TaskBoard({
                   ) : null}
                 </span>
                 <TaskBadges taskItem={taskItem} />
+                <span
+                  className="task-card-created"
+                  title={`${t('created')}: ${formatFullDate(taskItem.createdAt)}`}
+                >
+                  {formatFullDate(taskItem.createdAt)}
+                </span>
               </button>
 
               {isExpanded ? (
@@ -1396,24 +1400,16 @@ function TaskBoard({
           );
         })}
       </div>
-      {!isLoading && canCreateTask && !focusedTaskItem && !editModeIsEnabled ? (
-        <QuickCreateTaskButton onCreateTaskItem={onCreateTaskItem} t={t} />
-      ) : null}
-      {editModeIsEnabled && !focusedTaskItem ? (
-        <div className="edit-mode-bar">
-          <span>{selectedTaskIds.length} {t('selectedTasks')}</span>
-          <button
-            disabled={selectedTaskIds.length === 0}
-            onClick={() => setBatchArchiveIsOpen(true)}
-            type="button"
-          >
-            <Icon name="archive" />
-            <span>{t('archiveSelected')}</span>
-          </button>
-          <button className="ghost-button" onClick={closeEditMode} type="button">
-            {t('done')}
-          </button>
-        </div>
+      {!isLoading && canCreateTask && !focusedTaskItem ? (
+        <FloatingBoardActions
+          editModeIsEnabled={editModeIsEnabled}
+          onCreateTaskItem={onCreateTaskItem}
+          onOpenBatchArchive={() => setBatchArchiveIsOpen(true)}
+          onToggleEditMode={() =>
+            editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
+          selectedTaskCount={selectedTaskIds.length}
+          t={t}
+        />
       ) : null}
       {batchArchiveIsOpen ? (
         <ArchiveDialog
@@ -1434,10 +1430,8 @@ function TaskBoard({
 function WorkspaceHeader({
   colorOptions,
   currentView,
-  editModeIsEnabled,
   onCreateProject,
   onSelectProjectFilter,
-  onToggleEditMode,
   onUpdateProject,
   onUpdateWorkspace,
   projects,
@@ -1447,10 +1441,8 @@ function WorkspaceHeader({
 }: {
   colorOptions: string[];
   currentView: SavedViewResponse | null;
-  editModeIsEnabled: boolean;
   onCreateProject: () => void;
   onSelectProjectFilter: (projectId: string) => void;
-  onToggleEditMode: () => void;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
   projects: ProjectResponse[];
@@ -1660,15 +1652,6 @@ function WorkspaceHeader({
         <p>{t('wallHelp')}</p>
       </div>
       <div className="board-actions">
-        <button
-          className="secondary-action"
-          data-active={editModeIsEnabled}
-          onClick={onToggleEditMode}
-          type="button"
-        >
-          <Icon name={editModeIsEnabled ? 'check' : 'edit'} />
-          <span>{editModeIsEnabled ? t('done') : t('editMode')}</span>
-        </button>
         <span className="sort-pill">
           {t('sortedBy')} {formatSortField(currentView?.sort.field, t)}{' '}
           {currentView?.sort.direction === 'asc' ? t('sortAscending') : t('sortDescending')}
@@ -1678,22 +1661,53 @@ function WorkspaceHeader({
   );
 }
 
-function QuickCreateTaskButton({
+function FloatingBoardActions({
+  editModeIsEnabled,
   onCreateTaskItem,
+  onOpenBatchArchive,
+  onToggleEditMode,
+  selectedTaskCount,
   t,
 }: {
+  editModeIsEnabled: boolean;
   onCreateTaskItem: (title: string) => Promise<void>;
+  onOpenBatchArchive: () => void;
+  onToggleEditMode: () => void;
+  selectedTaskCount: number;
   t: Translate;
 }) {
   const [title, setTitle] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [createIsOpen, setCreateIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (createIsOpen) {
       inputRef.current?.focus();
     }
+  }, [createIsOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        menuRef.current &&
+        event.target instanceof Node &&
+        !menuRef.current.contains(event.target)
+      ) {
+        setIsOpen(false);
+        setCreateIsOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
   }, [isOpen]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1711,53 +1725,106 @@ function QuickCreateTaskButton({
     inputRef.current?.focus();
   };
 
-  if (!isOpen) {
-    return (
+  return (
+    <div className="floating-board-actions" ref={menuRef}>
       <button
         className="quick-create-fab"
-        onClick={() => setIsOpen(true)}
+        data-active={isOpen}
+        onClick={() => {
+          setIsOpen((open) => !open);
+          setCreateIsOpen(false);
+        }}
         title={t('newTask')}
         type="button"
       >
         <Icon name="plus" />
         <span>{t('newTask')}</span>
       </button>
-    );
-  }
 
-  return (
-    <form className="quick-create-popover" onSubmit={handleSubmit}>
-      <input
-        aria-label="New task title"
-        ref={inputRef}
-        onChange={(event) => setTitle(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape' && !title.trim()) {
-            setIsOpen(false);
-          }
-        }}
-        placeholder={t('newTaskPlaceholder')}
-        type="text"
-        value={title}
-      />
+      {isOpen && !createIsOpen ? (
+        <div className="quick-action-menu">
+          <button onClick={() => setCreateIsOpen(true)} type="button">
+            <Icon name="plus" />
+            <span>{t('addTask')}</span>
+          </button>
+          {editModeIsEnabled ? (
+            <>
+              <span className="quick-action-menu-label">
+                {selectedTaskCount} {t('selectedTasks')}
+              </span>
+              <button
+                disabled={selectedTaskCount === 0}
+                onClick={() => {
+                  onOpenBatchArchive();
+                  setIsOpen(false);
+                }}
+                type="button"
+              >
+                <Icon name="archive" />
+                <span>{t('archiveSelected')}</span>
+              </button>
+              <button
+                className="ghost-button"
+                onClick={() => {
+                  onToggleEditMode();
+                  setIsOpen(false);
+                }}
+                type="button"
+              >
+                <Icon name="check" />
+                <span>{t('done')}</span>
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => {
+                onToggleEditMode();
+                setIsOpen(false);
+              }}
+              type="button"
+            >
+              <Icon name="archive" />
+              <span>{t('archiveTasks')}</span>
+            </button>
+          )}
+        </div>
+      ) : null}
 
-      <button disabled={!title.trim() || isSubmitting} type="submit">
-        <Icon name="plus" />
-        <span>{t('addTask')}</span>
-      </button>
-      <button
-        className="ghost-button"
-        onClick={() => {
-          setTitle('');
-          setIsOpen(false);
-        }}
-        title="Close"
-        type="button"
-      >
-        <Icon name="close" />
-        <span className="sr-only">Close</span>
-      </button>
-    </form>
+      {isOpen && createIsOpen ? (
+        <form className="quick-create-popover" onSubmit={handleSubmit}>
+          <input
+            aria-label="New task title"
+            ref={inputRef}
+            onChange={(event) => setTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !title.trim()) {
+                setCreateIsOpen(false);
+              }
+            }}
+            placeholder={t('newTaskPlaceholder')}
+            type="text"
+            value={title}
+          />
+
+          <button disabled={!title.trim() || isSubmitting} type="submit">
+            <Icon name="plus" />
+            <span>{t('addTask')}</span>
+          </button>
+          <button
+            className="ghost-button"
+            onClick={() => {
+              setTitle('');
+              setCreateIsOpen(false);
+            }}
+            title="Close"
+            type="button"
+          >
+            <Icon name="close" />
+            <span className="sr-only">Close</span>
+          </button>
+        </form>
+      ) : null}
+    </div>
   );
 }
 
@@ -2377,15 +2444,15 @@ function TaskHeaderEditor({
             {t('followUpDate')}: {taskItem.followUpAt ? formatFullDate(taskItem.followUpAt) : t('noFollowUp')}
           </button>
         )}
-        <span className="saving-copy" data-state={saveState}>
-          {saveState === 'saving'
-            ? t('saving')
-            : saveState === 'saved'
-              ? t('saved')
-              : saveState === 'error'
-                ? t('saveFailed')
-                : null}
-        </span>
+        {saveState !== 'idle' ? (
+          <span className="saving-copy" data-state={saveState}>
+            {saveState === 'saving'
+              ? t('saving')
+              : saveState === 'saved'
+                ? t('saved')
+                : t('saveFailed')}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -2444,10 +2511,11 @@ function ColorPickerPopover({
         aria-label={label}
         className="color-trigger"
         onClick={() => setIsOpen((open) => !open)}
-        style={{ backgroundColor: color || '#FFFFFF' }}
+        style={{ '--picker-color': color || '#FFFFFF' } as CSSProperties}
         title={label}
         type="button"
       >
+        <span className="color-trigger-dot" />
         <Icon name="edit" />
       </button>
       {isOpen ? (
