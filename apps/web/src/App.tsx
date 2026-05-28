@@ -1,6 +1,7 @@
 import {
   type CSSProperties,
   FormEvent,
+  type KeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -164,7 +165,10 @@ const translations = {
     collapseSidebar: 'Collapse sidebar',
     color: 'Color',
     danish: 'Danish',
-    editView: 'Edit view',
+    activeTask: 'Active task',
+    archivedTask: 'Archived task',
+    backToWall: 'Back to wall',
+    editView: 'Edit filter',
     english: 'English',
     expandSidebar: 'Expand sidebar',
     filterWall: 'Filter wall...',
@@ -172,20 +176,34 @@ const translations = {
     loadingTasks: 'Loading tasks...',
     newTask: 'New task',
     newTaskPlaceholder: 'Add a task and press Enter...',
-    newView: 'New view',
+    newView: 'Save filter',
     noTaskColors: 'No task colors yet',
     noTasks: 'Nothing here yet. Use + to add your first task.',
     noTasksMatch: 'No tasks match these filters. Reset filters to see the whole wall again.',
+    noCategory: 'No category',
+    noFollowUp: 'No follow-up',
+    noStatus: 'No status',
     notTouchedDays: 'Not touched days',
     overview: 'Overview',
     refresh: 'Refresh',
     resetFilters: 'Reset filters',
-    savedViews: 'Saved views',
+    saved: 'Saved',
+    saveFailed: 'Save failed',
+    savedViews: 'Saved filters',
+    saving: 'Saving...',
     settings: 'Settings',
     sortAscending: 'ascending',
     sortDescending: 'descending',
     sortedBy: 'Sorted by',
     templates: 'Templates',
+    projectTags: 'Project tags',
+    noNotesYet: 'No notes yet',
+    followUp: 'Follow-up',
+    workspaceColor: 'Workspace color',
+    taskColor: 'Task color',
+    clearColor: 'Clear color',
+    noColor: 'No color',
+    wallHelp: 'Search tasks by text, project tag, status, color, and dates.',
   },
   da: {
     addTask: 'Tilfoj opgave',
@@ -199,7 +217,10 @@ const translations = {
     collapseSidebar: 'Skjul sidebar',
     color: 'Farve',
     danish: 'Dansk',
-    editView: 'Rediger visning',
+    activeTask: 'Aktiv opgave',
+    archivedTask: 'Arkiveret opgave',
+    backToWall: 'Tilbage til tavlen',
+    editView: 'Rediger filter',
     english: 'Engelsk',
     expandSidebar: 'Vis sidebar',
     filterWall: 'Filtrer tavlen...',
@@ -207,20 +228,34 @@ const translations = {
     loadingTasks: 'Indlaeser opgaver...',
     newTask: 'Ny opgave',
     newTaskPlaceholder: 'Tilfoj en opgave og tryk Enter...',
-    newView: 'Ny visning',
+    newView: 'Gem filter',
     noTaskColors: 'Ingen opgavefarver endnu',
     noTasks: 'Her er tomt endnu. Brug + for at tilfoje din forste opgave.',
     noTasksMatch: 'Ingen opgaver matcher filtrene. Nulstil filtrene for at se hele tavlen igen.',
+    noCategory: 'Ingen kategori',
+    noFollowUp: 'Ingen opfolgning',
+    noStatus: 'Ingen status',
     notTouchedDays: 'Ikke roert i dage',
     overview: 'Overblik',
     refresh: 'Opdater',
     resetFilters: 'Nulstil filtre',
-    savedViews: 'Gemte visninger',
+    saved: 'Gemt',
+    saveFailed: 'Kunne ikke gemme',
+    savedViews: 'Gemte filtre',
+    saving: 'Gemmer...',
     settings: 'Indstillinger',
     sortAscending: 'stigende',
     sortDescending: 'faldende',
     sortedBy: 'Sorteret efter',
     templates: 'Skabeloner',
+    projectTags: 'Projekt-tags',
+    noNotesYet: 'Ingen noter endnu',
+    followUp: 'Opfolgning',
+    workspaceColor: 'Workspace-farve',
+    taskColor: 'Opgavefarve',
+    clearColor: 'Ryd farve',
+    noColor: 'Ingen farve',
+    wallHelp: 'Sog i opgaver efter tekst, projekt-tag, status, farve og datoer.',
   },
 } as const;
 type TranslationKey = keyof typeof translations.en;
@@ -644,6 +679,7 @@ function App() {
         sidebarIsCollapsed={sidebarIsCollapsed}
         templateCount={templates.length}
         t={t}
+        workspace={workspace}
       />
 
       <section className="workspace" aria-label="Task workspace">
@@ -745,6 +781,7 @@ function Sidebar({
   sidebarIsCollapsed,
   t,
   templateCount,
+  workspace,
 }: {
   counts: Record<string, number>;
   currentViewId: string | null;
@@ -761,11 +798,16 @@ function Sidebar({
   sidebarIsCollapsed: boolean;
   t: Translate;
   templateCount: number;
+  workspace: WorkspaceResponse | null;
 }) {
   const [draggedViewId, setDraggedViewId] = useState<string | null>(null);
 
   return (
-    <aside className="sidebar" aria-label="DumpTether navigation">
+    <aside
+      className="sidebar"
+      aria-label="DumpTether navigation"
+      style={getSidebarStyle(workspace?.color ?? null)}
+    >
       <div className="brand">
         <div className="brand-mark">DT</div>
         <div className="brand-copy">
@@ -955,10 +997,15 @@ function TaskBoard({
         currentView={currentView}
         onEditView={onEditView}
         onCreateTaskItem={canCreateTask && !focusedTaskItem ? onCreateTaskItem : null}
+        onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
+          ...currentFilters,
+          projectId,
+        }))}
         onUpdateProjectColor={onUpdateProjectColor}
         onUpdateWorkspaceColor={onUpdateWorkspaceColor}
         colorOptions={colorOptions}
         projects={projects}
+        selectedProjectId={filters.projectId}
         t={t}
         workspace={workspace}
       />
@@ -999,7 +1046,8 @@ function TaskBoard({
               <button
                 aria-expanded={isExpanded}
                 className="task-card-button"
-                onClick={() => onSelectTaskItem(taskItem.id)}
+                onClick={() => (isExpanded ? onCloseTaskItem() : onSelectTaskItem(taskItem.id))}
+                title={isExpanded ? 'Back to wall' : taskItem.title}
                 type="button"
               >
                 <span className="task-card-topline">
@@ -1010,7 +1058,7 @@ function TaskBoard({
                 </span>
                 <span className="task-card-main">
                   <span className="task-card-latest">
-                    {taskItem.latestTimelineEntry?.details ?? 'No notes yet'}
+                    {taskItem.latestTimelineEntry?.details ?? t('noNotesYet')}
                   </span>
                 </span>
                 <span className="task-card-meta">
@@ -1018,7 +1066,7 @@ function TaskBoard({
                   {taskItem.category ? <span>{taskItem.category}</span> : null}
                   <span>{formatRelativeDate(taskItem.lastTouchedAt)}</span>
                   {taskItem.followUpAt ? (
-                    <span>Follow-up {formatShortDate(taskItem.followUpAt)}</span>
+                    <span>{t('followUp')} {formatShortDate(taskItem.followUpAt)}</span>
                   ) : null}
                 </span>
                 <TaskBadges taskItem={taskItem} />
@@ -1043,6 +1091,7 @@ function TaskBoard({
                       onUpdateTaskItem={onUpdateTaskItem}
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
                       colorOptions={colorOptions}
+                      t={t}
                       taskItem={selectedTask}
                     />
                   )}
@@ -1062,9 +1111,11 @@ function WorkspaceHeader({
   currentView,
   onCreateTaskItem,
   onEditView,
+  onSelectProjectFilter,
   onUpdateProjectColor,
   onUpdateWorkspaceColor,
   projects,
+  selectedProjectId,
   t,
   workspace,
 }: {
@@ -1073,9 +1124,11 @@ function WorkspaceHeader({
   currentView: SavedViewResponse | null;
   onCreateTaskItem: ((title: string) => Promise<void>) | null;
   onEditView: () => void;
+  onSelectProjectFilter: (projectId: string) => void;
   onUpdateProjectColor: (id: string, color: string) => Promise<void>;
   onUpdateWorkspaceColor: (color: string) => Promise<void>;
   projects: ProjectResponse[];
+  selectedProjectId: string;
   t: Translate;
   workspace: WorkspaceResponse | null;
 }) {
@@ -1090,8 +1143,9 @@ function WorkspaceHeader({
           <ColorPickerPopover
             color={workspace?.color ?? ''}
             colorOptions={colorOptions}
-            label="Workspace color"
+            label={t('workspaceColor')}
             onChange={(color) => void onUpdateWorkspaceColor(color)}
+            t={t}
           />
         </div>
         <div className="workspace-context-row">
@@ -1104,11 +1158,35 @@ function WorkspaceHeader({
               colorOptions={colorOptions}
               label={`${currentProject.name} color`}
               onChange={(color) => void onUpdateProjectColor(currentProject.id, color)}
+              t={t}
             />
           ) : null}
           <span className="context-muted">{currentView?.name ?? 'Tasks'}</span>
         </div>
-        <p>{currentView ? describeSavedView(currentView, projects) : 'Loading views...'}</p>
+        <div className="project-tag-strip" aria-label={t('projectTags')}>
+          <button
+            className="project-tag"
+            data-selected={!selectedProjectId}
+            onClick={() => onSelectProjectFilter('')}
+            type="button"
+          >
+            {t('allProjects')}
+          </button>
+          {projects.map((project) => (
+            <button
+              className="project-tag"
+              data-selected={selectedProjectId === project.id}
+              key={project.id}
+              onClick={() => onSelectProjectFilter(project.id)}
+              style={getContextChipStyle(project.color)}
+              title={project.name}
+              type="button"
+            >
+              {project.name}
+            </button>
+          ))}
+        </div>
+        <p>{t('wallHelp')}</p>
       </div>
       <div className="board-actions">
         <span className="sort-pill">
@@ -1343,32 +1421,85 @@ function ColorOptionPicker({
   value: string;
   zeroLabel: string;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const selectedColor = options.find((color) => color === value) ?? '';
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        pickerRef.current &&
+        event.target instanceof Node &&
+        !pickerRef.current.contains(event.target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [isOpen]);
+
+  const chooseColor = (color: string) => {
+    onChange(color);
+    setIsOpen(false);
+  };
+
   return (
-    <div className="color-option-picker" aria-label={label}>
+    <div className="color-option-picker" ref={pickerRef}>
       <button
-        className="color-option-button"
-        data-selected={!value}
-        onClick={() => onChange('')}
+        aria-expanded={isOpen}
+        aria-label={label}
+        className="color-option-trigger"
+        onClick={() => setIsOpen((open) => !open)}
         type="button"
       >
-        <span className="color-option-empty" />
-        <span>{zeroLabel}</span>
+        {selectedColor ? (
+          <>
+            <span className="color-option-swatch" style={{ backgroundColor: selectedColor }} />
+            <span className="color-option-code">{selectedColor}</span>
+          </>
+        ) : (
+          <>
+            <span className="color-option-empty" />
+            <span>{zeroLabel}</span>
+          </>
+        )}
       </button>
-      {options.map((color) => (
-        <button
-          className="color-option-button"
-          data-selected={value.toUpperCase() === color}
-          key={color}
-          onClick={() => onChange(color)}
-          title={color}
-          type="button"
-        >
-          <span className="color-option-swatch" style={{ backgroundColor: color }} />
-          <span className="color-option-code">{color}</span>
-        </button>
-      ))}
-      {options.length === 0 ? (
-        <span className="color-option-empty-text">{emptyLabel}</span>
+
+      {isOpen ? (
+        <div className="color-option-menu" role="listbox">
+          <button
+            className="color-option-button"
+            data-selected={!value}
+            onClick={() => chooseColor('')}
+            type="button"
+          >
+            <span className="color-option-empty" />
+            <span>{zeroLabel}</span>
+          </button>
+          {options.map((color) => (
+            <button
+              className="color-option-button"
+              data-selected={value.toUpperCase() === color}
+              key={color}
+              onClick={() => chooseColor(color)}
+              title={color}
+              type="button"
+            >
+              <span className="color-option-swatch" style={{ backgroundColor: color }} />
+              <span className="color-option-code">{color}</span>
+            </button>
+          ))}
+          {options.length === 0 ? (
+            <span className="color-option-empty-text">{emptyLabel}</span>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -1388,6 +1519,7 @@ function TaskDetail({
   onUpdateFieldValues,
   onUpdateTaskItem,
   onUpdateTimelineEntry,
+  t,
   taskItem,
 }: {
   archiveDialogIsOpen: boolean;
@@ -1403,6 +1535,7 @@ function TaskDetail({
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+  t: Translate;
   taskItem: TaskItemDetailResponse;
 }) {
   const [reopenNote, setReopenNote] = useState('');
@@ -1419,16 +1552,16 @@ function TaskDetail({
   return (
     <section className="task-detail" aria-label="Task detail">
       <div className="detail-header">
-        <div>
-          <p className="detail-kicker">
-            {taskItem.archivedAt ? 'Archived task' : 'Active task'}
-          </p>
-          <h2>{taskItem.title}</h2>
-        </div>
+        <TaskHeaderEditor
+          colorOptions={colorOptions}
+          onUpdateTaskItem={onUpdateTaskItem}
+          t={t}
+          taskItem={taskItem}
+        />
 
         <div className="detail-actions">
           <button className="ghost-button" onClick={onClose} type="button">
-            Back to wall
+            {t('backToWall')}
           </button>
           {taskItem.archivedAt ? (
             <form
@@ -1454,22 +1587,6 @@ function TaskDetail({
             </button>
           )}
         </div>
-      </div>
-
-      <TaskQuickEditForm
-        colorOptions={colorOptions}
-        onUpdateTaskItem={onUpdateTaskItem}
-        taskItem={taskItem}
-      />
-
-      <div className="detail-meta">
-        <MetaItem label="Status" value={taskItem.status ?? 'No status'} />
-        <MetaItem label="Category" value={taskItem.category ?? 'None'} />
-        <MetaItem
-          label="Follow-up"
-          value={taskItem.followUpAt ? formatDateTime(taskItem.followUpAt) : 'None'}
-        />
-        <MetaItem label="Touched" value={formatDateTime(taskItem.lastTouchedAt)} />
       </div>
 
       <details className="detail-section fields-details">
@@ -1528,13 +1645,15 @@ function TaskDetail({
   );
 }
 
-function TaskQuickEditForm({
+function TaskHeaderEditor({
   colorOptions,
   onUpdateTaskItem,
+  t,
   taskItem,
 }: {
   colorOptions: string[];
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
+  t: Translate;
   taskItem: TaskItemDetailResponse;
 }) {
   const [title, setTitle] = useState(taskItem.title);
@@ -1543,6 +1662,7 @@ function TaskQuickEditForm({
   const [color, setColor] = useState(taskItem.color ?? '');
   const [followUpDate, setFollowUpDate] = useState(toDateInputValue(taskItem.followUpAt));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   useEffect(() => {
     setTitle(taskItem.title);
@@ -1550,70 +1670,157 @@ function TaskQuickEditForm({
     setCategory(taskItem.category ?? '');
     setColor(taskItem.color ?? '');
     setFollowUpDate(toDateInputValue(taskItem.followUpAt));
+    setSaveState('idle');
   }, [taskItem]);
 
-  if (taskItem.archivedAt) {
-    return null;
-  }
+  const saveChanges = async (overrides: Partial<{
+    title: string;
+    status: string;
+    category: string;
+    color: string;
+    followUpDate: string;
+  }> = {}) => {
+    if (taskItem.archivedAt) {
+      return;
+    }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+    const nextTitle = (overrides.title ?? title).trim();
+    const nextStatus = (overrides.status ?? status).trim();
+    const nextCategory = (overrides.category ?? category).trim();
+    const nextColor = (overrides.color ?? color).trim();
+    const nextFollowUpDate = overrides.followUpDate ?? followUpDate;
+    const normalizedFollowUpAt = nextFollowUpDate
+      ? new Date(`${nextFollowUpDate}T12:00:00`).toISOString()
+      : null;
 
+    if (!nextTitle) {
+      setTitle(taskItem.title);
+      return;
+    }
+
+    const hasChanges =
+      nextTitle !== taskItem.title ||
+      nextStatus !== (taskItem.status ?? '') ||
+      nextCategory !== (taskItem.category ?? '') ||
+      nextColor !== (taskItem.color ?? '') ||
+      normalizedFollowUpAt !== taskItem.followUpAt;
+
+    if (!hasChanges) {
+      return;
+    }
+
+    setSaveState('saving');
     setIsSubmitting(true);
-    await onUpdateTaskItem({
-      title: title.trim(),
-      status: status.trim(),
-      category: category.trim(),
-      color: color.trim(),
-      followUpAt: followUpDate
-        ? new Date(`${followUpDate}T12:00:00`).toISOString()
-        : null,
-    });
-    setIsSubmitting(false);
+    try {
+      await onUpdateTaskItem({
+        title: nextTitle,
+        status: nextStatus,
+        category: nextCategory,
+        color: nextColor,
+        followUpAt: normalizedFollowUpAt,
+      });
+      setSaveState('saved');
+    } catch {
+      setSaveState('error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
+  const handleTextKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.currentTarget.blur();
+    }
+
+    if (event.key === 'Escape') {
+      setTitle(taskItem.title);
+      setStatus(taskItem.status ?? '');
+      setCategory(taskItem.category ?? '');
+      event.currentTarget.blur();
+    }
+  };
+
+  if (taskItem.archivedAt) {
+    return (
+      <div className="task-header-editor">
+        <p className="detail-kicker">{t('archivedTask')}</p>
+        <h2>{taskItem.title}</h2>
+        <div className="task-header-fields">
+          <span>{taskItem.status ?? t('noStatus')}</span>
+          <span>{taskItem.category ?? t('noCategory')}</span>
+          <span>{taskItem.followUpAt ? formatShortDate(taskItem.followUpAt) : t('noFollowUp')}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <form className="quick-edit-form" onSubmit={handleSubmit}>
-      <label>
-        Title
+    <div className="task-header-editor">
+      <p className="detail-kicker">{t('activeTask')}</p>
+      <div className="task-title-row">
         <input
+          aria-label="Task title"
+          className="task-title-input"
+          disabled={isSubmitting}
+          onBlur={() => void saveChanges()}
           onChange={(event) => setTitle(event.target.value)}
+          onKeyDown={handleTextKeyDown}
           required
           type="text"
           value={title}
         />
-      </label>
-      <label>
-        Status
+        <TaskColorPicker
+          color={color}
+          colorOptions={colorOptions}
+          onChange={(nextColor) => {
+            setColor(nextColor);
+            void saveChanges({ color: nextColor });
+          }}
+          t={t}
+        />
+      </div>
+      <div className="task-header-fields">
         <input
+          aria-label="Task status"
+          disabled={isSubmitting}
+          onBlur={() => void saveChanges()}
           onChange={(event) => setStatus(event.target.value)}
-          placeholder="No status"
+          onKeyDown={handleTextKeyDown}
+          placeholder={t('noStatus')}
           type="text"
           value={status}
         />
-      </label>
-      <label>
-        Follow-up
         <input
-          onChange={(event) => setFollowUpDate(event.target.value)}
+          aria-label="Task follow-up"
+          disabled={isSubmitting}
+          onChange={(event) => {
+            setFollowUpDate(event.target.value);
+            void saveChanges({ followUpDate: event.target.value });
+          }}
           type="date"
           value={followUpDate}
         />
-      </label>
-      <label>
-        Category
         <input
+          aria-label="Task category"
+          disabled={isSubmitting}
+          onBlur={() => void saveChanges()}
           onChange={(event) => setCategory(event.target.value)}
-          placeholder="No category"
+          onKeyDown={handleTextKeyDown}
+          placeholder={t('noCategory')}
           type="text"
           value={category}
         />
-      </label>
-      <TaskColorPicker color={color} colorOptions={colorOptions} onChange={setColor} />
-      <button disabled={!title.trim() || isSubmitting} type="submit">
-        Save
-      </button>
-    </form>
+        <span className="saving-copy" data-state={saveState}>
+          {saveState === 'saving'
+            ? t('saving')
+            : saveState === 'saved'
+              ? t('saved')
+              : saveState === 'error'
+                ? t('saveFailed')
+                : formatRelativeDate(taskItem.lastTouchedAt)}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -1621,10 +1828,12 @@ function TaskColorPicker({
   color,
   colorOptions,
   onChange,
+  t,
 }: {
   color: string;
   colorOptions: string[];
   onChange: (color: string) => void;
+  t: Translate;
 }) {
   return (
     <div className="task-color-picker">
@@ -1632,8 +1841,9 @@ function TaskColorPicker({
       <ColorPickerPopover
         color={color}
         colorOptions={colorOptions}
-        label="Task color"
+        label={t('taskColor')}
         onChange={onChange}
+        t={t}
       />
     </div>
   );
@@ -1644,60 +1854,94 @@ function ColorPickerPopover({
   colorOptions,
   label,
   onChange,
+  t,
 }: {
   color: string;
   colorOptions?: string[];
   label: string;
   onChange: (color: string) => void;
+  t: Translate;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const selectedColor = isHexColor(color) ? color : '#FDE68A';
   const choices = useMemo(
     () => mergeColorOptions(colorOptions ?? [], colorChoices, color ? [color] : []),
     [color, colorOptions],
   );
 
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        popoverRef.current &&
+        event.target instanceof Node &&
+        !popoverRef.current.contains(event.target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [isOpen]);
+
+  const chooseColor = (nextColor: string) => {
+    onChange(nextColor);
+    setIsOpen(false);
+  };
+
   return (
-    <details className="color-popover">
-      <summary
+    <div className="color-popover" ref={popoverRef}>
+      <button
+        aria-expanded={isOpen}
         aria-label={label}
         className="color-trigger"
+        onClick={() => setIsOpen((open) => !open)}
         style={{ backgroundColor: color || '#FFFFFF' }}
         title={label}
+        type="button"
       >
         <Icon name="palette" />
-      </summary>
-      <div className="color-popover-panel">
-        <div className="color-swatch-row" aria-label={label}>
-          {choices.map((choice) => (
-            <button
-              aria-label={`Use ${choice}`}
-              className="color-swatch"
-              data-selected={color.toUpperCase() === choice}
-              key={choice}
-              onClick={() => onChange(choice)}
-              style={{ backgroundColor: choice }}
-              type="button"
+      </button>
+      {isOpen ? (
+        <div className="color-popover-panel">
+          <div className="color-swatch-row" aria-label={label}>
+            {choices.map((choice) => (
+              <button
+                aria-label={`Use ${choice}`}
+                className="color-swatch"
+                data-selected={color.toUpperCase() === choice}
+                key={choice}
+                onClick={() => chooseColor(choice)}
+                style={{ backgroundColor: choice }}
+                type="button"
+              />
+            ))}
+            <span className="color-popover-code">{color || t('noColor')}</span>
+            <input
+              aria-label="Custom color"
+              onChange={(event) => chooseColor(event.target.value.toUpperCase())}
+              type="color"
+              value={selectedColor}
             />
-          ))}
-          <span className="color-popover-code">{color || 'No color'}</span>
-          <input
-            aria-label="Custom color"
-            onChange={(event) => onChange(event.target.value.toUpperCase())}
-            type="color"
-            value={selectedColor}
-          />
+          </div>
+          {color ? (
+            <button
+              className="clear-color-button"
+              onClick={() => chooseColor('')}
+              type="button"
+            >
+              {t('clearColor')}
+            </button>
+          ) : null}
         </div>
-        {color ? (
-          <button
-            className="clear-color-button"
-            onClick={() => onChange('')}
-            type="button"
-          >
-            Clear color
-          </button>
-        ) : null}
-      </div>
-    </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -2270,15 +2514,6 @@ function ViewEditorPanel({
           </div>
         </form>
       </section>
-    </div>
-  );
-}
-
-function MetaItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="meta-item">
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }
@@ -2915,6 +3150,17 @@ function getWorkspaceHeaderStyle(
   } as CSSProperties;
 }
 
+function getSidebarStyle(workspaceColor: string | null) {
+  const baseColor = workspaceColor && isHexColor(workspaceColor)
+    ? workspaceColor
+    : '#184C48';
+
+  return {
+    '--sidebar-workspace-color': baseColor,
+    '--sidebar-workspace-text': getReadableTextColor(baseColor),
+  } as CSSProperties;
+}
+
 function getContextChipStyle(color: string | null) {
   if (!color || !isHexColor(color)) {
     return undefined;
@@ -2939,48 +3185,6 @@ function getCurrentProject(
   return projectId
     ? projects.find((project) => project.id === projectId) ?? null
     : null;
-}
-
-function describeSavedView(view: SavedViewResponse, projects: ProjectResponse[]) {
-  const pieces: string[] = [];
-  const project = view.filter.projectId
-    ? projects.find((candidate) => candidate.id === view.filter.projectId)
-    : null;
-
-  pieces.push(project ? project.name : 'All projects');
-  pieces.push(view.filter.archive ?? 'Active');
-
-  if (view.filter.status === '') {
-    pieces.push('no status');
-  } else if (view.filter.status) {
-    pieces.push(`status ${view.filter.status}`);
-  }
-
-  if (view.filter.category) {
-    pieces.push(`category ${view.filter.category}`);
-  }
-
-  if (view.filter.color) {
-    pieces.push(`color ${view.filter.color}`);
-  }
-
-  if (view.filter.followUp) {
-    pieces.push(formatFollowUpFilter(view.filter.followUp));
-  }
-
-  if (view.filter.notViewedSinceDays) {
-    pieces.push(`not viewed ${view.filter.notViewedSinceDays}d`);
-  }
-
-  if (view.filter.notTouchedSinceDays) {
-    pieces.push(`not touched ${view.filter.notTouchedSinceDays}d`);
-  }
-
-  if (view.filter.text) {
-    pieces.push(`search "${view.filter.text}"`);
-  }
-
-  return pieces.join(' / ');
 }
 
 function getTaskState(taskItem: TaskItemSummaryResponse) {

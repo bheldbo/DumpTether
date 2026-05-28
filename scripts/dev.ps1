@@ -1,7 +1,8 @@
 param(
     [ValidateSet("Db", "DbDown", "Migrate", "Api", "Backend", "Web", "Frontend", "All", "Both")]
     [string] $Target = "All",
-    [switch] $OpenBrowser
+    [switch] $OpenBrowser,
+    [string] $WindowTitle = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +12,20 @@ $apiProject = Join-Path $repoRoot "src\DumpTether.Api\DumpTether.Api.csproj"
 $connectionString = "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
 $apiHealthUrl = "http://localhost:55868/health"
 $webUrl = "http://localhost:5173"
+
+try {
+    $consoleTitle = if ([string]::IsNullOrWhiteSpace($WindowTitle)) {
+        "DumpTether $Target"
+    }
+    else {
+        $WindowTitle
+    }
+
+    $Host.UI.RawUI.WindowTitle = $consoleTitle
+}
+catch {
+    # Some hosts do not expose a writable console title.
+}
 
 function Get-DockerCommand {
     $docker = Get-Command docker -ErrorAction SilentlyContinue
@@ -102,17 +117,17 @@ function Start-DevWindow {
         [string] $RunTarget
     )
 
-    $escapedTitle = $WindowTitle.Replace("'", "''")
-    $escapedPath = $PSCommandPath.Replace("'", "''")
-    $escapedTarget = $RunTarget.Replace("'", "''")
-    $command = "`$Host.UI.RawUI.WindowTitle = '$escapedTitle'; & '$escapedPath' -Target '$escapedTarget'"
-
-    Start-Process powershell.exe -ArgumentList @(
+    Start-Process -FilePath powershell.exe -WorkingDirectory $repoRoot -ArgumentList @(
         "-NoExit",
+        "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
-        "-Command",
-        $command
+        "-File",
+        "`"$PSCommandPath`"",
+        "-WindowTitle",
+        "`"$WindowTitle`"",
+        "-Target",
+        $RunTarget
     )
 }
 
