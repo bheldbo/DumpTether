@@ -196,13 +196,18 @@ const translations = {
     resetFilters: 'Reset filters',
     saved: 'Saved',
     saveFailed: 'Save failed',
-    savedViews: 'Saved filters',
+    savedViews: 'Wall',
     saving: 'Saving...',
     settings: 'Settings',
     sortAscending: 'ascending',
     sortDescending: 'descending',
     sortedBy: 'Sorted by',
-    templates: 'Templates',
+    templates: 'Task templates',
+    sortCreated: 'Created',
+    sortFollowUp: 'Follow-up',
+    sortLastTouched: 'Last touched',
+    sortStatus: 'Status',
+    sortTitle: 'Title',
     projectTags: 'Project tags',
     noNotesYet: 'No notes yet',
     followUp: 'Follow-up',
@@ -258,13 +263,18 @@ const translations = {
     resetFilters: 'Nulstil filtre',
     saved: 'Gemt',
     saveFailed: 'Kunne ikke gemme',
-    savedViews: 'Gemte filtre',
+    savedViews: 'Tavle',
     saving: 'Gemmer...',
     settings: 'Indstillinger',
     sortAscending: 'stigende',
     sortDescending: 'faldende',
     sortedBy: 'Sorteret efter',
-    templates: 'Skabeloner',
+    templates: 'Opgaveskabeloner',
+    sortCreated: 'Oprettet',
+    sortFollowUp: 'Opfolgning',
+    sortLastTouched: 'Sidst roert',
+    sortStatus: 'Status',
+    sortTitle: 'Titel',
     projectTags: 'Projekt-tags',
     noNotesYet: 'Ingen noter endnu',
     followUp: 'Opfolgning',
@@ -461,13 +471,7 @@ function App() {
     void loadWorkspace(null, workspaceId);
   };
 
-  const handleCreateWorkspace = async () => {
-    const name = window.prompt(t('newWorkspace'));
-
-    if (!name?.trim()) {
-      return;
-    }
-
+  const handleCreateWorkspace = async (name: string) => {
     try {
       setCurrentWorkspaceId(null);
       const created = await createWorkspace({ name: name.trim() });
@@ -626,43 +630,6 @@ function App() {
     }
   };
 
-  const handleReorderSavedViews = async (draggedViewId: string, targetViewId: string) => {
-    if (draggedViewId === targetViewId) {
-      return;
-    }
-
-    const draggedIndex = savedViews.findIndex((view) => view.id === draggedViewId);
-    const targetIndex = savedViews.findIndex((view) => view.id === targetViewId);
-
-    if (draggedIndex < 0 || targetIndex < 0) {
-      return;
-    }
-
-    const reorderedViews = [...savedViews];
-    const [draggedView] = reorderedViews.splice(draggedIndex, 1);
-    reorderedViews.splice(targetIndex, 0, draggedView);
-    const normalizedViews = reorderedViews.map((view, index) => ({
-      ...view,
-      sortOrder: index,
-    }));
-    const previousViews = savedViews;
-    setSavedViews(normalizedViews);
-
-    try {
-      await Promise.all(
-        normalizedViews.map((view, index) =>
-          updateSavedView(view.id, {
-            sortOrder: index,
-          }),
-        ),
-      );
-      await loadWorkspace(currentViewId);
-    } catch (error) {
-      setSavedViews(previousViews);
-      setErrorMessage(getErrorMessage(error));
-    }
-  };
-
   const handleSaveTemplate = async (
     id: string | null,
     name: string,
@@ -753,15 +720,10 @@ function App() {
         currentViewId={currentViewId}
         language={language}
         mode={mode}
-        onCreateWorkspace={() => void handleCreateWorkspace()}
-        onCreateView={() => {
-          setEditingView(null);
-          setViewEditorIsOpen(true);
-        }}
+        onCreateWorkspace={handleCreateWorkspace}
         onOpenSettings={() => setSettingsIsOpen(true)}
         onOpenTemplates={handleOpenTemplates}
         onRefresh={() => void loadWorkspace(currentViewId)}
-        onReorderViews={handleReorderSavedViews}
         onSelectWorkspace={handleSelectWorkspace}
         onSelectView={handleSelectSavedView}
         onToggleSidebar={() => setSidebarIsCollapsed((isCollapsed) => !isCollapsed)}
@@ -787,6 +749,7 @@ function App() {
             onDeleteTemplate={handleDeleteTemplate}
             onSaveTemplate={handleSaveTemplate}
             templates={templates}
+            t={t}
           />
         ) : (
           <TaskBoard
@@ -859,11 +822,9 @@ function Sidebar({
   language,
   mode,
   onCreateWorkspace,
-  onCreateView,
   onOpenSettings,
   onOpenTemplates,
   onRefresh,
-  onReorderViews,
   onSelectWorkspace,
   onSelectView,
   onToggleSidebar,
@@ -878,12 +839,10 @@ function Sidebar({
   currentViewId: string | null;
   language: Language;
   mode: WorkspaceMode;
-  onCreateWorkspace: () => void;
-  onCreateView: () => void;
+  onCreateWorkspace: (name: string) => Promise<void>;
   onOpenSettings: () => void;
   onOpenTemplates: () => void;
   onRefresh: () => void;
-  onReorderViews: (draggedViewId: string, targetViewId: string) => Promise<void>;
   onSelectWorkspace: (workspaceId: string) => void;
   onSelectView: (viewId: string) => void;
   onToggleSidebar: () => void;
@@ -894,7 +853,36 @@ function Sidebar({
   workspace: WorkspaceResponse | null;
   workspaces: WorkspaceResponse[];
 }) {
-  const [draggedViewId, setDraggedViewId] = useState<string | null>(null);
+  const [workspaceDraft, setWorkspaceDraft] = useState('');
+  const [workspaceCreateIsOpen, setWorkspaceCreateIsOpen] = useState(false);
+  const [workspaceIsSubmitting, setWorkspaceIsSubmitting] = useState(false);
+  const workspaceInputRef = useRef<HTMLInputElement>(null);
+  const visibleSavedViews = useMemo(
+    () => savedViews.filter((view) => ['overview', 'archive'].includes(view.name.toLowerCase())),
+    [savedViews],
+  );
+
+  useEffect(() => {
+    if (workspaceCreateIsOpen) {
+      workspaceInputRef.current?.focus();
+    }
+  }, [workspaceCreateIsOpen]);
+
+  const submitWorkspace = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedName = workspaceDraft.trim();
+
+    if (!trimmedName) {
+      return;
+    }
+
+    setWorkspaceIsSubmitting(true);
+    await onCreateWorkspace(trimmedName);
+    setWorkspaceDraft('');
+    setWorkspaceCreateIsOpen(false);
+    setWorkspaceIsSubmitting(false);
+  };
 
   return (
     <aside
@@ -922,7 +910,7 @@ function Sidebar({
         <span>{t('workspaces')}</span>
         <button
           className="tiny-icon-button"
-          onClick={onCreateWorkspace}
+          onClick={() => setWorkspaceCreateIsOpen((isOpen) => !isOpen)}
           title={t('newWorkspace')}
           type="button"
         >
@@ -947,6 +935,26 @@ function Sidebar({
             <span className="nav-label">{candidate.name}</span>
           </button>
         ))}
+        {workspaceCreateIsOpen ? (
+          <form className="sidebar-inline-form" onSubmit={submitWorkspace}>
+            <input
+              aria-label={t('newWorkspace')}
+              onChange={(event) => setWorkspaceDraft(event.target.value)}
+              placeholder={t('newWorkspace')}
+              ref={workspaceInputRef}
+              type="text"
+              value={workspaceDraft}
+            />
+            <button
+              className="icon-button"
+              disabled={!workspaceDraft.trim() || workspaceIsSubmitting}
+              title={t('newWorkspace')}
+              type="submit"
+            >
+              <Icon name="check" />
+            </button>
+          </form>
+        ) : null}
       </nav>
 
       <div className="sidebar-section-label">
@@ -954,27 +962,11 @@ function Sidebar({
       </div>
 
       <nav className="view-nav" aria-label={t('savedViews')}>
-        {savedViews.map((view) => (
+        {visibleSavedViews.map((view) => (
           <button
             aria-current={mode === 'tasks' && currentViewId === view.id ? 'page' : undefined}
             className="nav-item"
-            data-dragging={draggedViewId === view.id}
-            draggable={!sidebarIsCollapsed}
             key={view.id}
-            onDragEnd={() => setDraggedViewId(null)}
-            onDragOver={(event) => {
-              event.preventDefault();
-            }}
-            onDragStart={() => setDraggedViewId(view.id)}
-            onDrop={(event) => {
-              event.preventDefault();
-              const sourceViewId = draggedViewId;
-              setDraggedViewId(null);
-
-              if (sourceViewId) {
-                void onReorderViews(sourceViewId, view.id);
-              }
-            }}
             onClick={() => onSelectView(view.id)}
             title={view.name}
             type="button"
@@ -987,11 +979,6 @@ function Sidebar({
       </nav>
 
       <div className="sidebar-actions">
-        <button className="nav-item" onClick={onCreateView} type="button">
-          <Icon name="plus" />
-          <span className="nav-label">{t('newView')}</span>
-          <span className="nav-count">+</span>
-        </button>
         <button
           aria-current={mode === 'templates' ? 'page' : undefined}
           className="nav-item"
@@ -1353,7 +1340,7 @@ function WorkspaceHeader({
       </div>
       <div className="board-actions">
         <span className="sort-pill">
-          {t('sortedBy')} {formatSortField(currentView?.sort.field)}{' '}
+          {t('sortedBy')} {formatSortField(currentView?.sort.field, t)}{' '}
           {currentView?.sort.direction === 'asc' ? t('sortAscending') : t('sortDescending')}
         </span>
         {onCreateTaskItem ? (
@@ -2126,6 +2113,7 @@ function TemplatesPage({
   isLoading,
   onDeleteTemplate,
   onSaveTemplate,
+  t,
   templates,
 }: {
   isLoading: boolean;
@@ -2135,6 +2123,7 @@ function TemplatesPage({
     name: string,
     fields: UpsertFieldDefinitionRequest[],
   ) => Promise<void>;
+  t: Translate;
   templates: TaskTemplateDetailResponse[];
 }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -2155,7 +2144,7 @@ function TemplatesPage({
         <div className="board-header">
           <div>
             <p className="detail-kicker">Template structure</p>
-            <h1 id="templates-title">Templates</h1>
+            <h1 id="templates-title">{t('templates')}</h1>
             <p>Define reusable fields for the different shapes a task can take.</p>
           </div>
           <button onClick={() => setSelectedTemplateId(null)} type="button">
@@ -2646,7 +2635,7 @@ function ViewEditorPanel({
               >
                 {sortFields.map((field) => (
                   <option key={field} value={field}>
-                    {formatSortField(field)}
+                    {formatSortField(field, t)}
                   </option>
                 ))}
               </select>
@@ -2664,7 +2653,7 @@ function ViewEditorPanel({
               >
                 {sortDirections.map((direction) => (
                   <option key={direction} value={direction}>
-                    {direction === 'asc' ? 'Ascending' : 'Descending'}
+                    {direction === 'asc' ? t('sortAscending') : t('sortDescending')}
                   </option>
                 ))}
               </select>
@@ -3592,19 +3581,19 @@ function formatFollowUpFilter(value: SavedViewFollowUpFilter) {
     .replace('Any', 'Has follow-up');
 }
 
-function formatSortField(value?: SavedViewSortField | null) {
+function formatSortField(value: SavedViewSortField | null | undefined, t: Translate) {
   switch (value) {
     case 'createdAt':
-      return 'Created';
+      return t('sortCreated');
     case 'followUpAt':
-      return 'Follow-up';
+      return t('sortFollowUp');
     case 'title':
-      return 'Title';
+      return t('sortTitle');
     case 'status':
-      return 'Status';
+      return t('sortStatus');
     case 'lastTouchedAt':
     default:
-      return 'Last touched';
+      return t('sortLastTouched');
   }
 }
 

@@ -211,6 +211,20 @@ label {
   border-radius: 999px;
 }
 
+.sidebar-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+  align-items: center;
+  padding: 4px;
+}
+
+.sidebar-inline-form input {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 0.84rem;
+}
+
 .nav-item,
 .refresh-button {
   width: 100%;
