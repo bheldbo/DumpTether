@@ -561,13 +561,17 @@ label {
 .project-tag-editor {
   min-width: min(420px, 100%);
   display: inline-grid;
-  grid-template-columns: minmax(120px, 1fr) auto auto auto;
+  grid-template-columns: minmax(120px, 1fr) auto auto auto auto;
   gap: 5px;
   align-items: center;
   padding: 3px;
   border: 1px solid rgba(24, 33, 44, 0.12);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.62);
+}
+
+.danger-icon-button {
+  color: #8a2c22;
 }
 
 .project-tag-editor input {
@@ -746,10 +750,26 @@ label {
   font-weight: 780;
 }
 
-.quick-create-popover {
-  width: min(720px, calc(100vw - 56px));
+.batch-action-grid {
   display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(130px, 0.75fr) minmax(150px, 0.85fr) auto auto;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(24, 33, 44, 0.08);
+  border-radius: 7px;
+  background: rgba(245, 248, 251, 0.8);
+}
+
+.batch-action-grid input,
+.batch-action-grid select,
+.batch-action-grid .color-option-trigger {
+  width: 100%;
+  min-height: 34px;
+}
+
+.quick-create-popover {
+  width: min(560px, calc(100vw - 56px));
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px) 42px 42px;
   gap: 8px;
   align-items: center;
   padding: 10px;
@@ -758,6 +778,14 @@ label {
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 18px 44px rgba(32, 45, 58, 0.18);
   backdrop-filter: blur(9px);
+}
+
+.quick-create-popover button {
+  width: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 999px;
 }
 
 .filter-bar {
@@ -943,7 +971,11 @@ label {
 
 .task-card[data-state="archived"] {
   border-left-color: #637269;
-  background: #f8faf8;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--task-note-color, #fff3a6) 20%, #ffffff) 0%, color-mix(in srgb, var(--task-note-color, #fff3a6) 34%, #f5f7f4) 100%);
+  color: #26333c;
+  --task-note-chip-bg: rgba(255, 255, 255, 0.58);
+  --task-note-chip-border: rgba(24, 33, 44, 0.1);
 }
 
 .task-card[data-state="active"] {
@@ -1107,6 +1139,13 @@ label {
 
 .task-meta-chip {
   cursor: pointer;
+}
+
+.task-card-meta .icon,
+.task-meta-chip .icon {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
 }
 
 .task-card-created {
@@ -1382,10 +1421,16 @@ label {
 }
 
 .color-popover-panel input[type="color"] {
-  width: 24px;
-  min-height: 24px;
+  width: 32px;
+  min-height: 32px;
   padding: 1px;
   border-radius: 999px;
+}
+
+.color-popover-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .color-popover-code {
@@ -1617,6 +1662,51 @@ label {
 .settings-action-grid {
   display: grid;
   gap: 8px;
+}
+
+.settings-inline-form,
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-chip-list,
+.settings-list {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.settings-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 4px 4px 9px;
+  border: 1px solid #d6dee6;
+  border-radius: 999px;
+  background: #f7fafc;
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.settings-checkbox {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: #435366;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.settings-checkbox input {
+  width: 16px;
+  min-height: 16px;
 }
 
 .settings-action-grid button:disabled {

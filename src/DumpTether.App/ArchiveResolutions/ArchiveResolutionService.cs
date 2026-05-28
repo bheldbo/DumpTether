@@ -30,6 +30,72 @@ internal sealed class ArchiveResolutionService : IArchiveResolutionService
             .ToList();
     }
 
+    public async Task<ArchiveResolutionResponse> CreateAsync(
+        CreateArchiveResolutionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var archiveResolution = ArchiveResolution.Create(
+            context.WorkspaceId,
+            request.Name,
+            DateTimeOffset.UtcNow,
+            request.Description,
+            request.RequiresExplanation);
+
+        await _archiveResolutionRepository.AddAsync(archiveResolution, cancellationToken);
+        await _archiveResolutionRepository.SaveChangesAsync(cancellationToken);
+
+        return Map(archiveResolution);
+    }
+
+    public async Task<ArchiveResolutionResponse?> UpdateAsync(
+        Guid id,
+        UpdateArchiveResolutionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var archiveResolution = await _archiveResolutionRepository.GetByIdAsync(
+            id,
+            context.WorkspaceId,
+            cancellationToken);
+
+        if (archiveResolution is null)
+        {
+            return null;
+        }
+
+        archiveResolution.Update(
+            request.Name ?? archiveResolution.Name,
+            request.Description ?? archiveResolution.Description,
+            request.RequiresExplanation ?? archiveResolution.RequiresExplanation);
+        await _archiveResolutionRepository.SaveChangesAsync(cancellationToken);
+
+        return Map(archiveResolution);
+    }
+
+    public async Task<bool> DeactivateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var archiveResolution = await _archiveResolutionRepository.GetByIdAsync(
+            id,
+            context.WorkspaceId,
+            cancellationToken);
+
+        if (archiveResolution is null)
+        {
+            return false;
+        }
+
+        archiveResolution.Deactivate();
+        await _archiveResolutionRepository.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
+
     private static ArchiveResolutionResponse Map(ArchiveResolution archiveResolution)
     {
         return new ArchiveResolutionResponse(

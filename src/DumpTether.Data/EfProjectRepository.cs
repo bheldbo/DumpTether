@@ -19,7 +19,9 @@ internal sealed class EfProjectRepository : IProjectRepository
     {
         return await _dbContext.Projects
             .AsNoTracking()
-            .Where(project => project.WorkspaceId == workspaceId)
+            .Where(project =>
+                project.WorkspaceId == workspaceId &&
+                project.IsActive)
             .OrderBy(project => project.Name)
             .ToListAsync(cancellationToken);
     }
@@ -38,7 +40,8 @@ internal sealed class EfProjectRepository : IProjectRepository
             .SingleOrDefaultAsync(
                 project =>
                     project.Id == id &&
-                    project.WorkspaceId == workspaceId,
+                    project.WorkspaceId == workspaceId &&
+                    project.IsActive,
                 cancellationToken);
     }
 

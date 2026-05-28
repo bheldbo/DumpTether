@@ -1,13 +1,16 @@
 import type {
   AddTaskTimelineEntryRequest,
+  ArchiveProjectTasksRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CreateArchiveResolutionRequest,
   CreateProjectRequest,
   CreateSavedViewRequest,
   CreateTaskTemplateRequest,
   CreateTaskItemRequest,
   CreateWorkspaceRequest,
   ProjectResponse,
+  ProjectArchiveResponse,
   ReopenTaskItemRequest,
   SavedViewResponse,
   TaskTemplateDetailResponse,
@@ -17,6 +20,7 @@ import type {
   TaskItemSummaryResponse,
   UpdateTaskItemRequest,
   UpdateTaskTimelineEntryRequest,
+  UpdateArchiveResolutionRequest,
   UpdateSavedViewRequest,
   UpdateTaskTemplateRequest,
   UpdateProjectRequest,
@@ -147,6 +151,31 @@ export function listArchiveResolutions(): Promise<ArchiveResolutionResponse[]> {
   return request<ArchiveResolutionResponse[]>('/api/archive-resolutions');
 }
 
+export function createArchiveResolution(
+  requestBody: CreateArchiveResolutionRequest,
+): Promise<ArchiveResolutionResponse> {
+  return request<ArchiveResolutionResponse>('/api/archive-resolutions', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function updateArchiveResolution(
+  id: string,
+  requestBody: UpdateArchiveResolutionRequest,
+): Promise<ArchiveResolutionResponse> {
+  return request<ArchiveResolutionResponse>(`/api/archive-resolutions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function deleteArchiveResolution(id: string): Promise<void> {
+  return request<void>(`/api/archive-resolutions/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export function listProjects(): Promise<ProjectResponse[]> {
   return request<ProjectResponse[]>('/api/projects');
 }
@@ -166,6 +195,16 @@ export function updateProject(
 ): Promise<ProjectResponse> {
   return request<ProjectResponse>(`/api/projects/${id}`, {
     method: 'PATCH',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function archiveProjectTasks(
+  id: string,
+  requestBody: ArchiveProjectTasksRequest,
+): Promise<ProjectArchiveResponse> {
+  return request<ProjectArchiveResponse>(`/api/projects/${id}/archive-tasks`, {
+    method: 'POST',
     body: JSON.stringify(requestBody),
   });
 }

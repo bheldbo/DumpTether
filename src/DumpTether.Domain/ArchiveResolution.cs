@@ -60,6 +60,16 @@ public sealed class ArchiveResolution
         Name = DomainGuards.NotBlank(name, nameof(name));
     }
 
+    public void Update(
+        string name,
+        string? description,
+        bool requiresExplanation)
+    {
+        Name = DomainGuards.NotBlank(name, nameof(name));
+        Description = DomainGuards.OptionalTrimmed(description);
+        RequiresExplanation = requiresExplanation;
+    }
+
     public void Deactivate()
     {
         IsActive = false;

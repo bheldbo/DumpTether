@@ -59,6 +59,27 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .ToList();
     }
 
+    public async Task<IReadOnlyList<TaskItem>> ListByProjectAsync(
+        Guid workspaceId,
+        Guid projectId,
+        bool includeArchived,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.TaskItems
+            .Include("_timelineEntries")
+            .AsSplitQuery()
+            .Where(taskItem =>
+                taskItem.WorkspaceId == workspaceId &&
+                taskItem.ProjectId == projectId);
+
+        if (!includeArchived)
+        {
+            query = query.Where(taskItem => taskItem.ArchivedAt == null);
+        }
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
     public async Task<TaskItem?> GetByIdAsync(
         Guid id,
         Guid workspaceId,

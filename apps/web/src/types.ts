@@ -48,12 +48,30 @@ export interface ArchiveResolutionResponse {
   requiresExplanation: boolean;
 }
 
+export interface CreateArchiveResolutionRequest {
+  name: string;
+  description?: string | null;
+  requiresExplanation?: boolean;
+}
+
+export interface UpdateArchiveResolutionRequest {
+  name?: string | null;
+  description?: string | null;
+  requiresExplanation?: boolean | null;
+}
+
 export interface ProjectResponse {
   id: string;
   workspaceId: string;
   name: string;
   color: string | null;
   createdAt: string;
+  isActive: boolean;
+}
+
+export interface ProjectArchiveResponse {
+  id: string;
+  archivedTaskCount: number;
 }
 
 export interface WorkspaceResponse {
@@ -218,6 +236,11 @@ export interface UpdateTaskTimelineEntryRequest {
 }
 
 export interface ArchiveTaskItemRequest {
+  archiveResolutionId: string;
+  note?: string | null;
+}
+
+export interface ArchiveProjectTasksRequest {
   archiveResolutionId: string;
   note?: string | null;
 }

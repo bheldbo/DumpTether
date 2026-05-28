@@ -24,6 +24,8 @@ public sealed class Project
 
     public string? Color { get; private set; }
 
+    public bool IsActive { get; private set; } = true;
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public IReadOnlyCollection<TaskItem> TaskItems => _taskItems.AsReadOnly();
@@ -47,6 +49,11 @@ public sealed class Project
     public void ChangeColor(string? color)
     {
         Color = DomainGuards.OptionalHexColor(color, nameof(color));
+    }
+
+    public void Deactivate()
+    {
+        IsActive = false;
     }
 
     public TaskItem AddTaskItem(string title, DateTimeOffset createdAt, Guid? taskTemplateId = null)

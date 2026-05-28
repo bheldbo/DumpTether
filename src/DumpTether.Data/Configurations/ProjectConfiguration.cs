@@ -29,6 +29,11 @@ internal sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
             .HasColumnName("color")
             .HasMaxLength(7);
 
+        builder.Property(project => project.IsActive)
+            .HasColumnName("is_active")
+            .HasDefaultValue(true)
+            .IsRequired();
+
         builder.Property(project => project.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();
@@ -38,7 +43,8 @@ internal sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
         builder.HasIndex(project => new
             {
                 project.WorkspaceId,
-                project.Name
+                project.Name,
+                project.IsActive
             })
             .IsUnique();
 

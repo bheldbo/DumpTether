@@ -16,6 +16,12 @@ public interface ITaskItemRepository
         TaskItemQuery query,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<TaskItem>> ListByProjectAsync(
+        Guid workspaceId,
+        Guid projectId,
+        bool includeArchived,
+        CancellationToken cancellationToken);
+
     Task<TaskItem?> GetByIdAsync(
         Guid id,
         Guid workspaceId,

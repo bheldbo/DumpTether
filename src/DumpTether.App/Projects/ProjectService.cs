@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Tasks;
 using DumpTether.Domain;
 
@@ -8,15 +9,18 @@ internal sealed class ProjectService : IProjectService
     private readonly IClock _clock;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
     private readonly IProjectRepository _projectRepository;
+    private readonly ITaskItemRepository _taskItemRepository;
 
     public ProjectService(
         IClock clock,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
-        IProjectRepository projectRepository)
+        IProjectRepository projectRepository,
+        ITaskItemRepository taskItemRepository)
     {
         _clock = clock;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _projectRepository = projectRepository;
+        _taskItemRepository = taskItemRepository;
     }
 
     public async Task<IReadOnlyList<ProjectResponse>> ListAsync(
@@ -72,7 +76,18 @@ internal sealed class ProjectService : IProjectService
 
         if (request.Name is not null)
         {
+            var now = _clock.UtcNow;
             project.Rename(request.Name);
+            var projectTasks = await _taskItemRepository.ListByProjectAsync(
+                context.WorkspaceId,
+                project.Id,
+                includeArchived: true,
+                cancellationToken);
+
+            foreach (var taskItem in projectTasks)
+            {
+                taskItem.ChangeCategory(project.Name, now);
+            }
         }
 
         if (request.Color is not null)
@@ -85,6 +100,53 @@ internal sealed class ProjectService : IProjectService
         return MapProject(project);
     }
 
+    public async Task<ProjectArchiveResponse?> ArchiveTasksAndDeactivateAsync(
+        Guid id,
+        ArchiveProjectTasksRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!request.ArchiveResolutionId.HasValue ||
+            request.ArchiveResolutionId.Value == Guid.Empty)
+        {
+            throw new ValidationException("ArchiveResolutionId is required.");
+        }
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var project = await _projectRepository.GetByIdAsync(
+            id,
+            context.WorkspaceId,
+            cancellationToken);
+
+        if (project is null)
+        {
+            return null;
+        }
+
+        var archiveResolution = await _taskItemRepository.GetArchiveResolutionByIdAsync(
+            request.ArchiveResolutionId.Value,
+            context.WorkspaceId,
+            cancellationToken) ??
+            throw new ValidationException("Archive resolution was not found.");
+        var now = _clock.UtcNow;
+        var taskItems = await _taskItemRepository.ListByProjectAsync(
+            context.WorkspaceId,
+            project.Id,
+            includeArchived: false,
+            cancellationToken);
+
+        foreach (var taskItem in taskItems)
+        {
+            taskItem.Archive(archiveResolution, now, request.Note);
+        }
+
+        project.Deactivate();
+        await _projectRepository.SaveChangesAsync(cancellationToken);
+
+        return new ProjectArchiveResponse(project.Id, taskItems.Count);
+    }
+
     private static ProjectResponse MapProject(Project project)
     {
         return new ProjectResponse(
@@ -92,6 +154,7 @@ internal sealed class ProjectService : IProjectService
             project.WorkspaceId,
             project.Name,
             project.Color,
-            project.CreatedAt);
+            project.CreatedAt,
+            project.IsActive);
     }
 }

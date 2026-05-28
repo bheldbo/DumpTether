@@ -25,4 +25,30 @@ internal sealed class EfArchiveResolutionRepository : IArchiveResolutionReposito
             .OrderBy(archiveResolution => archiveResolution.Name)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<ArchiveResolution?> GetByIdAsync(
+        Guid id,
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.ArchiveResolutions
+            .SingleOrDefaultAsync(
+                archiveResolution =>
+                    archiveResolution.Id == id &&
+                    archiveResolution.WorkspaceId == workspaceId &&
+                    archiveResolution.IsActive,
+                cancellationToken);
+    }
+
+    public async Task AddAsync(
+        ArchiveResolution archiveResolution,
+        CancellationToken cancellationToken)
+    {
+        await _dbContext.ArchiveResolutions.AddAsync(archiveResolution, cancellationToken);
+    }
+
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
 }

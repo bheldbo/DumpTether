@@ -12,4 +12,9 @@ public interface IProjectService
         Guid id,
         UpdateProjectRequest request,
         CancellationToken cancellationToken);
+
+    Task<ProjectArchiveResponse?> ArchiveTasksAndDeactivateAsync(
+        Guid id,
+        ArchiveProjectTasksRequest request,
+        CancellationToken cancellationToken);
 }

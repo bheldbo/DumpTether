@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Projects;
 using Microsoft.AspNetCore.Mvc;
 
@@ -51,6 +52,31 @@ public sealed class ProjectsController : ControllerBase
             return response is null ? NotFound() : Ok(response);
         }
         catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/archive-tasks")]
+    public async Task<ActionResult<ProjectArchiveResponse>> ArchiveTasksAndDeactivate(
+        Guid id,
+        ArchiveProjectTasksRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _projectService.ArchiveTasksAndDeactivateAsync(
+                id,
+                request,
+                cancellationToken);
+
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
         {
             return BadRequest(new { error = exception.Message });
         }

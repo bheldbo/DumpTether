@@ -11,12 +11,15 @@ import {
 } from 'react';
 import {
   addTaskTimelineEntry,
+  archiveProjectTasks,
   archiveTaskItem,
+  createArchiveResolution,
   createProject,
   createSavedView,
   createTaskItem,
   createTaskTemplate,
   createWorkspace,
+  deleteArchiveResolution,
   deleteSavedView,
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
@@ -31,6 +34,7 @@ import {
   listWorkspaces,
   reopenTaskItem,
   setCurrentWorkspaceId,
+  updateArchiveResolution,
   updateSavedView,
   updateProject,
   updateTaskItem,
@@ -42,8 +46,10 @@ import './App.css';
 import { FieldEditorList, FieldValueList } from './fieldRenderers';
 import { toFieldValueMap } from './fieldValues';
 import type {
+  ArchiveProjectTasksRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CreateArchiveResolutionRequest,
   CreateTaskItemRequest,
   FieldDefinitionType,
   FieldValueMap,
@@ -57,6 +63,7 @@ import type {
   TaskItemDetailResponse,
   TaskItemSummaryResponse,
   TaskTemplateDetailResponse,
+  UpdateArchiveResolutionRequest,
   UpdateProjectRequest,
   UpdateTaskItemRequest,
   UpdateWorkspaceRequest,
@@ -75,6 +82,7 @@ type IconName =
   | 'arrowUp'
   | 'back'
   | 'check'
+  | 'calendarX'
   | 'clock'
   | 'close'
   | 'edit'
@@ -88,6 +96,8 @@ type IconName =
   | 'refresh'
   | 'search'
   | 'settings'
+  | 'status'
+  | 'tag'
   | 'templates'
   | 'trash'
   | 'waiting';
@@ -165,6 +175,7 @@ const colorChoices = [
 ];
 const languageStorageKey = 'dumptether.language';
 const workspaceStorageKey = 'dumptether.workspace';
+const statusOptionsStorageKey = 'dumptether.statusOptions';
 const translations = {
   en: {
     addTask: 'Add task',
@@ -245,6 +256,18 @@ const translations = {
     done: 'Stop selecting',
     editMode: 'Edit mode',
     archiveSelected: 'Archive selected',
+    changeCategory: 'Change category',
+    changeColor: 'Change color',
+    changeDueDate: 'Change due date',
+    changeStatus: 'Change status',
+    selectTasksForAction: 'Select task(s) for action',
+    deleteCategoryWarning: 'Archive all active tasks in this category and hide the category?',
+    archiveCategory: 'Archive category',
+    archiveReasons: 'Archive reasons',
+    addArchiveReason: 'Add archive reason',
+    requireArchiveNote: 'Require archive note',
+    statusOptions: 'Status options',
+    addStatus: 'Add status',
     selectedTasks: 'selected',
     undo: 'Undo',
     addNotePlaceholder: 'Add a note and press Enter...',
@@ -343,6 +366,18 @@ const translations = {
     done: 'Stop valg',
     editMode: 'Rediger',
     archiveSelected: 'Arkivér valgte',
+    changeCategory: 'Skift kategori',
+    changeColor: 'Skift farve',
+    changeDueDate: 'Skift dato',
+    changeStatus: 'Skift status',
+    selectTasksForAction: 'Vælg opgave(r) til handling',
+    deleteCategoryWarning: 'Arkivér alle aktive opgaver i denne kategori og skjul kategorien?',
+    archiveCategory: 'Arkivér kategori',
+    archiveReasons: 'Arkivårsager',
+    addArchiveReason: 'Tilføj arkivårsag',
+    requireArchiveNote: 'Kræv arkivnote',
+    statusOptions: 'Statusmuligheder',
+    addStatus: 'Tilføj status',
     selectedTasks: 'valgt',
     undo: 'Fortryd',
     addNotePlaceholder: 'Tilføj en note og tryk Enter...',
@@ -374,6 +409,13 @@ function App() {
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
   const [archiveResolutions, setArchiveResolutions] = useState<ArchiveResolutionResponse[]>([]);
   const [templates, setTemplates] = useState<TaskTemplateDetailResponse[]>([]);
+  const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(
+    () => readStoredStringList(
+      statusOptionsStorageKey,
+      ['Active', 'Waiting', 'Follow-up', 'Blocked', 'Done'],
+    ),
+  );
+  const [knownStatuses, setKnownStatuses] = useState<string[]>([]);
   const [mode, setMode] = useState<WorkspaceMode>(getInitialMode);
   const [currentViewId, setCurrentViewId] = useState<string | null>(getInitialViewId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -393,6 +435,10 @@ function App() {
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const t = useCallback<Translate>((key) => translate(language, key), [language]);
+  const statusOptions = useMemo(
+    () => uniqueSorted([...configuredStatuses, ...knownStatuses]),
+    [configuredStatuses, knownStatuses],
+  );
 
   const currentView = useMemo(
     () => savedViews.find((view) => view.id === currentViewId) ?? null,
@@ -445,6 +491,7 @@ function App() {
         setArchiveResolutions(resolutions);
         setTemplates(templateDetails);
         setTaskColorOptions(mergeColorOptions(getTaskColors(allTasksForColors)));
+        setKnownStatuses(uniqueSorted(allTasksForColors.map((taskItem) => taskItem.status)));
         setCurrentViewId(selectedViewId);
         setTaskItems(selectedTasks);
         setViewCounts(Object.fromEntries(countEntries));
@@ -550,15 +597,12 @@ function App() {
     }
   };
 
-  const handleCreateProject = async () => {
-    const name = window.prompt(t('newProjectTag'));
-
-    if (!name?.trim()) {
-      return;
-    }
-
+  const handleCreateProject = async (name: string, color?: string | null) => {
     try {
-      const created = await createProject({ name: name.trim() });
+      const created = await createProject({
+        name: name.trim(),
+        color: color?.trim() || null,
+      });
       setProjects((currentProjects) => [...currentProjects, created]);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -606,6 +650,23 @@ function App() {
       const updated = await updateTaskItem(selectedTask.id, requestBody);
       setSelectedTask(updated);
       await loadWorkspace(currentViewId);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleUpdateTaskItems = async (
+    taskItemIds: string[],
+    requestBody: UpdateTaskItemRequest,
+  ) => {
+    if (taskItemIds.length === 0) {
+      return;
+    }
+
+    try {
+      await Promise.all(taskItemIds.map((taskItemId) => updateTaskItem(taskItemId, requestBody)));
+      await loadWorkspace(currentViewId);
+      setErrorMessage(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -709,6 +770,22 @@ function App() {
     }
   };
 
+  const handleArchiveProject = async (
+    projectId: string,
+    requestBody: ArchiveProjectTasksRequest,
+  ) => {
+    try {
+      await archiveProjectTasks(projectId, requestBody);
+      setProjects((currentProjects) =>
+        currentProjects.filter((project) => project.id !== projectId),
+      );
+      await loadWorkspace(currentViewId);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
   const handleReopenTaskItem = async (note?: string) => {
     if (!selectedTask) {
       return;
@@ -756,6 +833,54 @@ function App() {
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
+  };
+
+  const handleCreateArchiveResolution = async (
+    requestBody: CreateArchiveResolutionRequest,
+  ) => {
+    try {
+      const created = await createArchiveResolution(requestBody);
+      setArchiveResolutions((currentReasons) => [...currentReasons, created]);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleUpdateArchiveResolution = async (
+    id: string,
+    requestBody: UpdateArchiveResolutionRequest,
+  ) => {
+    try {
+      const updated = await updateArchiveResolution(id, requestBody);
+      setArchiveResolutions((currentReasons) =>
+        currentReasons.map((reason) => reason.id === updated.id ? updated : reason),
+      );
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleDeleteArchiveResolution = async (id: string) => {
+    try {
+      await deleteArchiveResolution(id);
+      setArchiveResolutions((currentReasons) =>
+        currentReasons.filter((reason) => reason.id !== id),
+      );
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleSaveStatusOptions = (statuses: string[]) => {
+    const normalizedStatuses = uniqueSorted(statuses);
+    setConfiguredStatuses(normalizedStatuses);
+    window.localStorage.setItem(
+      statusOptionsStorageKey,
+      JSON.stringify(normalizedStatuses),
+    );
   };
 
   const handleSaveView = async (
@@ -865,6 +990,7 @@ function App() {
             isLoadingDetail={isLoadingDetail}
             onAddTimelineEntry={handleAddTimelineEntry}
             onArchive={handleArchiveTaskItem}
+            onArchiveProject={handleArchiveProject}
             onArchiveTaskItems={handleArchiveTaskItems}
             onCloseArchiveDialog={() => setArchiveDialogIsOpen(false)}
             onCreateTaskItem={handleCreateTaskItem}
@@ -880,6 +1006,7 @@ function App() {
               setSelectedTask(null);
             }}
             onUpdateFieldValues={handleUpdateFieldValues}
+            onUpdateTaskItems={handleUpdateTaskItems}
             onUpdateTaskItem={handleUpdateTaskItem}
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
             onUpdateProject={handleUpdateProject}
@@ -887,6 +1014,7 @@ function App() {
             projects={projects}
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
+            statusOptions={statusOptions}
             taskItems={taskItems}
             templates={templates}
             t={t}
@@ -912,8 +1040,14 @@ function App() {
 
       {settingsIsOpen ? (
         <SettingsPanel
+          archiveResolutions={archiveResolutions}
+          configuredStatuses={configuredStatuses}
           language={language}
           onChangeLanguage={setLanguage}
+          onCreateArchiveResolution={handleCreateArchiveResolution}
+          onDeleteArchiveResolution={handleDeleteArchiveResolution}
+          onSaveStatusOptions={handleSaveStatusOptions}
+          onUpdateArchiveResolution={handleUpdateArchiveResolution}
           onClose={() => setSettingsIsOpen(false)}
           t={t}
         />
@@ -1118,6 +1252,7 @@ function TaskBoard({
   isLoadingDetail,
   onAddTimelineEntry,
   onArchive,
+  onArchiveProject,
   onArchiveTaskItems,
   onCloseArchiveDialog,
   onCreateProject,
@@ -1129,12 +1264,14 @@ function TaskBoard({
   onSelectTaskItem,
   onUpdateFieldValues,
   onUpdateProject,
+  onUpdateTaskItems,
   onUpdateTaskItem,
   onUpdateTimelineEntry,
   onUpdateWorkspace,
   projects,
   selectedTask,
   selectedTaskId,
+  statusOptions,
   taskItems,
   templates,
   t,
@@ -1148,9 +1285,10 @@ function TaskBoard({
   isLoadingDetail: boolean;
   onAddTimelineEntry: (note: string) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
+  onArchiveProject: (projectId: string, requestBody: ArchiveProjectTasksRequest) => Promise<void>;
   onArchiveTaskItems: (taskItemIds: string[], requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onCloseArchiveDialog: () => void;
-  onCreateProject: () => void;
+  onCreateProject: (name: string, color?: string | null) => Promise<void>;
   onCreateTaskItem: (
     title: string,
     options?: Partial<CreateTaskItemRequest>,
@@ -1162,12 +1300,14 @@ function TaskBoard({
   onSelectTaskItem: (id: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
+  onUpdateTaskItems: (taskItemIds: string[], requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
   projects: ProjectResponse[];
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
+  statusOptions: string[];
   taskItems: TaskItemSummaryResponse[];
   templates: TaskTemplateDetailResponse[];
   t: Translate;
@@ -1179,6 +1319,7 @@ function TaskBoard({
   const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [batchArchiveIsOpen, setBatchArchiveIsOpen] = useState(false);
+  const [archiveProjectTarget, setArchiveProjectTarget] = useState<ProjectResponse | null>(null);
   const visibleTaskItems = useMemo(
     () => applyTaskWallFilters(taskItems, filters),
     [filters, taskItems],
@@ -1214,6 +1355,7 @@ function TaskBoard({
     setEditModeIsEnabled(false);
     setSelectedTaskIds([]);
     setBatchArchiveIsOpen(false);
+    setArchiveProjectTarget(null);
   };
 
   const closeFocusedTask = useCallback(async () => {
@@ -1256,6 +1398,7 @@ function TaskBoard({
         <WorkspaceHeader
           currentView={currentView}
           onCreateProject={onCreateProject}
+          onDeleteProject={(project) => setArchiveProjectTarget(project)}
           onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
             ...currentFilters,
             category: '',
@@ -1277,7 +1420,10 @@ function TaskBoard({
           filtersAreActive={filtersAreActive}
           onChange={setFilters}
           onReset={() => setFilters(emptyTaskWallFilters)}
-          options={filterOptions}
+          options={{
+            ...filterOptions,
+            statuses: uniqueSorted([...filterOptions.statuses, ...statusOptions]),
+          }}
           projects={projects}
           t={t}
         />
@@ -1356,16 +1502,23 @@ function TaskBoard({
                   </span>
                 </span>
                 <span className="task-card-meta">
-                  {taskItem.status ? <span>{taskItem.status}</span> : null}
-                  {taskItem.category ? <span>{taskItem.category}</span> : null}
+                  {taskItem.status ? (
+                    <TaskMetaChip icon="status" label={t('status')} value={taskItem.status} />
+                  ) : null}
+                  {taskItem.category ? (
+                    <TaskMetaChip icon="tag" label={t('category')} value={taskItem.category} />
+                  ) : null}
                   <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
+                    <Icon name="clock" />
                     {formatRelativeDate(taskItem.lastTouchedAt)}
                   </span>
                   {taskItem.followUpAt ? (
                     <span
                       className="follow-up-chip"
                       data-tone={getFollowUpTone(taskItem.followUpAt)}
+                      title={`${t('followUpDate')}: ${formatFullDate(taskItem.followUpAt)}`}
                     >
+                      <Icon name="calendarX" />
                       {t('followUp')} {formatFullDate(taskItem.followUpAt)}
                     </span>
                   ) : null}
@@ -1407,6 +1560,7 @@ function TaskBoard({
                       colorOptions={colorOptions}
                       pendingDeletedNoteIds={pendingDeletedNoteIds}
                       projects={projects}
+                      statusOptions={statusOptions}
                       t={t}
                       taskItem={selectedTask}
                     />
@@ -1420,6 +1574,11 @@ function TaskBoard({
       {!isLoading && canCreateTask && !focusedTaskItem ? (
         <FloatingBoardActions
           editModeIsEnabled={editModeIsEnabled}
+          colorOptions={colorOptions}
+          onBatchUpdate={async (requestBody) => {
+            await onUpdateTaskItems(selectedTaskIds, requestBody);
+            setSelectedTaskIds([]);
+          }}
           onCreateTaskItem={onCreateTaskItem}
           onOpenBatchArchive={() => setBatchArchiveIsOpen(true)}
           onToggleEditMode={() =>
@@ -1427,6 +1586,7 @@ function TaskBoard({
           selectedTaskCount={selectedTaskIds.length}
           selectedProjectId={filters.projectId}
           projects={projects}
+          statusOptions={statusOptions}
           templates={templates}
           t={t}
         />
@@ -1443,6 +1603,26 @@ function TaskBoard({
           taskTitle={`${selectedTaskIds.length} ${t('selectedTasks')}`}
         />
       ) : null}
+      {archiveProjectTarget ? (
+        <ArchiveDialog
+          archiveResolutions={archiveResolutions}
+          bodyText={t('deleteCategoryWarning')}
+          onArchive={async (requestBody) => {
+            await onArchiveProject(archiveProjectTarget.id, requestBody);
+            if (filters.projectId === archiveProjectTarget.id) {
+              setFilters((currentFilters) => ({
+                ...currentFilters,
+                projectId: '',
+                category: '',
+              }));
+            }
+            setArchiveProjectTarget(null);
+          }}
+          onClose={() => setArchiveProjectTarget(null)}
+          t={t}
+          taskTitle={archiveProjectTarget.name}
+        />
+      ) : null}
     </section>
   );
 }
@@ -1451,6 +1631,7 @@ function WorkspaceHeader({
   colorOptions,
   currentView,
   onCreateProject,
+  onDeleteProject,
   onSelectProjectFilter,
   onUpdateProject,
   onUpdateWorkspace,
@@ -1461,7 +1642,8 @@ function WorkspaceHeader({
 }: {
   colorOptions: string[];
   currentView: SavedViewResponse | null;
-  onCreateProject: () => void;
+  onCreateProject: (name: string, color?: string | null) => Promise<void>;
+  onDeleteProject: (project: ProjectResponse) => void;
   onSelectProjectFilter: (projectId: string) => void;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
@@ -1476,6 +1658,10 @@ function WorkspaceHeader({
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState('');
   const [projectColor, setProjectColor] = useState('');
+  const [newProjectIsOpen, setNewProjectIsOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectColor, setNewProjectColor] = useState('');
+  const [projectIsSubmitting, setProjectIsSubmitting] = useState(false);
 
   useEffect(() => {
     setWorkspaceName(workspace?.name ?? '');
@@ -1523,6 +1709,22 @@ function WorkspaceHeader({
       color: projectColor.trim() || null,
     });
     cancelProjectEditing();
+  };
+
+  const createProjectFromInlineForm = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedName = newProjectName.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    setProjectIsSubmitting(true);
+    await onCreateProject(trimmedName, newProjectColor);
+    setNewProjectName('');
+    setNewProjectColor('');
+    setNewProjectIsOpen(false);
+    setProjectIsSubmitting(false);
   };
 
   return (
@@ -1635,6 +1837,14 @@ function WorkspaceHeader({
                 >
                   <Icon name="close" />
                 </button>
+                <button
+                  className="tiny-icon-button danger-icon-button"
+                  onClick={() => onDeleteProject(project)}
+                  title={t('archiveCategory')}
+                  type="button"
+                >
+                  <Icon name="trash" />
+                </button>
               </form>
             ) : (
               <span className="project-tag-wrap" key={project.id}>
@@ -1659,15 +1869,65 @@ function WorkspaceHeader({
               </span>
             )
           ))}
-          <button
-            className="project-tag project-tag-add"
-            onClick={onCreateProject}
-            title={t('newProjectTag')}
-            type="button"
-          >
-            <Icon name="plus" />
-            <span>{t('newProjectTag')}</span>
-          </button>
+          {newProjectIsOpen ? (
+            <form
+              className="project-tag-editor"
+              onSubmit={(event) => void createProjectFromInlineForm(event)}
+            >
+              <input
+                aria-label={t('newProjectTag')}
+                autoFocus
+                onChange={(event) => setNewProjectName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setNewProjectName('');
+                    setNewProjectColor('');
+                    setNewProjectIsOpen(false);
+                  }
+                }}
+                placeholder={t('newProjectTag')}
+                type="text"
+                value={newProjectName}
+              />
+              <ColorPickerPopover
+                color={newProjectColor}
+                colorOptions={colorOptions}
+                label={t('color')}
+                onChange={setNewProjectColor}
+                t={t}
+              />
+              <button
+                className="tiny-icon-button"
+                disabled={!newProjectName.trim() || projectIsSubmitting}
+                title={t('saved')}
+                type="submit"
+              >
+                <Icon name="check" />
+              </button>
+              <button
+                className="tiny-icon-button"
+                onClick={() => {
+                  setNewProjectName('');
+                  setNewProjectColor('');
+                  setNewProjectIsOpen(false);
+                }}
+                title={t('cancel')}
+                type="button"
+              >
+                <Icon name="close" />
+              </button>
+            </form>
+          ) : (
+            <button
+              className="project-tag project-tag-add"
+              onClick={() => setNewProjectIsOpen(true)}
+              title={t('newProjectTag')}
+              type="button"
+            >
+              <Icon name="plus" />
+              <span>{t('newProjectTag')}</span>
+            </button>
+          )}
         </div>
         <p>{t('wallHelp')}</p>
       </div>
@@ -1682,48 +1942,39 @@ function WorkspaceHeader({
 }
 
 function FloatingBoardActions({
+  colorOptions,
   editModeIsEnabled,
+  onBatchUpdate,
   onCreateTaskItem,
   onOpenBatchArchive,
   onToggleEditMode,
   projects,
   selectedProjectId,
   selectedTaskCount,
+  statusOptions,
   templates,
   t,
 }: {
+  colorOptions: string[];
   editModeIsEnabled: boolean;
+  onBatchUpdate: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onCreateTaskItem: (title: string, options?: Partial<CreateTaskItemRequest>) => Promise<void>;
   onOpenBatchArchive: () => void;
   onToggleEditMode: () => void;
   projects: ProjectResponse[];
   selectedProjectId: string;
   selectedTaskCount: number;
+  statusOptions: string[];
   templates: TaskTemplateDetailResponse[];
   t: Translate;
 }) {
   const [title, setTitle] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [createIsOpen, setCreateIsOpen] = useState(false);
-  const [selectedCreateProjectId, setSelectedCreateProjectId] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setSelectedCreateProjectId((currentId) => {
-      if (currentId && projects.some((project) => project.id === currentId)) {
-        return currentId;
-      }
-
-      if (selectedProjectId && projects.some((project) => project.id === selectedProjectId)) {
-        return selectedProjectId;
-      }
-
-      return projects[0]?.id ?? '';
-    });
-  }, [projects, selectedProjectId]);
 
   useEffect(() => {
     setSelectedTemplateId((currentId) =>
@@ -1769,7 +2020,7 @@ function FloatingBoardActions({
     }
 
     setIsSubmitting(true);
-    const selectedProject = projects.find((project) => project.id === selectedCreateProjectId);
+    const selectedProject = projects.find((project) => project.id === selectedProjectId);
     await onCreateTaskItem(trimmedTitle, {
       projectId: selectedProject?.id ?? null,
       category: selectedProject?.name ?? null,
@@ -1818,6 +2069,71 @@ function FloatingBoardActions({
                 <Icon name="archive" />
                 <span>{t('archiveSelected')}</span>
               </button>
+              <div className="batch-action-grid" aria-label={`${selectedTaskCount} ${t('selectedTasks')}`}>
+                <select
+                  aria-label={t('changeStatus')}
+                  disabled={selectedTaskCount === 0}
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      void onBatchUpdate({ status: event.target.value });
+                      setIsOpen(false);
+                    }
+                  }}
+                  value=""
+                >
+                  <option value="">{t('changeStatus')}</option>
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label={t('changeCategory')}
+                  disabled={selectedTaskCount === 0}
+                  onChange={(event) => {
+                    const project = projects.find((candidate) => candidate.id === event.target.value);
+                    if (project) {
+                      void onBatchUpdate({
+                        projectId: project.id,
+                        category: project.name,
+                      });
+                      setIsOpen(false);
+                    }
+                  }}
+                  value=""
+                >
+                  <option value="">{t('changeCategory')}</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+                <ColorOptionPicker
+                  emptyLabel={t('noTaskColors')}
+                  label={t('changeColor')}
+                  onChange={(color) => {
+                    void onBatchUpdate({ color: color || null });
+                    setIsOpen(false);
+                  }}
+                  options={colorOptions}
+                  value=""
+                  zeroLabel={t('changeColor')}
+                />
+                <input
+                  aria-label={t('changeDueDate')}
+                  disabled={selectedTaskCount === 0}
+                  onChange={(event) => {
+                    const followUpAt = event.target.value
+                      ? new Date(`${event.target.value}T12:00:00`).toISOString()
+                      : null;
+                    void onBatchUpdate({ followUpAt });
+                    setIsOpen(false);
+                  }}
+                  type="date"
+                />
+              </div>
               <button
                 className="ghost-button"
                 onClick={() => {
@@ -1838,8 +2154,8 @@ function FloatingBoardActions({
               }}
               type="button"
             >
-              <Icon name="archive" />
-              <span>{t('archiveTasks')}</span>
+              <Icon name="check" />
+              <span>{t('selectTasksForAction')}</span>
             </button>
           )}
         </div>
@@ -1860,18 +2176,6 @@ function FloatingBoardActions({
             type="text"
             value={title}
           />
-
-          <select
-            aria-label={t('category')}
-            onChange={(event) => setSelectedCreateProjectId(event.target.value)}
-            value={selectedCreateProjectId}
-          >
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
 
           {templates.length > 0 ? (
             <select
@@ -2136,6 +2440,7 @@ function TaskDetail({
   onUpdateTimelineEntry,
   pendingDeletedNoteIds,
   projects,
+  statusOptions,
   t,
   taskItem,
 }: {
@@ -2155,6 +2460,7 @@ function TaskDetail({
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
   pendingDeletedNoteIds: string[];
   projects: ProjectResponse[];
+  statusOptions: string[];
   t: Translate;
   taskItem: TaskItemDetailResponse;
 }) {
@@ -2194,6 +2500,7 @@ function TaskDetail({
         <TaskHeaderEditor
           onUpdateTaskItem={onUpdateTaskItem}
           projects={projects}
+          statusOptions={statusOptions}
           t={t}
           taskItem={taskItem}
         />
@@ -2300,11 +2607,13 @@ function TaskDetail({
 function TaskHeaderEditor({
   onUpdateTaskItem,
   projects,
+  statusOptions,
   t,
   taskItem,
 }: {
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   projects: ProjectResponse[];
+  statusOptions: string[];
   t: Translate;
   taskItem: TaskItemDetailResponse;
 }) {
@@ -2470,17 +2779,24 @@ function TaskHeaderEditor({
           {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
         </span>
         {editingField === 'status' ? (
-          <input
+          <select
             aria-label={t('status')}
             autoFocus
             disabled={isSubmitting}
             onBlur={() => void saveChanges()}
-            onChange={(event) => setStatus(event.target.value)}
-            onKeyDown={handleTextKeyDown}
-            placeholder={t('noStatus')}
-            type="text"
+            onChange={(event) => {
+              setStatus(event.target.value);
+              void saveChanges({ status: event.target.value });
+            }}
             value={status}
-          />
+          >
+            <option value="">{t('noStatus')}</option>
+            {statusOptions.map((statusOption) => (
+              <option key={statusOption} value={statusOption}>
+                {statusOption}
+              </option>
+            ))}
+          </select>
         ) : (
           <button
             className="task-meta-chip"
@@ -2575,6 +2891,7 @@ function ColorPickerPopover({
   t: Translate;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [customColor, setCustomColor] = useState('');
   const popoverRef = useRef<HTMLDivElement>(null);
   const selectedColor = isHexColor(color) ? color : '#FDE68A';
   const choices = useMemo(
@@ -2586,6 +2903,8 @@ function ColorPickerPopover({
     if (!isOpen) {
       return undefined;
     }
+
+    setCustomColor(selectedColor);
 
     const handlePointerDown = (event: PointerEvent) => {
       if (
@@ -2600,7 +2919,7 @@ function ColorPickerPopover({
     window.addEventListener('pointerdown', handlePointerDown);
 
     return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [isOpen]);
+  }, [isOpen, selectedColor]);
 
   const chooseColor = (nextColor: string) => {
     onChange(nextColor);
@@ -2641,10 +2960,28 @@ function ColorPickerPopover({
             <span className="color-popover-code">{color || t('noColor')}</span>
             <input
               aria-label="Custom color"
-              onChange={(event) => chooseColor(event.target.value.toUpperCase())}
+              onChange={(event) => setCustomColor(event.target.value.toUpperCase())}
               type="color"
-              value={selectedColor}
+              value={customColor || selectedColor}
             />
+          </div>
+          <div className="color-popover-actions">
+            <button
+              className="tiny-icon-button"
+              onClick={() => chooseColor(customColor || selectedColor)}
+              title={t('saved')}
+              type="button"
+            >
+              <Icon name="check" />
+            </button>
+            <button
+              className="tiny-icon-button"
+              onClick={() => setIsOpen(false)}
+              title={t('cancel')}
+              type="button"
+            >
+              <Icon name="close" />
+            </button>
           </div>
           {color ? (
             <button
@@ -3459,12 +3796,14 @@ function AddTimelineEntryForm({
 
 function ArchiveDialog({
   archiveResolutions,
+  bodyText,
   onArchive,
   onClose,
   t,
   taskTitle,
 }: {
   archiveResolutions: ArchiveResolutionResponse[];
+  bodyText?: string;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onClose: () => void;
   t: Translate;
@@ -3517,6 +3856,7 @@ function ArchiveDialog({
         </div>
 
         <form className="archive-form" onSubmit={handleSubmit}>
+          {bodyText ? <p className="resolution-description">{bodyText}</p> : null}
           <label>
             Resolution reason
             <select
@@ -3564,16 +3904,63 @@ function ArchiveDialog({
 }
 
 function SettingsPanel({
+  archiveResolutions,
+  configuredStatuses,
   language,
   onChangeLanguage,
   onClose,
+  onCreateArchiveResolution,
+  onDeleteArchiveResolution,
+  onSaveStatusOptions,
+  onUpdateArchiveResolution,
   t,
 }: {
+  archiveResolutions: ArchiveResolutionResponse[];
+  configuredStatuses: string[];
   language: Language;
   onChangeLanguage: (language: Language) => void;
   onClose: () => void;
+  onCreateArchiveResolution: (requestBody: CreateArchiveResolutionRequest) => Promise<void>;
+  onDeleteArchiveResolution: (id: string) => Promise<void>;
+  onSaveStatusOptions: (statuses: string[]) => void;
+  onUpdateArchiveResolution: (
+    id: string,
+    requestBody: UpdateArchiveResolutionRequest,
+  ) => Promise<void>;
   t: Translate;
 }) {
+  const [statusDraft, setStatusDraft] = useState('');
+  const [archiveReasonName, setArchiveReasonName] = useState('');
+  const [archiveReasonRequiresNote, setArchiveReasonRequiresNote] = useState(false);
+
+  const addStatus = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedStatus = statusDraft.trim();
+
+    if (!trimmedStatus) {
+      return;
+    }
+
+    onSaveStatusOptions([...configuredStatuses, trimmedStatus]);
+    setStatusDraft('');
+  };
+
+  const addArchiveReason = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedName = archiveReasonName.trim();
+
+    if (!trimmedName) {
+      return;
+    }
+
+    await onCreateArchiveResolution({
+      name: trimmedName,
+      requiresExplanation: archiveReasonRequiresNote,
+    });
+    setArchiveReasonName('');
+    setArchiveReasonRequiresNote(false);
+  };
+
   return (
     <div className="dialog-backdrop" role="presentation">
       <section
@@ -3605,6 +3992,75 @@ function SettingsPanel({
         </label>
 
         <div className="settings-section">
+          <h3>{t('statusOptions')}</h3>
+          <form className="settings-inline-form" onSubmit={addStatus}>
+            <input
+              aria-label={t('addStatus')}
+              onChange={(event) => setStatusDraft(event.target.value)}
+              placeholder={t('addStatus')}
+              type="text"
+              value={statusDraft}
+            />
+            <button className="icon-button" disabled={!statusDraft.trim()} type="submit">
+              <Icon name="plus" />
+            </button>
+          </form>
+          <div className="settings-chip-list">
+            {configuredStatuses.map((status) => (
+              <span className="settings-chip" key={status}>
+                {status}
+                <button
+                  className="tiny-icon-button"
+                  onClick={() =>
+                    onSaveStatusOptions(
+                      configuredStatuses.filter((currentStatus) => currentStatus !== status),
+                    )}
+                  title={t('deleteNote')}
+                  type="button"
+                >
+                  <Icon name="trash" />
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>{t('archiveReasons')}</h3>
+          <form className="settings-inline-form" onSubmit={(event) => void addArchiveReason(event)}>
+            <input
+              aria-label={t('addArchiveReason')}
+              onChange={(event) => setArchiveReasonName(event.target.value)}
+              placeholder={t('addArchiveReason')}
+              type="text"
+              value={archiveReasonName}
+            />
+            <label className="settings-checkbox">
+              <input
+                checked={archiveReasonRequiresNote}
+                onChange={(event) => setArchiveReasonRequiresNote(event.target.checked)}
+                type="checkbox"
+              />
+              {t('requireArchiveNote')}
+            </label>
+            <button className="icon-button" disabled={!archiveReasonName.trim()} type="submit">
+              <Icon name="plus" />
+            </button>
+          </form>
+          <div className="settings-list">
+            {archiveResolutions.map((reason) => (
+              <ArchiveResolutionSettingsRow
+                key={reason.id}
+                onDeleteArchiveResolution={onDeleteArchiveResolution}
+                onUpdateArchiveResolution={onUpdateArchiveResolution}
+                reason={reason}
+                t={t}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="settings-section">
           <h3>{t('cleanup')}</h3>
           <p>{t('cleanupFuture')}</p>
           <div className="settings-action-grid">
@@ -3617,6 +4073,98 @@ function SettingsPanel({
         </div>
       </section>
     </div>
+  );
+}
+
+function ArchiveResolutionSettingsRow({
+  onDeleteArchiveResolution,
+  onUpdateArchiveResolution,
+  reason,
+  t,
+}: {
+  onDeleteArchiveResolution: (id: string) => Promise<void>;
+  onUpdateArchiveResolution: (
+    id: string,
+    requestBody: UpdateArchiveResolutionRequest,
+  ) => Promise<void>;
+  reason: ArchiveResolutionResponse;
+  t: Translate;
+}) {
+  const [name, setName] = useState(reason.name);
+  const [requiresExplanation, setRequiresExplanation] = useState(reason.requiresExplanation);
+
+  useEffect(() => {
+    setName(reason.name);
+    setRequiresExplanation(reason.requiresExplanation);
+  }, [reason]);
+
+  const saveReason = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setName(reason.name);
+      return;
+    }
+
+    await onUpdateArchiveResolution(reason.id, {
+      name: trimmedName,
+      requiresExplanation,
+    });
+  };
+
+  return (
+    <div className="settings-row">
+      <input
+        aria-label={reason.name}
+        onBlur={() => void saveReason()}
+        onChange={(event) => setName(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.currentTarget.blur();
+          }
+        }}
+        type="text"
+        value={name}
+      />
+      <label className="settings-checkbox">
+        <input
+          checked={requiresExplanation}
+          onChange={(event) => {
+            setRequiresExplanation(event.target.checked);
+            void onUpdateArchiveResolution(reason.id, {
+              name: name.trim() || reason.name,
+              requiresExplanation: event.target.checked,
+            });
+          }}
+          type="checkbox"
+        />
+        {t('requireArchiveNote')}
+      </label>
+      <button
+        className="tiny-icon-button danger-icon-button"
+        onClick={() => void onDeleteArchiveResolution(reason.id)}
+        title={t('deleteNote')}
+        type="button"
+      >
+        <Icon name="trash" />
+      </button>
+    </div>
+  );
+}
+
+function TaskMetaChip({
+  icon,
+  label,
+  value,
+}: {
+  icon: IconName;
+  label: string;
+  value: string;
+}) {
+  return (
+    <span title={`${label}: ${value}`}>
+      <Icon name={icon} />
+      {label}: {value}
+    </span>
   );
 }
 
@@ -3644,6 +4192,7 @@ function Icon({ name }: { name: IconName }) {
     arrowDown: 'M12 5v14m0 0 6-6m-6 6-6-6',
     arrowUp: 'M12 19V5m0 0 6 6m-6-6-6 6',
     back: 'M15 6 9 12l6 6M10 12h10',
+    calendarX: 'M7 3v4M17 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm6 8 4 4m0-4-4 4',
     check: 'm5 13 4 4L19 7',
     clock: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 4v5l3 2',
     close: 'M6 6l12 12M18 6 6 18',
@@ -3658,6 +4207,8 @@ function Icon({ name }: { name: IconName }) {
     refresh: 'M20 7v5h-5M4 17v-5h5M18 10a6 6 0 0 0-10-4L4 10m2 4a6 6 0 0 0 10 4l4-4',
     search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm5 12 4 4',
     settings: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-2.1-.6a6.9 6.9 0 0 0-.7-1.7l1.1-1.9-2.1-2.1-1.9 1.1a6.9 6.9 0 0 0-1.7-.7L12 4H9l-.6 2.1a6.9 6.9 0 0 0-1.7.7L4.8 5.7 2.7 7.8l1.1 1.9a6.9 6.9 0 0 0-.7 1.7L1 12l.6 3 2.1.6c.2.6.4 1.2.7 1.7l-1.1 1.9 2.1 2.1 1.9-1.1c.5.3 1.1.5 1.7.7L9 23h3l.6-2.1c.6-.2 1.2-.4 1.7-.7l1.9 1.1 2.1-2.1-1.1-1.9c.3-.5.5-1.1.7-1.7L20 15l.6-3Z',
+    status: 'M5 7h14M5 12h14M5 17h9',
+    tag: 'M20 10 14 4H5v9l6 6 9-9ZM8 8h.01',
     templates: 'M4 5h7v7H4V5Zm9 0h7v7h-7V5ZM4 14h7v5H4v-5Zm9 0h7v5h-7v-5Z',
     trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
     waiting: 'M6 4h12M8 4v5l4 3 4-3V4M8 20v-5l4-3 4 3v5M6 20h12',
@@ -3715,6 +4266,23 @@ function getInitialLanguage(): Language {
 function getInitialWorkspaceId() {
   const storedWorkspaceId = window.localStorage.getItem(workspaceStorageKey);
   return storedWorkspaceId && storedWorkspaceId.length > 0 ? storedWorkspaceId : null;
+}
+
+function readStoredStringList(key: string, fallback: string[]) {
+  const storedValue = window.localStorage.getItem(key);
+
+  if (!storedValue) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(storedValue) as unknown;
+    return Array.isArray(parsed)
+      ? uniqueSorted(parsed.filter((value): value is string => typeof value === 'string'))
+      : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function translate(language: Language, key: TranslationKey) {
