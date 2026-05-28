@@ -8,6 +8,8 @@ public interface IProjectRepository
         Guid workspaceId,
         CancellationToken cancellationToken);
 
+    Task AddAsync(Project project, CancellationToken cancellationToken);
+
     Task<Project?> GetByIdAsync(
         Guid id,
         Guid workspaceId,

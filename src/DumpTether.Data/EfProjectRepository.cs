@@ -24,6 +24,11 @@ internal sealed class EfProjectRepository : IProjectRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task AddAsync(Project project, CancellationToken cancellationToken)
+    {
+        await _dbContext.Projects.AddAsync(project, cancellationToken);
+    }
+
     public async Task<Project?> GetByIdAsync(
         Guid id,
         Guid workspaceId,

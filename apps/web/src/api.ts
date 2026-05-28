@@ -2,9 +2,11 @@ import type {
   AddTaskTimelineEntryRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CreateProjectRequest,
   CreateSavedViewRequest,
   CreateTaskTemplateRequest,
   CreateTaskItemRequest,
+  CreateWorkspaceRequest,
   ProjectResponse,
   ReopenTaskItemRequest,
   SavedViewResponse,
@@ -24,6 +26,11 @@ import type {
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
 const apiBaseUrl = configuredBaseUrl ?? '';
+let currentWorkspaceId: string | null = null;
+
+export function setCurrentWorkspaceId(workspaceId: string | null) {
+  currentWorkspaceId = workspaceId;
+}
 
 export class ApiError extends Error {
   public readonly status: number;
@@ -40,6 +47,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(currentWorkspaceId ? { 'X-DumpTether-Workspace-Id': currentWorkspaceId } : {}),
       ...init?.headers,
     },
   });
@@ -143,6 +151,15 @@ export function listProjects(): Promise<ProjectResponse[]> {
   return request<ProjectResponse[]>('/api/projects');
 }
 
+export function createProject(
+  requestBody: CreateProjectRequest,
+): Promise<ProjectResponse> {
+  return request<ProjectResponse>('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
 export function updateProject(
   id: string,
   requestBody: UpdateProjectRequest,
@@ -155,6 +172,19 @@ export function updateProject(
 
 export function getWorkspace(): Promise<WorkspaceResponse> {
   return request<WorkspaceResponse>('/api/workspace');
+}
+
+export function listWorkspaces(): Promise<WorkspaceResponse[]> {
+  return request<WorkspaceResponse[]>('/api/workspaces');
+}
+
+export function createWorkspace(
+  requestBody: CreateWorkspaceRequest,
+): Promise<WorkspaceResponse> {
+  return request<WorkspaceResponse>('/api/workspaces', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
 }
 
 export function updateWorkspace(

@@ -5,13 +5,16 @@ namespace DumpTether.App.Projects;
 
 internal sealed class ProjectService : IProjectService
 {
+    private readonly IClock _clock;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
     private readonly IProjectRepository _projectRepository;
 
     public ProjectService(
+        IClock clock,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
         IProjectRepository projectRepository)
     {
+        _clock = clock;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _projectRepository = projectRepository;
     }
@@ -27,6 +30,26 @@ internal sealed class ProjectService : IProjectService
         return projects
             .Select(MapProject)
             .ToList();
+    }
+
+    public async Task<ProjectResponse> CreateAsync(
+        CreateProjectRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var project = Project.Create(context.WorkspaceId, request.Name, _clock.UtcNow);
+
+        if (request.Color is not null)
+        {
+            project.ChangeColor(request.Color);
+        }
+
+        await _projectRepository.AddAsync(project, cancellationToken);
+        await _projectRepository.SaveChangesAsync(cancellationToken);
+
+        return MapProject(project);
     }
 
     public async Task<ProjectResponse?> UpdateAsync(

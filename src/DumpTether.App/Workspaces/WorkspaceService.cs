@@ -5,20 +5,52 @@ namespace DumpTether.App.Workspaces;
 
 internal sealed class WorkspaceService : IWorkspaceService
 {
+    private readonly IClock _clock;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
     private readonly IWorkspaceRepository _workspaceRepository;
 
     public WorkspaceService(
+        IClock clock,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
         IWorkspaceRepository workspaceRepository)
     {
+        _clock = clock;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _workspaceRepository = workspaceRepository;
+    }
+
+    public async Task<IReadOnlyList<WorkspaceResponse>> ListAsync(CancellationToken cancellationToken)
+    {
+        await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var workspaces = await _workspaceRepository.ListAsync(cancellationToken);
+
+        return workspaces
+            .Select(MapWorkspace)
+            .ToList();
     }
 
     public async Task<WorkspaceResponse> GetCurrentAsync(CancellationToken cancellationToken)
     {
         var workspace = await GetCurrentWorkspaceAsync(cancellationToken);
+        return MapWorkspace(workspace);
+    }
+
+    public async Task<WorkspaceResponse> CreateAsync(
+        CreateWorkspaceRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var workspace = Workspace.Create(request.Name, _clock.UtcNow);
+
+        if (request.Color is not null)
+        {
+            workspace.ChangeColor(request.Color);
+        }
+
+        await _workspaceRepository.AddAsync(workspace, cancellationToken);
+        await _workspaceRepository.SaveChangesAsync(cancellationToken);
+
         return MapWorkspace(workspace);
     }
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DumpTether.App.Tasks;
+using DumpTether.App.Workspaces;
 using DumpTether.Domain;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 {
     private const string DevelopmentProjectName = "Development Project";
     private const string DevelopmentWorkspaceName = "Development Workspace";
+    private const string GeneralProjectName = "General";
     private const string JobProjectName = "Job";
     private const string PersonalProjectName = "Personal";
     private static readonly SemaphoreSlim SeedLock = new(1, 1);
@@ -81,11 +83,16 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     ];
 
     private readonly IClock _clock;
+    private readonly ICurrentWorkspaceSelection _currentWorkspaceSelection;
     private readonly DumpTetherDbContext _dbContext;
 
-    public DevelopmentWorkspaceProvider(IClock clock, DumpTetherDbContext dbContext)
+    public DevelopmentWorkspaceProvider(
+        IClock clock,
+        ICurrentWorkspaceSelection currentWorkspaceSelection,
+        DumpTetherDbContext dbContext)
     {
         _clock = clock;
+        _currentWorkspaceSelection = currentWorkspaceSelection;
         _dbContext = dbContext;
     }
 
@@ -106,10 +113,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     private async Task<DevelopmentWorkspaceContext> GetCurrentCoreAsync(CancellationToken cancellationToken)
     {
         // TEMPORARY: replace this with authenticated workspace/project selection.
-        var workspace = await _dbContext.Workspaces
-            .SingleOrDefaultAsync(
-                candidate => candidate.Name == DevelopmentWorkspaceName,
-                cancellationToken);
+        var workspace = await GetSelectedWorkspaceAsync(cancellationToken);
 
         if (workspace is null)
         {
@@ -117,7 +121,20 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             await _dbContext.Workspaces.AddAsync(workspace, cancellationToken);
         }
 
-        foreach (var projectName in DevelopmentProjectNames)
+        var defaultProjectName = string.Equals(
+            workspace.Name,
+            DevelopmentWorkspaceName,
+            StringComparison.OrdinalIgnoreCase)
+            ? DevelopmentProjectName
+            : GeneralProjectName;
+        var seedProjectNames = string.Equals(
+            workspace.Name,
+            DevelopmentWorkspaceName,
+            StringComparison.OrdinalIgnoreCase)
+            ? DevelopmentProjectNames
+            : [GeneralProjectName];
+
+        foreach (var projectName in seedProjectNames)
         {
             var exists = await _dbContext.Projects
                 .AnyAsync(
@@ -141,7 +158,9 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             .ToDictionaryAsync(
                 candidate => candidate.Name,
                 cancellationToken);
-        var project = projects[DevelopmentProjectName];
+        var project = projects.TryGetValue(defaultProjectName, out var defaultProject)
+            ? defaultProject
+            : projects.Values.OrderBy(candidate => candidate.Name).First();
 
         foreach (var resolution in DevelopmentArchiveResolutions)
         {
@@ -204,6 +223,27 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new DevelopmentWorkspaceContext(workspace.Id, project.Id);
+    }
+
+    private async Task<Workspace?> GetSelectedWorkspaceAsync(CancellationToken cancellationToken)
+    {
+        if (_currentWorkspaceSelection.WorkspaceId.HasValue)
+        {
+            var selectedWorkspace = await _dbContext.Workspaces
+                .SingleOrDefaultAsync(
+                    candidate => candidate.Id == _currentWorkspaceSelection.WorkspaceId.Value,
+                    cancellationToken);
+
+            if (selectedWorkspace is not null)
+            {
+                return selectedWorkspace;
+            }
+        }
+
+        return await _dbContext.Workspaces
+            .SingleOrDefaultAsync(
+                candidate => candidate.Name == DevelopmentWorkspaceName,
+                cancellationToken);
     }
 
     private async Task DeactivateDuplicateDevelopmentTemplatesAsync(

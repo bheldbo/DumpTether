@@ -14,6 +14,14 @@ public sealed class WorkspaceController : ControllerBase
         _workspaceService = workspaceService;
     }
 
+    [HttpGet("/api/workspaces")]
+    public async Task<ActionResult<IReadOnlyList<WorkspaceResponse>>> List(
+        CancellationToken cancellationToken)
+    {
+        var response = await _workspaceService.ListAsync(cancellationToken);
+        return Ok(response);
+    }
+
     [HttpGet]
     public async Task<ActionResult<WorkspaceResponse>> GetCurrent(
         CancellationToken cancellationToken)
@@ -31,6 +39,22 @@ public sealed class WorkspaceController : ControllerBase
         {
             var response = await _workspaceService.UpdateCurrentAsync(request, cancellationToken);
             return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("/api/workspaces")]
+    public async Task<ActionResult<WorkspaceResponse>> Create(
+        CreateWorkspaceRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _workspaceService.CreateAsync(request, cancellationToken);
+            return Created($"/api/workspaces/{response.Id}", response);
         }
         catch (ArgumentException exception)
         {

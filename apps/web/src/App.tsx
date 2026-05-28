@@ -11,9 +11,11 @@ import {
 import {
   addTaskTimelineEntry,
   archiveTaskItem,
+  createProject,
   createSavedView,
   createTaskItem,
   createTaskTemplate,
+  createWorkspace,
   deleteSavedView,
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
@@ -25,7 +27,9 @@ import {
   listSavedViews,
   listTaskItems,
   listTaskTemplates,
+  listWorkspaces,
   reopenTaskItem,
+  setCurrentWorkspaceId,
   updateSavedView,
   updateProject,
   updateTaskItem,
@@ -63,10 +67,12 @@ type Translate = (key: TranslationKey) => string;
 
 type IconName =
   | 'archive'
+  | 'back'
   | 'check'
   | 'clock'
   | 'close'
   | 'edit'
+  | 'filterOff'
   | 'inbox'
   | 'list'
   | 'note'
@@ -152,6 +158,7 @@ const colorChoices = [
   '#CBD5E1',
 ];
 const languageStorageKey = 'dumptether.language';
+const workspaceStorageKey = 'dumptether.workspace';
 const translations = {
   en: {
     addTask: 'Add task',
@@ -204,6 +211,16 @@ const translations = {
     clearColor: 'Clear color',
     noColor: 'No color',
     wallHelp: 'Search tasks by text, project tag, status, color, and dates.',
+    workspaces: 'Workspaces',
+    allWorkspaces: 'All workspaces',
+    newWorkspace: 'New workspace',
+    newProjectTag: 'New project tag',
+    removeFilters: 'Remove filters',
+    cleanup: 'Cleanup',
+    clearArchive: 'Clear archive',
+    clearOldTasks: 'Clear old tasks...',
+    clearWorkspaceTasks: 'Clear workspace tasks...',
+    cleanupFuture: 'Cleanup actions will land with workspace safety checks.',
   },
   da: {
     addTask: 'Tilfoj opgave',
@@ -256,12 +273,23 @@ const translations = {
     clearColor: 'Ryd farve',
     noColor: 'Ingen farve',
     wallHelp: 'Sog i opgaver efter tekst, projekt-tag, status, farve og datoer.',
+    workspaces: 'Workspaces',
+    allWorkspaces: 'Alle workspaces',
+    newWorkspace: 'Nyt workspace',
+    newProjectTag: 'Nyt projekt-tag',
+    removeFilters: 'Fjern filtre',
+    cleanup: 'Oprydning',
+    clearArchive: 'Ryd arkiv',
+    clearOldTasks: 'Ryd gamle opgaver...',
+    clearWorkspaceTasks: 'Ryd opgaver i workspace...',
+    cleanupFuture: 'Oprydning kommer med sikkerhedstjek for workspace.',
   },
 } as const;
 type TranslationKey = keyof typeof translations.en;
 
 function App() {
   const [savedViews, setSavedViews] = useState<SavedViewResponse[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceResponse[]>([]);
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [taskItems, setTaskItems] = useState<TaskItemSummaryResponse[]>([]);
@@ -278,6 +306,9 @@ function App() {
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
   const [settingsIsOpen, setSettingsIsOpen] = useState(false);
   const [language, setLanguage] = useState<Language>(getInitialLanguage);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
+    getInitialWorkspaceId,
+  );
   const [taskColorOptions, setTaskColorOptions] = useState<string[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
@@ -291,10 +322,23 @@ function App() {
   );
 
   const loadWorkspace = useCallback(
-    async (preferredViewId: string | null = currentViewId) => {
+    async (
+      preferredViewId: string | null = currentViewId,
+      preferredWorkspaceId: string | null = selectedWorkspaceId,
+    ) => {
       setIsLoadingWorkspace(true);
 
       try {
+        setCurrentWorkspaceId(null);
+        const workspaceList = await listWorkspaces();
+        const effectiveWorkspaceId =
+          preferredWorkspaceId && workspaceList.some((candidate) => candidate.id === preferredWorkspaceId)
+            ? preferredWorkspaceId
+            : workspaceList[0]?.id ?? null;
+
+        setCurrentWorkspaceId(effectiveWorkspaceId);
+        window.localStorage.setItem(workspaceStorageKey, effectiveWorkspaceId ?? '');
+
         const [workspaceInfo, views, projectList, resolutions, templateSummaries] = await Promise.all([
           getWorkspace(),
           listSavedViews(),
@@ -315,7 +359,9 @@ function App() {
           listTaskItems({ archive: 'All' }),
         ]);
 
+        setWorkspaces(workspaceList);
         setWorkspace(workspaceInfo);
+        setSelectedWorkspaceId(workspaceInfo.id);
         setSavedViews(views);
         setProjects(projectList);
         setArchiveResolutions(resolutions);
@@ -336,7 +382,7 @@ function App() {
         setIsLoadingWorkspace(false);
       }
     },
-    [currentViewId, selectedTaskId],
+    [currentViewId, selectedTaskId, selectedWorkspaceId],
   );
 
   useEffect(() => {
@@ -395,7 +441,7 @@ function App() {
     return () => {
       requestIsStale = true;
     };
-  }, [mode, selectedTaskId]);
+  }, [mode, selectedTaskId, selectedWorkspaceId]);
 
   const handleSelectSavedView = (viewId: string) => {
     setMode('tasks');
@@ -403,6 +449,48 @@ function App() {
     setSelectedTaskId(null);
     updateUrl('tasks', viewId);
     void loadWorkspace(viewId);
+  };
+
+  const handleSelectWorkspace = (workspaceId: string) => {
+    setMode('tasks');
+    setSelectedWorkspaceId(workspaceId);
+    setCurrentViewId(null);
+    setSelectedTaskId(null);
+    setSelectedTask(null);
+    updateUrl('tasks', null);
+    void loadWorkspace(null, workspaceId);
+  };
+
+  const handleCreateWorkspace = async () => {
+    const name = window.prompt(t('newWorkspace'));
+
+    if (!name?.trim()) {
+      return;
+    }
+
+    try {
+      setCurrentWorkspaceId(null);
+      const created = await createWorkspace({ name: name.trim() });
+      setWorkspaces((currentWorkspaces) => [...currentWorkspaces, created]);
+      handleSelectWorkspace(created.id);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleCreateProject = async () => {
+    const name = window.prompt(t('newProjectTag'));
+
+    if (!name?.trim()) {
+      return;
+    }
+
+    try {
+      const created = await createProject({ name: name.trim() });
+      setProjects((currentProjects) => [...currentProjects, created]);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
   };
 
   const handleOpenTemplates = () => {
@@ -665,6 +753,7 @@ function App() {
         currentViewId={currentViewId}
         language={language}
         mode={mode}
+        onCreateWorkspace={() => void handleCreateWorkspace()}
         onCreateView={() => {
           setEditingView(null);
           setViewEditorIsOpen(true);
@@ -673,6 +762,7 @@ function App() {
         onOpenTemplates={handleOpenTemplates}
         onRefresh={() => void loadWorkspace(currentViewId)}
         onReorderViews={handleReorderSavedViews}
+        onSelectWorkspace={handleSelectWorkspace}
         onSelectView={handleSelectSavedView}
         onToggleSidebar={() => setSidebarIsCollapsed((isCollapsed) => !isCollapsed)}
         savedViews={savedViews}
@@ -680,6 +770,7 @@ function App() {
         templateCount={templates.length}
         t={t}
         workspace={workspace}
+        workspaces={workspaces}
       />
 
       <section className="workspace" aria-label="Task workspace">
@@ -709,11 +800,8 @@ function App() {
             onArchive={handleArchiveTaskItem}
             onCloseArchiveDialog={() => setArchiveDialogIsOpen(false)}
             onCreateTaskItem={handleCreateTaskItem}
+            onCreateProject={handleCreateProject}
             onDeleteTimelineEntry={handleDeleteTimelineEntry}
-            onEditView={() => {
-              setEditingView(currentView);
-              setViewEditorIsOpen(true);
-            }}
             onOpenArchiveDialog={() => setArchiveDialogIsOpen(true)}
             onReopen={handleReopenTaskItem}
             onSelectTaskItem={(id) => {
@@ -770,11 +858,13 @@ function Sidebar({
   currentViewId,
   language,
   mode,
+  onCreateWorkspace,
   onCreateView,
   onOpenSettings,
   onOpenTemplates,
   onRefresh,
   onReorderViews,
+  onSelectWorkspace,
   onSelectView,
   onToggleSidebar,
   savedViews,
@@ -782,16 +872,19 @@ function Sidebar({
   t,
   templateCount,
   workspace,
+  workspaces,
 }: {
   counts: Record<string, number>;
   currentViewId: string | null;
   language: Language;
   mode: WorkspaceMode;
+  onCreateWorkspace: () => void;
   onCreateView: () => void;
   onOpenSettings: () => void;
   onOpenTemplates: () => void;
   onRefresh: () => void;
   onReorderViews: (draggedViewId: string, targetViewId: string) => Promise<void>;
+  onSelectWorkspace: (workspaceId: string) => void;
   onSelectView: (viewId: string) => void;
   onToggleSidebar: () => void;
   savedViews: SavedViewResponse[];
@@ -799,6 +892,7 @@ function Sidebar({
   t: Translate;
   templateCount: number;
   workspace: WorkspaceResponse | null;
+  workspaces: WorkspaceResponse[];
 }) {
   const [draggedViewId, setDraggedViewId] = useState<string | null>(null);
 
@@ -822,6 +916,41 @@ function Sidebar({
         >
           <Icon name="panel" />
         </button>
+      </div>
+
+      <div className="sidebar-section-label">
+        <span>{t('workspaces')}</span>
+        <button
+          className="tiny-icon-button"
+          onClick={onCreateWorkspace}
+          title={t('newWorkspace')}
+          type="button"
+        >
+          <Icon name="plus" />
+        </button>
+      </div>
+
+      <nav className="view-nav workspace-nav" aria-label={t('workspaces')}>
+        {workspaces.map((candidate) => (
+          <button
+            aria-current={workspace?.id === candidate.id ? 'page' : undefined}
+            className="nav-item workspace-nav-item"
+            key={candidate.id}
+            onClick={() => onSelectWorkspace(candidate.id)}
+            title={candidate.name}
+            type="button"
+          >
+            <span
+              className="workspace-color-dot"
+              style={{ backgroundColor: candidate.color ?? '#184c48' }}
+            />
+            <span className="nav-label">{candidate.name}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div className="sidebar-section-label">
+        <span>{t('savedViews')}</span>
       </div>
 
       <nav className="view-nav" aria-label={t('savedViews')}>
@@ -897,9 +1026,9 @@ function TaskBoard({
   onAddTimelineEntry,
   onArchive,
   onCloseArchiveDialog,
+  onCreateProject,
   onCreateTaskItem,
   onDeleteTimelineEntry,
-  onEditView,
   onOpenArchiveDialog,
   onReopen,
   onCloseTaskItem,
@@ -925,11 +1054,11 @@ function TaskBoard({
   onAddTimelineEntry: (note: string) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onCloseArchiveDialog: () => void;
+  onCreateProject: () => void;
   onCreateTaskItem: (
     title: string,
   ) => Promise<void>;
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
-  onEditView: () => void;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
   onCloseTaskItem: () => void;
@@ -948,6 +1077,7 @@ function TaskBoard({
 }) {
   const canCreateTask = currentView?.filter.archive !== 'Archived';
   const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
+  const [pendingDeletedNoteIds, setPendingDeletedNoteIds] = useState<string[]>([]);
   const visibleTaskItems = useMemo(
     () => applyTaskWallFilters(taskItems, filters),
     [filters, taskItems],
@@ -969,6 +1099,22 @@ function TaskBoard({
   );
 
   useEffect(() => {
+    setPendingDeletedNoteIds([]);
+  }, [selectedTaskId]);
+
+  const closeFocusedTask = useCallback(async () => {
+    const idsToDelete = pendingDeletedNoteIds;
+
+    setPendingDeletedNoteIds([]);
+
+    for (const entryId of idsToDelete) {
+      await onDeleteTimelineEntry(entryId);
+    }
+
+    onCloseTaskItem();
+  }, [onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
+
+  useEffect(() => {
     if (!selectedTaskId || archiveDialogIsOpen) {
       return undefined;
     }
@@ -978,13 +1124,13 @@ function TaskBoard({
         return;
       }
 
-      onCloseTaskItem();
+      void closeFocusedTask();
     };
 
     window.addEventListener('keydown', handleKeyDown);
 
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [archiveDialogIsOpen, onCloseTaskItem, selectedTaskId]);
+  }, [archiveDialogIsOpen, closeFocusedTask, selectedTaskId]);
 
   return (
     <section
@@ -995,7 +1141,7 @@ function TaskBoard({
       <WorkspaceHeader
         currentProject={currentProject}
         currentView={currentView}
-        onEditView={onEditView}
+        onCreateProject={onCreateProject}
         onCreateTaskItem={canCreateTask && !focusedTaskItem ? onCreateTaskItem : null}
         onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
           ...currentFilters,
@@ -1046,7 +1192,7 @@ function TaskBoard({
               <button
                 aria-expanded={isExpanded}
                 className="task-card-button"
-                onClick={() => (isExpanded ? onCloseTaskItem() : onSelectTaskItem(taskItem.id))}
+                onClick={() => (isExpanded ? void closeFocusedTask() : onSelectTaskItem(taskItem.id))}
                 title={isExpanded ? 'Back to wall' : taskItem.title}
                 type="button"
               >
@@ -1082,15 +1228,23 @@ function TaskBoard({
                       archiveResolutions={archiveResolutions}
                       onAddTimelineEntry={onAddTimelineEntry}
                       onArchive={onArchive}
-                      onClose={onCloseTaskItem}
+                      onClose={closeFocusedTask}
                       onCloseArchiveDialog={onCloseArchiveDialog}
                       onOpenArchiveDialog={onOpenArchiveDialog}
                       onReopen={onReopen}
-                      onDeleteTimelineEntry={onDeleteTimelineEntry}
+                      onQueueDeleteTimelineEntry={(entryId) =>
+                        setPendingDeletedNoteIds((currentIds) =>
+                          currentIds.includes(entryId) ? currentIds : [...currentIds, entryId],
+                        )}
+                      onUndoDeleteTimelineEntry={(entryId) =>
+                        setPendingDeletedNoteIds((currentIds) =>
+                          currentIds.filter((currentId) => currentId !== entryId),
+                        )}
                       onUpdateFieldValues={onUpdateFieldValues}
                       onUpdateTaskItem={onUpdateTaskItem}
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
                       colorOptions={colorOptions}
+                      pendingDeletedNoteIds={pendingDeletedNoteIds}
                       t={t}
                       taskItem={selectedTask}
                     />
@@ -1109,8 +1263,8 @@ function WorkspaceHeader({
   colorOptions,
   currentProject,
   currentView,
+  onCreateProject,
   onCreateTaskItem,
-  onEditView,
   onSelectProjectFilter,
   onUpdateProjectColor,
   onUpdateWorkspaceColor,
@@ -1122,8 +1276,8 @@ function WorkspaceHeader({
   colorOptions: string[];
   currentProject: ProjectResponse | null;
   currentView: SavedViewResponse | null;
+  onCreateProject: () => void;
   onCreateTaskItem: ((title: string) => Promise<void>) | null;
-  onEditView: () => void;
   onSelectProjectFilter: (projectId: string) => void;
   onUpdateProjectColor: (id: string, color: string) => Promise<void>;
   onUpdateWorkspaceColor: (color: string) => Promise<void>;
@@ -1185,6 +1339,15 @@ function WorkspaceHeader({
               {project.name}
             </button>
           ))}
+          <button
+            className="project-tag project-tag-add"
+            onClick={onCreateProject}
+            title={t('newProjectTag')}
+            type="button"
+          >
+            <Icon name="plus" />
+            <span>{t('newProjectTag')}</span>
+          </button>
         </div>
         <p>{t('wallHelp')}</p>
       </div>
@@ -1196,10 +1359,6 @@ function WorkspaceHeader({
         {onCreateTaskItem ? (
           <QuickCreateTaskForm onCreateTaskItem={onCreateTaskItem} t={t} />
         ) : null}
-        <button className="secondary-action" disabled={!currentView} onClick={onEditView} type="button">
-          <Icon name="edit" />
-          <span>{t('editView')}</span>
-        </button>
       </div>
     </div>
   );
@@ -1398,8 +1557,14 @@ function TaskFilterBar({
       />
 
       {filtersAreActive ? (
-        <button className="ghost-button" onClick={onReset} type="button">
-          {t('resetFilters')}
+        <button
+          className="icon-button reset-filters-button"
+          onClick={onReset}
+          title={t('removeFilters')}
+          type="button"
+        >
+          <Icon name="filterOff" />
+          <span className="sr-only">{t('removeFilters')}</span>
         </button>
       ) : null}
     </div>
@@ -1515,10 +1680,12 @@ function TaskDetail({
   onCloseArchiveDialog,
   onOpenArchiveDialog,
   onReopen,
-  onDeleteTimelineEntry,
+  onQueueDeleteTimelineEntry,
+  onUndoDeleteTimelineEntry,
   onUpdateFieldValues,
   onUpdateTaskItem,
   onUpdateTimelineEntry,
+  pendingDeletedNoteIds,
   t,
   taskItem,
 }: {
@@ -1527,14 +1694,16 @@ function TaskDetail({
   colorOptions: string[];
   onAddTimelineEntry: (note: string) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
-  onClose: () => void;
+  onClose: () => Promise<void>;
   onCloseArchiveDialog: () => void;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
-  onDeleteTimelineEntry: (entryId: string) => Promise<void>;
+  onQueueDeleteTimelineEntry: (entryId: string) => void;
+  onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+  pendingDeletedNoteIds: string[];
   t: Translate;
   taskItem: TaskItemDetailResponse;
 }) {
@@ -1560,8 +1729,14 @@ function TaskDetail({
         />
 
         <div className="detail-actions">
-          <button className="ghost-button" onClick={onClose} type="button">
-            {t('backToWall')}
+          <button
+            className="icon-button"
+            onClick={() => void onClose()}
+            title={t('backToWall')}
+            type="button"
+          >
+            <Icon name="back" />
+            <span className="sr-only">{t('backToWall')}</span>
           </button>
           {taskItem.archivedAt ? (
             <form
@@ -1627,9 +1802,11 @@ function TaskDetail({
       </details>
 
       <TimelinePanel
-        onDeleteTimelineEntry={onDeleteTimelineEntry}
         onAddTimelineEntry={onAddTimelineEntry}
+        onQueueDeleteTimelineEntry={onQueueDeleteTimelineEntry}
+        onUndoDeleteTimelineEntry={onUndoDeleteTimelineEntry}
         onUpdateTimelineEntry={onUpdateTimelineEntry}
+        pendingDeletedNoteIds={pendingDeletedNoteIds}
         timelineEntries={taskItem.timelineEntries}
       />
 
@@ -2520,13 +2697,17 @@ function ViewEditorPanel({
 
 function TimelinePanel({
   onAddTimelineEntry,
-  onDeleteTimelineEntry,
+  onQueueDeleteTimelineEntry,
+  onUndoDeleteTimelineEntry,
   onUpdateTimelineEntry,
+  pendingDeletedNoteIds,
   timelineEntries,
 }: {
   onAddTimelineEntry: (note: string) => Promise<void>;
-  onDeleteTimelineEntry: (entryId: string) => Promise<void>;
+  onQueueDeleteTimelineEntry: (entryId: string) => void;
+  onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+  pendingDeletedNoteIds: string[];
   timelineEntries: TaskItemDetailResponse['timelineEntries'];
 }) {
   const notes = timelineEntries.filter((entry) => entry.kind === 'NoteAdded');
@@ -2545,8 +2726,10 @@ function TimelinePanel({
         {notes.map((entry) => (
           <NoteEntry
             entry={entry}
+            isPendingDelete={pendingDeletedNoteIds.includes(entry.id)}
             key={entry.id}
-            onDeleteTimelineEntry={onDeleteTimelineEntry}
+            onQueueDeleteTimelineEntry={onQueueDeleteTimelineEntry}
+            onUndoDeleteTimelineEntry={onUndoDeleteTimelineEntry}
             onUpdateTimelineEntry={onUpdateTimelineEntry}
           />
         ))}
@@ -2557,11 +2740,15 @@ function TimelinePanel({
 
 function NoteEntry({
   entry,
-  onDeleteTimelineEntry,
+  isPendingDelete,
+  onQueueDeleteTimelineEntry,
+  onUndoDeleteTimelineEntry,
   onUpdateTimelineEntry,
 }: {
   entry: TaskItemDetailResponse['timelineEntries'][number];
-  onDeleteTimelineEntry: (entryId: string) => Promise<void>;
+  isPendingDelete: boolean;
+  onQueueDeleteTimelineEntry: (entryId: string) => void;
+  onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -2588,7 +2775,49 @@ function NoteEntry({
   };
 
   return (
-    <li className="note-entry">
+    <li className="note-entry" data-pending-delete={isPendingDelete}>
+      <div className="note-delete-cell">
+        {isPendingDelete ? (
+          <button
+            className="ghost-button note-undo-button"
+            onClick={() => onUndoDeleteTimelineEntry(entry.id)}
+            type="button"
+          >
+            Undo
+          </button>
+        ) : isConfirmingDelete ? (
+          <div className="note-confirm-delete">
+            <span>Sure?</span>
+            <button
+              className="icon-button"
+              onClick={() => {
+                onQueueDeleteTimelineEntry(entry.id);
+                setIsConfirmingDelete(false);
+              }}
+              title="Delete note"
+              type="button"
+            >
+              <Icon name="close" />
+            </button>
+            <button
+              className="ghost-button"
+              onClick={() => setIsConfirmingDelete(false)}
+              type="button"
+            >
+              Keep
+            </button>
+          </div>
+        ) : (
+          <button
+            className="icon-button note-delete-button"
+            onClick={() => setIsConfirmingDelete(true)}
+            title="Delete note"
+            type="button"
+          >
+            <Icon name="close" />
+          </button>
+        )}
+      </div>
       <time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time>
       {isEditing ? (
         <div className="note-edit">
@@ -2622,36 +2851,6 @@ function NoteEntry({
           {entry.details}
         </button>
       )}
-      {!isEditing ? (
-        <div className="note-actions">
-          {isConfirmingDelete ? (
-            <>
-              <button
-                className="danger-button"
-                onClick={() => void onDeleteTimelineEntry(entry.id)}
-                type="button"
-              >
-                Delete
-              </button>
-              <button
-                className="ghost-button"
-                onClick={() => setIsConfirmingDelete(false)}
-                type="button"
-              >
-                Keep
-              </button>
-            </>
-          ) : (
-            <button
-              className="ghost-button"
-              onClick={() => setIsConfirmingDelete(true)}
-              type="button"
-            >
-              Delete
-            </button>
-          )}
-        </div>
-      ) : null}
     </li>
   );
 }
@@ -2848,6 +3047,16 @@ function SettingsPanel({
             <option value="da">{t('danish')}</option>
           </select>
         </label>
+
+        <div className="settings-section">
+          <h3>{t('cleanup')}</h3>
+          <p>{t('cleanupFuture')}</p>
+          <div className="settings-action-grid">
+            <button disabled type="button">{t('clearArchive')}</button>
+            <button disabled type="button">{t('clearOldTasks')}</button>
+            <button disabled type="button">{t('clearWorkspaceTasks')}</button>
+          </div>
+        </div>
       </section>
     </div>
   );
@@ -2874,10 +3083,12 @@ function TaskBadges({ taskItem }: { taskItem: TaskItemSummaryResponse }) {
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     archive: 'M4 7h16v13H4V7Zm2-4h12l2 4H4l2-4Zm5 8h2',
+    back: 'M15 6 9 12l6 6M10 12h10',
     check: 'm5 13 4 4L19 7',
     clock: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 4v5l3 2',
     close: 'M6 6l12 12M18 6 6 18',
     edit: 'M4 20h4l10-10-4-4L4 16v4Zm12-16 4 4',
+    filterOff: 'M4 5h16l-6 7v3l-4 2v-5L4 5Zm3 15 13-13',
     inbox: 'M4 5h16v10l-3 4H7l-3-4V5Zm0 10h5l1.5 2h3L15 15h5',
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
     note: 'M5 4h11l3 3v13H5V4Zm11 0v4h4M8 12h8M8 16h6',
@@ -2939,6 +3150,11 @@ function getInitialViewId() {
 function getInitialLanguage(): Language {
   const storedLanguage = window.localStorage.getItem(languageStorageKey);
   return storedLanguage === 'da' ? 'da' : 'en';
+}
+
+function getInitialWorkspaceId() {
+  const storedWorkspaceId = window.localStorage.getItem(workspaceStorageKey);
+  return storedWorkspaceId && storedWorkspaceId.length > 0 ? storedWorkspaceId : null;
 }
 
 function translate(language: Language, key: TranslationKey) {

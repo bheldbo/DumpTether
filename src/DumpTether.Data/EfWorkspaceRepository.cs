@@ -13,10 +13,23 @@ internal sealed class EfWorkspaceRepository : IWorkspaceRepository
         _dbContext = dbContext;
     }
 
+    public async Task<IReadOnlyList<Workspace>> ListAsync(CancellationToken cancellationToken)
+    {
+        return await _dbContext.Workspaces
+            .AsNoTracking()
+            .OrderBy(workspace => workspace.Name)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Workspace?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         return await _dbContext.Workspaces
             .SingleOrDefaultAsync(workspace => workspace.Id == id, cancellationToken);
+    }
+
+    public async Task AddAsync(Workspace workspace, CancellationToken cancellationToken)
+    {
+        await _dbContext.Workspaces.AddAsync(workspace, cancellationToken);
     }
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)

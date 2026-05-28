@@ -166,6 +166,51 @@ label {
   padding-right: 2px;
 }
 
+.sidebar-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 2px 4px -8px;
+  color: #6d7988;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.tiny-icon-button {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: #536273;
+}
+
+.tiny-icon-button:hover {
+  border-color: #aac1c4;
+  background: #edf6f5;
+  color: #184c48;
+}
+
+.workspace-nav {
+  max-height: 152px;
+}
+
+.workspace-nav-item {
+  grid-template-columns: 20px minmax(0, 1fr);
+}
+
+.workspace-color-dot {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(24, 33, 44, 0.16);
+  border-radius: 999px;
+}
+
 .nav-item,
 .refresh-button {
   width: 100%;
@@ -242,6 +287,7 @@ label {
 }
 
 .app-shell[data-sidebar-collapsed="true"] .brand-copy,
+.app-shell[data-sidebar-collapsed="true"] .sidebar-section-label,
 .app-shell[data-sidebar-collapsed="true"] .nav-label,
 .app-shell[data-sidebar-collapsed="true"] .nav-count {
   display: none;
@@ -434,6 +480,12 @@ label {
 
 .project-tag[data-selected="true"] {
   background: color-mix(in srgb, var(--context-chip-color, #ffffff) 72%, #184c48);
+}
+
+.project-tag-add {
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #536273;
 }
 
 .board-actions {
@@ -1087,7 +1139,7 @@ label {
 
 .note-entry {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) auto;
+  grid-template-columns: 34px 150px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
   padding: 9px 10px;
@@ -1095,6 +1147,51 @@ label {
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.62), color-mix(in srgb, var(--task-note-color, #fff3a6) 13%, #ffffff));
+}
+
+.note-entry[data-pending-delete="true"] {
+  opacity: 0.72;
+}
+
+.note-entry[data-pending-delete="true"] .note-body,
+.note-entry[data-pending-delete="true"] time {
+  text-decoration: line-through;
+}
+
+.note-delete-cell {
+  min-height: 28px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.note-delete-button,
+.note-undo-button,
+.note-confirm-delete {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.note-entry:hover .note-delete-button,
+.note-entry:focus-within .note-delete-button,
+.note-entry[data-pending-delete="true"] .note-undo-button,
+.note-entry:focus-within .note-undo-button,
+.note-confirm-delete {
+  opacity: 1;
+}
+
+.note-confirm-delete {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: #7c2d1c;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.note-undo-button {
+  min-height: 28px;
+  padding: 4px 7px;
+  font-size: 0.75rem;
 }
 
 .note-entry time {
@@ -1128,20 +1225,39 @@ label {
 .note-actions {
   display: flex;
   gap: 6px;
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.note-entry:hover .note-actions,
-.note-entry:focus-within .note-actions,
-.note-edit .note-actions {
-  opacity: 1;
 }
 
 .reopen-form {
   display: grid;
   grid-template-columns: minmax(150px, 220px) auto;
   gap: 8px;
+}
+
+.settings-section {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8ef;
+}
+
+.settings-section h3,
+.settings-section p {
+  margin: 0;
+}
+
+.settings-section p {
+  color: #667586;
+  font-size: 0.86rem;
+}
+
+.settings-action-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-action-grid button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .templates-page {

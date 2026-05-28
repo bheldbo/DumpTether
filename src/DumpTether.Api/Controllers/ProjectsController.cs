@@ -22,6 +22,22 @@ public sealed class ProjectsController : ControllerBase
         return Ok(response);
     }
 
+    [HttpPost]
+    public async Task<ActionResult<ProjectResponse>> Create(
+        CreateProjectRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _projectService.CreateAsync(request, cancellationToken);
+            return Created($"/api/projects/{response.Id}", response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
     [HttpPatch("{id:guid}")]
     public async Task<ActionResult<ProjectResponse>> Update(
         Guid id,

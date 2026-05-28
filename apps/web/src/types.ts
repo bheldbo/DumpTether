@@ -68,8 +68,18 @@ export interface UpdateWorkspaceRequest {
   color?: string | null;
 }
 
+export interface CreateWorkspaceRequest {
+  name: string;
+  color?: string | null;
+}
+
 export interface UpdateProjectRequest {
   name?: string | null;
+  color?: string | null;
+}
+
+export interface CreateProjectRequest {
+  name: string;
   color?: string | null;
 }
 

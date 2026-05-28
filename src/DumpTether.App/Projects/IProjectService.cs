@@ -4,6 +4,10 @@ public interface IProjectService
 {
     Task<IReadOnlyList<ProjectResponse>> ListAsync(CancellationToken cancellationToken);
 
+    Task<ProjectResponse> CreateAsync(
+        CreateProjectRequest request,
+        CancellationToken cancellationToken);
+
     Task<ProjectResponse?> UpdateAsync(
         Guid id,
         UpdateProjectRequest request,
