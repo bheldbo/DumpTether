@@ -23,7 +23,9 @@ src/DumpTether.App/       Application services and use cases
 src/DumpTether.Data/      EF Core persistence
 src/DumpTether.Domain/    Domain model and business rules
 docs/adr/                 Architecture decision records
+docs/deployment/          Deployment notes and examples
 docs/security/            Security principles
+deploy/docker/            Production Docker Compose examples
 ```
 
 ## Prerequisites
@@ -254,13 +256,15 @@ For local PostgreSQL only, keep using:
 docker compose up -d
 ```
 
-For production, use `docker-compose.prod.example.yml` as a starting point and provide real values through an uncommitted `.env` or host secret store:
+For production, use `deploy/docker/docker-compose.prod.example.yml` as the canonical starting point and provide real values through an uncommitted `.env.prod` or host secret store:
 
 ```powershell
-docker compose -f docker-compose.prod.example.yml up -d
+docker compose --env-file deploy/docker/.env.prod.example -f deploy/docker/docker-compose.prod.example.yml config
 ```
 
-The production example does not publish the PostgreSQL port. The API reaches PostgreSQL through the Docker network using `Host=postgres`. Keep `DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP=false` in normal production operation unless you intentionally run a controlled migration step.
+The production example includes PostgreSQL, the API, and a Caddy reverse proxy placeholder. It does not publish the PostgreSQL port. The API reaches PostgreSQL through the Docker network using `Host=postgres`. Keep `DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP=false` in normal production operation unless you intentionally run a controlled migration step.
+
+See `docs/deployment/docker-compose-production.md` for image build, server `.env.prod`, logs, API restart, PostgreSQL backup, and future GHCR deployment notes.
 
 ## Visual Studio
 

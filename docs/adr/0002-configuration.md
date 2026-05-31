@@ -14,13 +14,13 @@ DumpTether separates configuration into three categories.
 
 ## Deployment and Runtime Configuration
 
-Deployment/runtime configuration includes connection strings, signing keys, external API keys, SMTP credentials, storage paths, host names, and environment-specific runtime switches.
+Deployment/runtime configuration includes connection strings, auth signing keys, cookie settings, allowed origins, reverse proxy settings, external API keys, SMTP credentials, storage paths, host names, and environment-specific runtime switches.
 
 These values are supplied through environment variables, deployment platform settings, local user secrets, or uncommitted local settings files. `appsettings.example.json` documents the expected shape only and must not contain real secrets.
 
 ## User and Workspace Configuration
 
-User/workspace configuration includes templates, field definitions, saved views, archive reasons, default project, and display preferences.
+User/workspace configuration includes templates, field definitions, saved views, archive reasons, categories, statuses, colors, default project, and display preferences.
 
 These values belong to the application data model because they are part of how a workspace behaves. They should be persisted through the normal application database schema and migrations.
 
@@ -28,7 +28,7 @@ These values belong to the application data model because they are part of how a
 
 Integration configuration includes provider settings and credentials for future extensions.
 
-Provider metadata may be stored in the database when integrations are introduced. Credentials and secrets must be stored in a secret store or deployment environment, not in source control or ordinary database records.
+Provider metadata may be stored in the database when integrations are introduced. Future email, calendar, AI, and MCP credentials and secrets must be stored in a secret store or deployment environment, not in source control or ordinary database records.
 
 ## GitHub Secret Handling
 
