@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dumptether-postgres-local
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dumptether}
+      POSTGRES_USER: ${POSTGRES_USER:-dumptether}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dumptether_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - dumptether-postgres-local-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dumptether} -d ${POSTGRES_DB:-dumptether}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: src/DumpTether.Api/Dockerfile
+    image: ${DUMPTETHER_API_IMAGE:-dumptether-api:local}
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      Database__ApplyMigrationsOnStartup: "true"
+      ConnectionStrings__DumpTether: Host=postgres;Port=5432;Database=${POSTGRES_DB:-dumptether};Username=${POSTGRES_USER:-dumptether};Password=${POSTGRES_PASSWORD:-dumptether_dev_password}
+    ports:
+      - "${DUMPTETHER_API_PORT:-55868}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  dumptether-postgres-local-data:

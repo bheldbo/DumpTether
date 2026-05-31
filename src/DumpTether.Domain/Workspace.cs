@@ -3,6 +3,7 @@ namespace DumpTether.Domain;
 public sealed class Workspace
 {
     private readonly List<ArchiveResolution> _archiveResolutions = [];
+    private readonly List<WorkspaceMembership> _memberships = [];
     private readonly List<Project> _projects = [];
     private readonly List<SavedView> _savedViews = [];
     private readonly List<TaskTemplate> _taskTemplates = [];
@@ -32,6 +33,8 @@ public sealed class Workspace
 
     public IReadOnlyCollection<ArchiveResolution> ArchiveResolutions => _archiveResolutions.AsReadOnly();
 
+    public IReadOnlyCollection<WorkspaceMembership> Memberships => _memberships.AsReadOnly();
+
     public IReadOnlyCollection<SavedView> SavedViews => _savedViews.AsReadOnly();
 
     public static Workspace Create(string name, DateTimeOffset createdAt)
@@ -50,6 +53,17 @@ public sealed class Workspace
     public void ChangeColor(string? color)
     {
         Color = DomainGuards.OptionalHexColor(color, nameof(color));
+    }
+
+    public WorkspaceMembership AddMembership(
+        Guid userId,
+        WorkspaceMembershipRole role,
+        DateTimeOffset createdAt)
+    {
+        var membership = WorkspaceMembership.Create(Id, userId, role, createdAt);
+        _memberships.Add(membership);
+
+        return membership;
     }
 
     public Project AddProject(string name, DateTimeOffset createdAt)

@@ -21,6 +21,22 @@ internal sealed class EfWorkspaceRepository : IWorkspaceRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Workspace>> ListForUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        return await _dbContext.WorkspaceMemberships
+            .AsNoTracking()
+            .Where(membership => membership.UserId == userId)
+            .Join(
+                _dbContext.Workspaces.AsNoTracking(),
+                membership => membership.WorkspaceId,
+                workspace => workspace.Id,
+                (_, workspace) => workspace)
+            .OrderBy(workspace => workspace.Name)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Workspace?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         return await _dbContext.Workspaces

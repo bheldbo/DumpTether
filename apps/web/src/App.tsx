@@ -45,6 +45,7 @@ import {
 import './App.css';
 import { FieldEditorList, FieldValueList } from './fieldRenderers';
 import { toFieldValueMap } from './fieldValues';
+import { type Language, type Translate, translate } from './localization';
 import type {
   ArchiveProjectTasksRequest,
   ArchiveResolutionResponse,
@@ -73,8 +74,6 @@ import type {
 
 type WorkspaceMode = 'tasks' | 'templates';
 type StatusFilterMode = 'any' | 'empty' | 'exact';
-type Language = 'en' | 'da';
-type Translate = (key: TranslationKey) => string;
 
 type IconName =
   | 'archive'
@@ -176,229 +175,6 @@ const colorChoices = [
 const languageStorageKey = 'dumptether.language';
 const workspaceStorageKey = 'dumptether.workspace';
 const statusOptionsStorageKey = 'dumptether.statusOptions';
-const translations = {
-  en: {
-    addTask: 'Add task',
-    allProjects: 'All categories',
-    anyCategory: 'Any category',
-    anyColor: 'Any color',
-    anyFollowUp: 'Any follow-up',
-    anyProject: 'Any category',
-    anyStatus: 'Any status',
-    archive: 'Archive',
-    archiveAction: 'Archive',
-    archiveTasks: 'Archive task(s)',
-    collapseSidebar: 'Collapse sidebar',
-    color: 'Color',
-    danish: 'Danish',
-    activeTask: 'Active task',
-    archivedTask: 'Archived task',
-    backToWall: 'Back to wall',
-    board: 'Board',
-    boardColor: 'Board color',
-    cancel: 'Cancel',
-    category: 'Category',
-    confirmDelete: 'Sure?',
-    created: 'Created',
-    editView: 'Edit filter',
-    editBoard: 'Edit board',
-    editProject: 'Edit project',
-    editTask: 'Edit task',
-    english: 'English',
-    expandSidebar: 'Expand sidebar',
-    fieldsForFiltering: 'Fields',
-    fieldsHelp: 'Structured fields make filtering possible without turning the wall into a form.',
-    filterWall: 'Filter wall...',
-    followUpDate: 'Follow-up date',
-    keep: 'Keep',
-    language: 'Language',
-    lastUpdated: 'Last updated',
-    loadingTasks: 'Loading tasks...',
-    newTask: 'New task',
-    newTaskPlaceholder: 'Add a task and press Enter...',
-    newView: 'Save filter',
-    note: 'Note',
-    noteCount: 'notes',
-    notes: 'Notes',
-    noTaskColors: 'No task colors yet',
-    noTasks: 'Nothing here yet. Use + to add your first task.',
-    noTasksMatch: 'No tasks match these filters. Reset filters to see the whole wall again.',
-    noCategory: 'No category',
-    noFollowUp: 'No follow-up',
-    noStatus: 'No status',
-    notTouchedDays: 'Not touched days',
-    overview: 'All tasks',
-    refresh: 'Refresh',
-    resetFilters: 'Reset filters',
-    saved: 'Saved',
-    saveFailed: 'Save failed',
-    savedViews: 'Wall',
-    saveFields: 'Save fields',
-    save: 'Save',
-    saving: 'Saving...',
-    settings: 'Settings',
-    sortAscending: 'ascending',
-    sortDescending: 'descending',
-    sortedBy: 'Sorted by',
-    status: 'Status',
-    templates: 'Task templates',
-    sortCreated: 'Created',
-    sortFollowUp: 'Follow-up',
-    sortLastTouched: 'Last updated',
-    sortStatus: 'Status',
-    sortTitle: 'Title',
-    projectTags: 'Categories',
-    noNotesYet: 'No notes yet',
-    followUp: 'Follow-up',
-    workspaceColor: 'Workspace color',
-    taskColor: 'Task color',
-    deleteNote: 'Delete note',
-    done: 'Stop selecting',
-    editMode: 'Edit mode',
-    archiveSelected: 'Archive selected',
-    changeCategory: 'Change category',
-    changeColor: 'Change color',
-    changeDueDate: 'Change due date',
-    changeStatus: 'Change status',
-    selectTasksForAction: 'Select task(s) for action',
-    deleteCategoryWarning: 'Archive all active tasks in this category and hide the category?',
-    archiveCategory: 'Archive category',
-    archiveReasons: 'Archive reasons',
-    addArchiveReason: 'Add archive reason',
-    requireArchiveNote: 'Require archive note',
-    statusOptions: 'Status options',
-    addStatus: 'Add status',
-    selectedTasks: 'selected',
-    undo: 'Undo',
-    addNotePlaceholder: 'Add a note and press Enter...',
-    clearColor: 'Clear color',
-    noColor: 'No color',
-    wallHelp: 'Search tasks by text, category, status, field values, color, and dates.',
-    workspaces: 'Boards',
-    allWorkspaces: 'All boards',
-    newWorkspace: 'New board',
-    newProjectTag: 'New category',
-    removeFilters: 'Remove filters',
-    cleanup: 'Cleanup',
-    clearArchive: 'Clear archive',
-    clearOldTasks: 'Clear old tasks...',
-    clearWorkspaceTasks: 'Clear board tasks...',
-    deleteBoard: 'Delete board...',
-    deleteProjectTag: 'Delete project tag...',
-    cleanupFuture: 'Cleanup actions will land with board safety checks.',
-  },
-  da: {
-    addTask: 'Tilføj opgave',
-    allProjects: 'Alle kategorier',
-    anyCategory: 'Alle kategorier',
-    anyColor: 'Alle farver',
-    anyFollowUp: 'Alle opfølgninger',
-    anyProject: 'Alle kategorier',
-    anyStatus: 'Alle statusser',
-    archive: 'Arkiv',
-    archiveAction: 'Arkivér',
-    archiveTasks: 'Arkivér opgave(r)',
-    collapseSidebar: 'Skjul sidebar',
-    color: 'Farve',
-    danish: 'Dansk',
-    activeTask: 'Aktiv opgave',
-    archivedTask: 'Arkiveret opgave',
-    backToWall: 'Tilbage til tavlen',
-    board: 'Tavle',
-    boardColor: 'Tavlefarve',
-    cancel: 'Annuller',
-    category: 'Kategori',
-    confirmDelete: 'Sikker?',
-    created: 'Oprettet',
-    editView: 'Rediger filter',
-    editBoard: 'Rediger tavle',
-    editProject: 'Rediger projekt',
-    editTask: 'Rediger opgave',
-    english: 'Engelsk',
-    expandSidebar: 'Vis sidebar',
-    fieldsForFiltering: 'Felter',
-    fieldsHelp: 'Strukturerede felter gør det muligt at filtrere uden at gøre tavlen til en stor formular.',
-    filterWall: 'Filtrer tavlen...',
-    followUpDate: 'Opfølgning',
-    keep: 'Behold',
-    language: 'Sprog',
-    lastUpdated: 'Sidst opdateret',
-    loadingTasks: 'Indlæser opgaver...',
-    newTask: 'Ny opgave',
-    newTaskPlaceholder: 'Tilføj en opgave og tryk Enter...',
-    newView: 'Gem filter',
-    note: 'Note',
-    noteCount: 'noter',
-    notes: 'Noter',
-    noTaskColors: 'Ingen opgavefarver endnu',
-    noTasks: 'Her er tomt endnu. Brug + for at tilføje din første opgave.',
-    noTasksMatch: 'Ingen opgaver matcher filtrene. Nulstil filtrene for at se hele tavlen igen.',
-    noCategory: 'Ingen kategori',
-    noFollowUp: 'Ingen opfølgning',
-    noStatus: 'Ingen status',
-    notTouchedDays: 'Ikke rørt i dage',
-    overview: 'Alle opgaver',
-    refresh: 'Opdater',
-    resetFilters: 'Nulstil filtre',
-    saved: 'Gemt',
-    saveFailed: 'Kunne ikke gemme',
-    savedViews: 'Tavle',
-    saveFields: 'Gem felter',
-    save: 'Gem',
-    saving: 'Gemmer...',
-    settings: 'Indstillinger',
-    sortAscending: 'stigende',
-    sortDescending: 'faldende',
-    sortedBy: 'Sorteret efter',
-    status: 'Status',
-    templates: 'Opgaveskabeloner',
-    sortCreated: 'Oprettet',
-    sortFollowUp: 'Opfølgning',
-    sortLastTouched: 'Sidst opdateret',
-    sortStatus: 'Status',
-    sortTitle: 'Titel',
-    projectTags: 'Kategorier',
-    noNotesYet: 'Ingen noter endnu',
-    followUp: 'Opfølgning',
-    workspaceColor: 'Tavlefarve',
-    taskColor: 'Opgavefarve',
-    deleteNote: 'Slet note',
-    done: 'Stop valg',
-    editMode: 'Rediger',
-    archiveSelected: 'Arkivér valgte',
-    changeCategory: 'Skift kategori',
-    changeColor: 'Skift farve',
-    changeDueDate: 'Skift dato',
-    changeStatus: 'Skift status',
-    selectTasksForAction: 'Vælg opgave(r) til handling',
-    deleteCategoryWarning: 'Arkivér alle aktive opgaver i denne kategori og skjul kategorien?',
-    archiveCategory: 'Arkivér kategori',
-    archiveReasons: 'Arkivårsager',
-    addArchiveReason: 'Tilføj arkivårsag',
-    requireArchiveNote: 'Kræv arkivnote',
-    statusOptions: 'Statusmuligheder',
-    addStatus: 'Tilføj status',
-    selectedTasks: 'valgt',
-    undo: 'Fortryd',
-    addNotePlaceholder: 'Tilføj en note og tryk Enter...',
-    clearColor: 'Ryd farve',
-    noColor: 'Ingen farve',
-    wallHelp: 'Søg i opgaver efter tekst, kategori, status, feltværdier, farve og datoer.',
-    workspaces: 'Tavler',
-    allWorkspaces: 'Alle tavler',
-    newWorkspace: 'Ny tavle',
-    newProjectTag: 'Ny kategori',
-    removeFilters: 'Fjern filtre',
-    cleanup: 'Oprydning',
-    clearArchive: 'Ryd arkiv',
-    clearOldTasks: 'Ryd gamle opgaver...',
-    clearWorkspaceTasks: 'Ryd opgaver i tavle...',
-    deleteBoard: 'Slet tavle...',
-    deleteProjectTag: 'Slet kategori...',
-    cleanupFuture: 'Oprydning kommer med sikkerhedstjek for tavler.',
-  },
-} as const;
-type TranslationKey = keyof typeof translations.en;
 
 function App() {
   const [savedViews, setSavedViews] = useState<SavedViewResponse[]>([]);
@@ -1523,7 +1299,7 @@ function TaskBoard({
                     </span>
                   ) : null}
                 </span>
-                <TaskBadges taskItem={taskItem} />
+                <TaskBadges taskItem={taskItem} t={t} />
                 <span
                   className="task-card-created"
                   title={`${t('created')}: ${formatFullDate(taskItem.createdAt)}`}
@@ -4168,8 +3944,14 @@ function TaskMetaChip({
   );
 }
 
-function TaskBadges({ taskItem }: { taskItem: TaskItemSummaryResponse }) {
-  const badges = getTaskBadges(taskItem);
+function TaskBadges({
+  taskItem,
+  t,
+}: {
+  taskItem: TaskItemSummaryResponse;
+  t: Translate;
+}) {
+  const badges = getTaskBadges(taskItem, t);
 
   if (badges.length === 0) {
     return null;
@@ -4283,10 +4065,6 @@ function readStoredStringList(key: string, fallback: string[]) {
   } catch {
     return fallback;
   }
-}
-
-function translate(language: Language, key: TranslationKey) {
-  return translations[language][key] ?? translations.en[key];
 }
 
 function updateUrl(mode: WorkspaceMode, viewId: string | null) {
@@ -4536,23 +4314,23 @@ function getTaskState(taskItem: TaskItemSummaryResponse) {
   return 'active';
 }
 
-function getTaskBadges(taskItem: TaskItemSummaryResponse) {
+function getTaskBadges(taskItem: TaskItemSummaryResponse, t: Translate) {
   const badges: string[] = [];
 
   if (taskItem.archivedAt) {
-    badges.push('Archived');
+    badges.push(t('archive'));
   }
 
   if (isFollowUpOverdue(taskItem)) {
-    badges.push('Overdue');
+    badges.push(t('overdue'));
   }
 
   if (isWaiting(taskItem)) {
-    badges.push('Waiting');
+    badges.push(t('waiting'));
   }
 
   if (isStale(taskItem)) {
-    badges.push('Stale');
+    badges.push(t('stale'));
   }
 
   return badges;

@@ -75,7 +75,41 @@ Run the API:
 dotnet run --project src/DumpTether.Api --launch-profile DumpTether.Api
 ```
 
-The first task endpoints use a temporary development workspace and project until authentication and workspace selection are introduced. This is development-only plumbing, not a security boundary.
+Anonymous local requests still use a temporary development workspace and project. Authenticated requests use workspace membership boundaries; the anonymous path is development-only plumbing, not a production security boundary.
+
+### Authentication Foundation
+
+The first auth foundation is intentionally small and first-party. It stores password hashes only, stores hashed session tokens, and scopes authenticated workspace access through `workspace_memberships`. The existing anonymous development workspace path still exists for local UI work until login is required.
+
+Register a user and default workspace:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/auth/register `
+  -H "Content-Type: application/json" `
+  -d "{\"email\":\"you@example.com\",\"password\":\"change-this-password\",\"displayName\":\"You\"}"
+```
+
+Login and copy the returned `sessionToken` for API testing:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/auth/login `
+  -H "Content-Type: application/json" `
+  -d "{\"email\":\"you@example.com\",\"password\":\"change-this-password\",\"deviceName\":\"local dev\"}"
+```
+
+Call authenticated endpoints with the opaque session token:
+
+```powershell
+curl.exe http://localhost:55868/api/auth/me `
+  -H "Authorization: Bearer {session-token}"
+```
+
+Logout revokes the current session:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/auth/logout `
+  -H "Authorization: Bearer {session-token}"
+```
 
 Create a task item:
 
@@ -200,6 +234,33 @@ npm.cmd run dev
 ```
 
 Use `npm.cmd` from PowerShell if the `npm.ps1` shim is blocked by local execution policy.
+
+### Docker
+
+The API has a multi-stage Dockerfile at `src/DumpTether.Api/Dockerfile`. The container listens on port `8080` and does not require the .NET SDK on the server.
+
+For local containerized API + PostgreSQL:
+
+```powershell
+Copy-Item .env.example .env
+docker compose -f docker-compose.local.yml up --build
+```
+
+`docker-compose.local.yml` exposes PostgreSQL on `localhost:5432` for developer tools and exposes the API on `http://localhost:55868`. It applies migrations on API startup for local convenience.
+
+For local PostgreSQL only, keep using:
+
+```powershell
+docker compose up -d
+```
+
+For production, use `docker-compose.prod.example.yml` as a starting point and provide real values through an uncommitted `.env` or host secret store:
+
+```powershell
+docker compose -f docker-compose.prod.example.yml up -d
+```
+
+The production example does not publish the PostgreSQL port. The API reaches PostgreSQL through the Docker network using `Host=postgres`. Keep `DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP=false` in normal production operation unless you intentionally run a controlled migration step.
 
 ## Visual Studio
 

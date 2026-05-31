@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -18,16 +18,23 @@ The product should not duplicate business rules between web, desktop, and server
 
 The hosted service should become multi-tenant around explicit user and workspace ownership:
 
-- `User`
+- `AppUser`
 - `Workspace`
-- `WorkspaceMember`
+- `WorkspaceMembership`
 - `Device`
 - `UserSession`
 - `RefreshToken`
 
 Workspace-scoped data such as tasks, projects, templates, fields, notes, archive reasons, and saved filters remains tied to `WorkspaceId`.
 
-Server authentication should use:
+The first implementation uses a simple first-party auth foundation:
+
+- `AppUser` with a framework password hash.
+- `UserSession` with a random opaque session token returned to the client and stored only as a hash.
+- `WorkspaceMembership` as the authorization boundary for authenticated workspace access.
+- Secure, HttpOnly cookies in production when cookie auth is used, plus bearer token support for API testing and future desktop clients.
+
+Future hardened server authentication should use:
 
 - ASP.NET Core authentication middleware.
 - Short-lived access tokens.
@@ -84,6 +91,6 @@ Production auth work should include:
 
 ## Consequences
 
-Login is worth doing soon, but as its own milestone. It should not be mixed into UI polish. The current development workspace selector is a stepping stone for product flow only, not a security boundary.
+The current development workspace selector remains for anonymous local development only. Authenticated requests are scoped through membership. Full login UI, password reset, MFA, OAuth, and sync remain future milestones.
 
 The same C# Domain/App logic remains reusable by the hosted API and the future desktop sidecar API.
