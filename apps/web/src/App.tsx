@@ -4321,10 +4321,6 @@ function getTaskBadges(taskItem: TaskItemSummaryResponse, t: Translate) {
     badges.push(t('archive'));
   }
 
-  if (isFollowUpOverdue(taskItem)) {
-    badges.push(t('overdue'));
-  }
-
   if (isWaiting(taskItem)) {
     badges.push(t('waiting'));
   }
