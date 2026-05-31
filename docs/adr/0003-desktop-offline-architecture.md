@@ -23,6 +23,8 @@ DumpTether will keep shared business logic in C#:
 
 The React frontend in `apps/web` should be reused by the future desktop app. A future `apps/desktop` project may wrap the same UI with Tauri.
 
+The shared UI should eventually show a small connection/sync status indicator so a desktop user can tell whether they are local-only, connected to the hosted server, signed in, or syncing. That indicator is future UX; it must not create a second auth or sync implementation.
+
 The preferred desktop design is:
 
 ```text

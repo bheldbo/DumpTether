@@ -6,6 +6,11 @@
       "launchUrl": "health",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "Auth__RequireAuthentication": "true",
+        "Auth__EnableDevelopmentLogin": "true",
+        "Auth__DevelopmentEmail": "dev@dumptether.local",
+        "Auth__DevelopmentPassword": "dumptether-dev-password",
+        "Auth__DevelopmentDisplayName": "Dev User",
         "ConnectionStrings__DumpTether": "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
       },
       "applicationUrl": "http://localhost:55868"

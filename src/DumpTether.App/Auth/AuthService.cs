@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
 using DumpTether.Domain;
+using Microsoft.Extensions.Options;
 
 namespace DumpTether.App.Auth;
 
@@ -13,6 +14,7 @@ internal sealed class AuthService : IAuthService
     private readonly IAuthTokenAccessor _authTokenAccessor;
     private readonly IClock _clock;
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
+    private readonly IOptions<AuthOptions> _authOptions;
     private readonly IPasswordHashService _passwordHashService;
     private readonly ISessionTokenService _sessionTokenService;
     private readonly IWorkspaceRepository _workspaceRepository;
@@ -22,6 +24,7 @@ internal sealed class AuthService : IAuthService
         IAuthTokenAccessor authTokenAccessor,
         IClock clock,
         ICurrentUserSessionProvider currentUserSessionProvider,
+        IOptions<AuthOptions> authOptions,
         IPasswordHashService passwordHashService,
         ISessionTokenService sessionTokenService,
         IWorkspaceRepository workspaceRepository)
@@ -30,6 +33,7 @@ internal sealed class AuthService : IAuthService
         _authTokenAccessor = authTokenAccessor;
         _clock = clock;
         _currentUserSessionProvider = currentUserSessionProvider;
+        _authOptions = authOptions;
         _passwordHashService = passwordHashService;
         _sessionTokenService = sessionTokenService;
         _workspaceRepository = workspaceRepository;
@@ -116,6 +120,42 @@ internal sealed class AuthService : IAuthService
             workspaces.Select(MapWorkspace).ToList(),
             sessionToken,
             session.ExpiresAt);
+    }
+
+    public async Task<LoginUserResponse> DevelopmentLoginAsync(
+        AuthRequestMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        var options = _authOptions.Value;
+
+        if (!options.EnableDevelopmentLogin)
+        {
+            throw new UnauthorizedAccessException("Development login is disabled.");
+        }
+
+        var normalizedEmail = AppUser.NormalizeEmail(options.DevelopmentEmail);
+        var existingUser = await _authRepository.GetUserByNormalizedEmailAsync(
+            normalizedEmail,
+            trackChanges: false,
+            cancellationToken);
+
+        if (existingUser is null)
+        {
+            await RegisterAsync(
+                new RegisterUserRequest(
+                    options.DevelopmentEmail,
+                    options.DevelopmentPassword,
+                    options.DevelopmentDisplayName),
+                cancellationToken);
+        }
+
+        return await LoginAsync(
+            new LoginUserRequest(
+                options.DevelopmentEmail,
+                options.DevelopmentPassword,
+                "development browser"),
+            metadata,
+            cancellationToken);
     }
 
     public async Task<bool> LogoutAsync(CancellationToken cancellationToken)

@@ -11,6 +11,7 @@ import {
 } from 'react';
 import {
   addTaskTimelineEntry,
+  ApiError,
   archiveProjectTasks,
   archiveTaskItem,
   createArchiveResolution,
@@ -23,6 +24,9 @@ import {
   deleteSavedView,
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
+  developmentLogin,
+  getAuthOptions,
+  getCurrentUser,
   getTaskItem,
   getTaskTemplate,
   getWorkspace,
@@ -32,7 +36,10 @@ import {
   listTaskItems,
   listTaskTemplates,
   listWorkspaces,
+  loginUser,
+  logoutUser,
   reopenTaskItem,
+  registerUser,
   setCurrentWorkspaceId,
   updateArchiveResolution,
   updateSavedView,
@@ -47,14 +54,18 @@ import { FieldEditorList, FieldValueList } from './fieldRenderers';
 import { toFieldValueMap } from './fieldValues';
 import { type Language, type Translate, translate } from './localization';
 import type {
+  AuthClientOptionsResponse,
   ArchiveProjectTasksRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CreateTaskItemRequest,
   FieldDefinitionType,
   FieldValueMap,
+  LoginUserRequest,
   ProjectResponse,
+  RegisterUserRequest,
   SavedViewArchiveFilter,
   SavedViewFollowUpFilter,
   SavedViewResponse,
@@ -175,6 +186,10 @@ const colorChoices = [
 const languageStorageKey = 'dumptether.language';
 const workspaceStorageKey = 'dumptether.workspace';
 const statusOptionsStorageKey = 'dumptether.statusOptions';
+const defaultAuthOptions: AuthClientOptionsResponse = {
+  requiresAuthentication: true,
+  developmentLoginEnabled: false,
+};
 
 function App() {
   const [savedViews, setSavedViews] = useState<SavedViewResponse[]>([]);
@@ -201,6 +216,9 @@ function App() {
   const [archiveDialogIsOpen, setArchiveDialogIsOpen] = useState(false);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
   const [settingsIsOpen, setSettingsIsOpen] = useState(false);
+  const [authOptions, setAuthOptions] =
+    useState<AuthClientOptionsResponse>(defaultAuthOptions);
+  const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
   const [language, setLanguage] = useState<Language>(getInitialLanguage);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     getInitialWorkspaceId,
@@ -208,6 +226,7 @@ function App() {
   const [taskColorOptions, setTaskColorOptions] = useState<string[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const t = useCallback<Translate>((key) => translate(language, key), [language]);
@@ -220,6 +239,30 @@ function App() {
     () => savedViews.find((view) => view.id === currentViewId) ?? null,
     [currentViewId, savedViews],
   );
+
+  const loadAuth = useCallback(async () => {
+    setIsLoadingAuth(true);
+
+    try {
+      const options = await getAuthOptions();
+      setAuthOptions(options);
+
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          setCurrentUser(null);
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsLoadingAuth(false);
+    }
+  }, []);
 
   const loadWorkspace = useCallback(
     async (
@@ -287,13 +330,29 @@ function App() {
   );
 
   useEffect(() => {
-    if (hasBootstrapped) {
+    void loadAuth();
+  }, [loadAuth]);
+
+  useEffect(() => {
+    if (hasBootstrapped || isLoadingAuth) {
+      return;
+    }
+
+    if (authOptions.requiresAuthentication && !currentUser) {
+      setIsLoadingWorkspace(false);
       return;
     }
 
     setHasBootstrapped(true);
     void loadWorkspace(currentViewId);
-  }, [currentViewId, hasBootstrapped, loadWorkspace]);
+  }, [
+    authOptions.requiresAuthentication,
+    currentUser,
+    currentViewId,
+    hasBootstrapped,
+    isLoadingAuth,
+    loadWorkspace,
+  ]);
 
   useEffect(() => {
     window.localStorage.setItem(languageStorageKey, language);
@@ -370,6 +429,81 @@ function App() {
       handleSelectWorkspace(created.id);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleAuthenticated = async (userState: CurrentUserResponse) => {
+    setCurrentUser(userState);
+    const workspaceId = userState.workspaces[0]?.id ?? null;
+    setSelectedWorkspaceId(workspaceId);
+    setSelectedTaskId(null);
+    setSelectedTask(null);
+    setHasBootstrapped(true);
+    await loadWorkspace(null, workspaceId);
+  };
+
+  const handleLogin = async (requestBody: LoginUserRequest) => {
+    try {
+      const loggedIn = await loginUser(requestBody);
+      await handleAuthenticated(loggedIn);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleRegister = async (requestBody: RegisterUserRequest) => {
+    try {
+      await registerUser(requestBody);
+      const loggedIn = await loginUser({
+        email: requestBody.email,
+        password: requestBody.password,
+        deviceName: 'web browser',
+      });
+      await handleAuthenticated(loggedIn);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleDevelopmentLogin = async () => {
+    try {
+      const loggedIn = await developmentLogin();
+      await handleAuthenticated(loggedIn);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      setCurrentUser(null);
+      setCurrentWorkspaceId(null);
+      setSelectedWorkspaceId(null);
+      setWorkspace(null);
+      setWorkspaces([]);
+      setSavedViews([]);
+      setProjects([]);
+      setTaskItems([]);
+      setSelectedTaskId(null);
+      setSelectedTask(null);
+      window.localStorage.removeItem(workspaceStorageKey);
+      setHasBootstrapped(false);
+
+      if (!authOptions.requiresAuthentication) {
+        await loadWorkspace(null, null);
+      }
+
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
     }
   };
 
@@ -748,7 +882,23 @@ function App() {
           </div>
         ) : null}
 
-        {mode === 'templates' ? (
+        {isLoadingAuth ? (
+          <section className="auth-gate" aria-label={t('account')}>
+            <p className="detail-kicker">DumpTether</p>
+            <h2>{t('loadingAccount')}</h2>
+          </section>
+        ) : authOptions.requiresAuthentication && !currentUser ? (
+          <AuthPanel
+            authOptions={authOptions}
+            currentUser={currentUser}
+            isLoading={isLoadingAuth}
+            onDevelopmentLogin={handleDevelopmentLogin}
+            onLogin={handleLogin}
+            onRegister={handleRegister}
+            t={t}
+            variant="gate"
+          />
+        ) : mode === 'templates' ? (
           <TemplatesPage
             isLoading={isLoadingWorkspace}
             onDeleteTemplate={handleDeleteTemplate}
@@ -817,11 +967,18 @@ function App() {
       {settingsIsOpen ? (
         <SettingsPanel
           archiveResolutions={archiveResolutions}
+          authOptions={authOptions}
           configuredStatuses={configuredStatuses}
+          currentUser={currentUser}
+          isLoadingAuth={isLoadingAuth}
           language={language}
           onChangeLanguage={setLanguage}
           onCreateArchiveResolution={handleCreateArchiveResolution}
+          onDevelopmentLogin={handleDevelopmentLogin}
           onDeleteArchiveResolution={handleDeleteArchiveResolution}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          onRegister={handleRegister}
           onSaveStatusOptions={handleSaveStatusOptions}
           onUpdateArchiveResolution={handleUpdateArchiveResolution}
           onClose={() => setSettingsIsOpen(false)}
@@ -3679,25 +3836,262 @@ function ArchiveDialog({
   );
 }
 
+function AuthPanel({
+  authOptions,
+  currentUser,
+  isLoading,
+  onDevelopmentLogin,
+  onLogin,
+  onLogout,
+  onRegister,
+  t,
+  variant,
+}: {
+  authOptions: AuthClientOptionsResponse;
+  currentUser: CurrentUserResponse | null;
+  isLoading: boolean;
+  onDevelopmentLogin: () => Promise<void>;
+  onLogin: (requestBody: LoginUserRequest) => Promise<void>;
+  onLogout?: () => Promise<void>;
+  onRegister: (requestBody: RegisterUserRequest) => Promise<void>;
+  t: Translate;
+  variant: 'gate' | 'settings';
+}) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [deviceName, setDeviceName] = useState('web browser');
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submitAuthForm = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFormError(null);
+    setStatusMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      if (mode === 'register') {
+        await onRegister({
+          email: email.trim(),
+          password,
+          displayName: displayName.trim() || null,
+        });
+        setStatusMessage(t('authRegistered'));
+      } else {
+        await onLogin({
+          email: email.trim(),
+          password,
+          deviceName: deviceName.trim() || 'web browser',
+        });
+        setStatusMessage(t('authLoggedIn'));
+      }
+
+      setPassword('');
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const submitDevelopmentLogin = async () => {
+    setFormError(null);
+    setStatusMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      await onDevelopmentLogin();
+      setStatusMessage(t('authLoggedIn'));
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const wrapperClassName = variant === 'gate'
+    ? 'auth-gate'
+    : 'settings-section auth-panel';
+  const canSubmit = email.trim().length > 0 && password.length >= 8;
+
+  if (currentUser) {
+    return (
+      <section className={wrapperClassName} aria-label={t('account')}>
+        <div className="auth-heading">
+          <p className="detail-kicker">{t('account')}</p>
+          <h2>{currentUser.user.displayName || currentUser.user.email}</h2>
+          <p>{t('signedInAs')}: {currentUser.user.email}</p>
+        </div>
+        <div className="auth-workspace-list">
+          {currentUser.workspaces.map((workspaceItem) => (
+            <span className="auth-workspace-chip" key={workspaceItem.id}>
+              <span
+                className="workspace-color-dot"
+                style={{ backgroundColor: workspaceItem.color ?? '#184c48' }}
+              />
+              {workspaceItem.name}
+              <strong>{formatWorkspaceRole(workspaceItem.role, t)}</strong>
+            </span>
+          ))}
+        </div>
+        {onLogout ? (
+          <button
+            className="secondary-action"
+            disabled={isSubmitting}
+            onClick={async () => {
+              setIsSubmitting(true);
+              try {
+                await onLogout();
+              } catch (error) {
+                setFormError(getErrorMessage(error));
+              } finally {
+                setIsSubmitting(false);
+              }
+            }}
+            type="button"
+          >
+            {t('logout')}
+          </button>
+        ) : null}
+        {formError ? <p className="form-error">{formError}</p> : null}
+      </section>
+    );
+  }
+
+  return (
+    <section className={wrapperClassName} aria-label={t('account')}>
+      <div className="auth-heading">
+        <p className="detail-kicker">{t('account')}</p>
+        <h2>{variant === 'gate' ? t('authRequiredTitle') : t('notSignedIn')}</h2>
+        <p>{variant === 'gate' ? t('authRequiredBody') : t('authSettingsHelp')}</p>
+      </div>
+
+      <div className="auth-mode-toggle" role="group" aria-label={t('account')}>
+        <button
+          aria-pressed={mode === 'login'}
+          onClick={() => setMode('login')}
+          type="button"
+        >
+          {t('login')}
+        </button>
+        <button
+          aria-pressed={mode === 'register'}
+          onClick={() => setMode('register')}
+          type="button"
+        >
+          {t('register')}
+        </button>
+      </div>
+
+      <form className="auth-form" onSubmit={(event) => void submitAuthForm(event)}>
+        {mode === 'register' ? (
+          <label>
+            {t('displayName')}
+            <input
+              autoComplete="name"
+              onChange={(event) => setDisplayName(event.target.value)}
+              type="text"
+              value={displayName}
+            />
+          </label>
+        ) : null}
+
+        <label>
+          {t('email')}
+          <input
+            autoComplete="email"
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            type="email"
+            value={email}
+          />
+        </label>
+
+        <label>
+          {t('password')}
+          <input
+            autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+            minLength={8}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            type="password"
+            value={password}
+          />
+        </label>
+
+        {mode === 'login' ? (
+          <label>
+            {t('deviceName')}
+            <input
+              autoComplete="off"
+              onChange={(event) => setDeviceName(event.target.value)}
+              type="text"
+              value={deviceName}
+            />
+          </label>
+        ) : null}
+
+        <button disabled={!canSubmit || isSubmitting || isLoading} type="submit">
+          {mode === 'register' ? t('registerButton') : t('loginButton')}
+        </button>
+      </form>
+
+      {authOptions.developmentLoginEnabled ? (
+        <div className="dev-login-panel">
+          <button
+            className="secondary-action"
+            disabled={isSubmitting || isLoading}
+            onClick={() => void submitDevelopmentLogin()}
+            type="button"
+          >
+            {t('useDevelopmentAccount')}
+          </button>
+          <p>{t('developmentAccountHelp')}</p>
+        </div>
+      ) : null}
+
+      {statusMessage ? <p className="form-success">{statusMessage}</p> : null}
+      {formError ? <p className="form-error">{formError}</p> : null}
+    </section>
+  );
+}
+
 function SettingsPanel({
   archiveResolutions,
+  authOptions,
   configuredStatuses,
+  currentUser,
+  isLoadingAuth,
   language,
   onChangeLanguage,
   onClose,
   onCreateArchiveResolution,
+  onDevelopmentLogin,
   onDeleteArchiveResolution,
+  onLogin,
+  onLogout,
+  onRegister,
   onSaveStatusOptions,
   onUpdateArchiveResolution,
   t,
 }: {
   archiveResolutions: ArchiveResolutionResponse[];
+  authOptions: AuthClientOptionsResponse;
   configuredStatuses: string[];
+  currentUser: CurrentUserResponse | null;
+  isLoadingAuth: boolean;
   language: Language;
   onChangeLanguage: (language: Language) => void;
   onClose: () => void;
   onCreateArchiveResolution: (requestBody: CreateArchiveResolutionRequest) => Promise<void>;
+  onDevelopmentLogin: () => Promise<void>;
   onDeleteArchiveResolution: (id: string) => Promise<void>;
+  onLogin: (requestBody: LoginUserRequest) => Promise<void>;
+  onLogout: () => Promise<void>;
+  onRegister: (requestBody: RegisterUserRequest) => Promise<void>;
   onSaveStatusOptions: (statuses: string[]) => void;
   onUpdateArchiveResolution: (
     id: string,
@@ -3766,6 +4160,18 @@ function SettingsPanel({
             <option value="da">{t('danish')}</option>
           </select>
         </label>
+
+        <AuthPanel
+          authOptions={authOptions}
+          currentUser={currentUser}
+          isLoading={isLoadingAuth}
+          onDevelopmentLogin={onDevelopmentLogin}
+          onLogin={onLogin}
+          onLogout={onLogout}
+          onRegister={onRegister}
+          t={t}
+          variant="settings"
+        />
 
         <div className="settings-section">
           <h3>{t('statusOptions')}</h3>
@@ -3966,6 +4372,13 @@ function TaskBadges({
       ))}
     </span>
   );
+}
+
+function formatWorkspaceRole(
+  role: CurrentUserResponse['workspaces'][number]['role'],
+  t: Translate,
+) {
+  return role === 1 || role === 'Owner' ? t('roleOwner') : t('roleMember');
 }
 
 function Icon({ name }: { name: IconName }) {

@@ -43,6 +43,10 @@ public sealed record CurrentUserResponse(
     AuthUserResponse User,
     IReadOnlyList<AuthWorkspaceResponse> Workspaces);
 
+public sealed record AuthClientOptionsResponse(
+    bool RequiresAuthentication,
+    bool DevelopmentLoginEnabled);
+
 public sealed record CurrentUserSession(
     Guid UserId,
     Guid SessionId,

@@ -1,23 +1,27 @@
 using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.Domain;
+using Microsoft.Extensions.Options;
 
 namespace DumpTether.App.Workspaces;
 
 internal sealed class WorkspaceService : IWorkspaceService
 {
     private readonly IClock _clock;
+    private readonly IOptions<AuthOptions> _authOptions;
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
     private readonly IWorkspaceRepository _workspaceRepository;
 
     public WorkspaceService(
         IClock clock,
+        IOptions<AuthOptions> authOptions,
         ICurrentUserSessionProvider currentUserSessionProvider,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
         IWorkspaceRepository workspaceRepository)
     {
         _clock = clock;
+        _authOptions = authOptions;
         _currentUserSessionProvider = currentUserSessionProvider;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _workspaceRepository = workspaceRepository;
@@ -56,6 +60,11 @@ internal sealed class WorkspaceService : IWorkspaceService
         }
 
         var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        if (currentSession is null && _authOptions.Value.RequireAuthentication)
+        {
+            throw new UnauthorizedAccessException("Authentication is required.");
+        }
 
         if (currentSession is not null)
         {

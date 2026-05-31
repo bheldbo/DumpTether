@@ -18,9 +18,15 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
 
     private SqliteConnection? _connection;
     private readonly string? _previousConnectionString;
+    private readonly bool _requireAuthentication;
+    private readonly bool _enableDevelopmentLogin;
 
-    public DumpTetherApiFactory()
+    public DumpTetherApiFactory(
+        bool requireAuthentication = false,
+        bool enableDevelopmentLogin = false)
     {
+        _requireAuthentication = requireAuthentication;
+        _enableDevelopmentLogin = enableDevelopmentLogin;
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
         Environment.SetEnvironmentVariable(ConnectionStringKey, TestConnectionString);
     }
@@ -37,7 +43,9 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
             configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:DumpTether"] =
-                    "Host=localhost;Database=dumptether_tests;Username=dumptether;Password=dumptether"
+                    "Host=localhost;Database=dumptether_tests;Username=dumptether;Password=dumptether",
+                ["Auth:RequireAuthentication"] = _requireAuthentication.ToString(),
+                ["Auth:EnableDevelopmentLogin"] = _enableDevelopmentLogin.ToString()
             });
         });
 

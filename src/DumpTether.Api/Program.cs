@@ -7,6 +7,15 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+builder.Services.PostConfigure<AuthOptions>(options =>
+{
+    if (!builder.Environment.IsDevelopment())
+    {
+        options.RequireAuthentication = true;
+        options.EnableDevelopmentLogin = false;
+    }
+});
 builder.Services.AddDumpTetherApplication();
 builder.Services.AddDumpTetherData(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
@@ -22,6 +31,19 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
     var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
     await dbContext.Database.MigrateAsync();
 }
+
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (UnauthorizedAccessException)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new { error = "Authentication is required." });
+    }
+});
 
 app.MapGet("/health", () => Results.Ok(new
 {

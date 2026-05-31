@@ -155,6 +155,40 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task UnauthenticatedTaskQuery_WhenAuthRequired_ReturnsUnauthorized()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/tasks");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostDevelopmentLogin_WhenEnabled_CreatesNormalSession()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            enableDevelopmentLogin: true);
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/development-login", content: null);
+
+        response.EnsureSuccessStatusCode();
+        var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>();
+        Assert.NotNull(login);
+        Assert.False(string.IsNullOrWhiteSpace(login!.SessionToken));
+
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+        var currentUser = await client.GetFromJsonAsync<CurrentUserResponse>("/api/auth/me");
+
+        Assert.Equal("dev@dumptether.local", currentUser!.User.Email);
+        Assert.Contains(currentUser.Workspaces, workspace => workspace.Name == "All Tasks");
+    }
+
+    [Fact]
     public async Task AuthenticatedTaskQueries_AreScopedToUserWorkspaceMembership()
     {
         using var factory = new DumpTetherApiFactory();

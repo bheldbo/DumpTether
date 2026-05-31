@@ -77,11 +77,18 @@ Run the API:
 dotnet run --project src/DumpTether.Api --launch-profile DumpTether.Api
 ```
 
-Anonymous local requests still use a temporary development workspace and project. Authenticated requests use workspace membership boundaries; the anonymous path is development-only plumbing, not a production security boundary.
+Local and hosted requests now use the same user/session/workspace boundary. The API requires authentication by default; the remaining anonymous workspace path is only an explicit test/development escape hatch.
 
 ### Authentication Foundation
 
-The first auth foundation is intentionally small and first-party. It stores password hashes only, stores hashed session tokens, and scopes authenticated workspace access through `workspace_memberships`. The existing anonymous development workspace path still exists for local UI work until login is required.
+The first auth foundation is intentionally small and first-party. It stores password hashes only, stores hashed session tokens, and scopes workspace access through `workspace_memberships`.
+
+For UI testing, start the API and web app, open `http://localhost:5173`, and use the login/register panel. In the Visual Studio development profile, the API also enables a development-only button that creates or signs in as:
+
+- Email: `dev@dumptether.local`
+- Password: `dumptether-dev-password`
+
+That dev account is a normal `AppUser` with a normal `UserSession` and workspace membership. Production config disables the dev login endpoint.
 
 Register a user and default workspace:
 

@@ -4,6 +4,7 @@ using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
 using DumpTether.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace DumpTether.Data;
 
@@ -82,17 +83,20 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     ];
 
     private readonly IClock _clock;
+    private readonly IOptions<AuthOptions> _authOptions;
     private readonly ICurrentWorkspaceSelection _currentWorkspaceSelection;
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly DumpTetherDbContext _dbContext;
 
     public DevelopmentWorkspaceProvider(
         IClock clock,
+        IOptions<AuthOptions> authOptions,
         ICurrentWorkspaceSelection currentWorkspaceSelection,
         ICurrentUserSessionProvider currentUserSessionProvider,
         DumpTetherDbContext dbContext)
     {
         _clock = clock;
+        _authOptions = authOptions;
         _currentWorkspaceSelection = currentWorkspaceSelection;
         _currentUserSessionProvider = currentUserSessionProvider;
         _dbContext = dbContext;
@@ -117,6 +121,12 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         // TEMPORARY: anonymous development mode still creates a local workspace until auth is required.
         // Authenticated requests are scoped to workspace membership.
         var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        if (currentSession is null && _authOptions.Value.RequireAuthentication)
+        {
+            throw new UnauthorizedAccessException("Authentication is required.");
+        }
+
         var workspace = await GetSelectedWorkspaceAsync(
             currentSession?.UserId,
             cancellationToken);
