@@ -1,16 +1,22 @@
 using DumpTether.App;
 using DumpTether.App.Auth;
+using DumpTether.App.Email;
 using DumpTether.Api;
 using DumpTether.Data;
 using DumpTether.App.Usage;
 using DumpTether.App.Workspaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.Configure<EmailConfirmationOptions>(builder.Configuration.GetSection("EmailConfirmation"));
+builder.Services.Configure<OAuthOptions>(builder.Configuration.GetSection("OAuth"));
 builder.Services.Configure<UsageOptions>(builder.Configuration.GetSection("Usage"));
 builder.Services.PostConfigure<AuthOptions>(options =>
 {
@@ -24,10 +30,13 @@ RuntimeConfigurationValidator.Validate(
     builder.Configuration,
     builder.Environment.IsDevelopment());
 builder.Services.AddDumpTetherApplication();
+builder.Services.RemoveAll<IEmailSender>();
+builder.Services.AddHttpClient<IEmailSender, BrevoEmailSender>();
 builder.Services.AddDumpTetherData(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();
 builder.Services.AddScoped<ICurrentWorkspaceSelection, CurrentWorkspaceSelection>();
+ConfigureExternalAuthentication(builder.Services, builder.Configuration, builder.Environment);
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("auth", context =>
@@ -80,6 +89,7 @@ app.MapGet("/health", () => Results.Ok(new
 }));
 
 app.UseRateLimiter();
+app.UseAuthentication();
 app.MapControllers();
 
 app.Run();
@@ -94,6 +104,64 @@ static string GetRateLimitKey(HttpContext context)
     }
 
     return context.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
+}
+
+static void ConfigureExternalAuthentication(
+    IServiceCollection services,
+    IConfiguration configuration,
+    IWebHostEnvironment environment)
+{
+    var oauthOptions = configuration.GetSection("OAuth").Get<OAuthOptions>() ?? new OAuthOptions();
+    var authenticationBuilder = services
+        .AddAuthentication()
+        .AddCookie(AuthSchemes.ExternalCookie, options =>
+        {
+            options.Cookie.Name = "DumpTether.External";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SameSite = SameSiteMode.Lax;
+            options.Cookie.SecurePolicy = environment.IsDevelopment()
+                ? CookieSecurePolicy.SameAsRequest
+                : CookieSecurePolicy.Always;
+            options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
+        });
+
+    if (oauthOptions.Google.Enabled)
+    {
+        authenticationBuilder.AddGoogle("google", options =>
+        {
+            options.SignInScheme = AuthSchemes.ExternalCookie;
+            options.ClientId = oauthOptions.Google.ClientId;
+            options.ClientSecret = oauthOptions.Google.ClientSecret;
+            options.CallbackPath = "/api/auth/oauth/google/callback";
+            options.Scope.Add("email");
+        });
+    }
+
+    if (oauthOptions.Microsoft.Enabled)
+    {
+        authenticationBuilder.AddMicrosoftAccount("microsoft", options =>
+        {
+            options.SignInScheme = AuthSchemes.ExternalCookie;
+            options.ClientId = oauthOptions.Microsoft.ClientId;
+            options.ClientSecret = oauthOptions.Microsoft.ClientSecret;
+            options.CallbackPath = "/api/auth/oauth/microsoft/callback";
+            options.Scope.Add("email");
+        });
+    }
+
+    if (oauthOptions.Facebook.Enabled)
+    {
+        authenticationBuilder.AddFacebook("facebook", options =>
+        {
+            options.SignInScheme = AuthSchemes.ExternalCookie;
+            options.AppId = oauthOptions.Facebook.ClientId;
+            options.AppSecret = oauthOptions.Facebook.ClientSecret;
+            options.CallbackPath = "/api/auth/oauth/facebook/callback";
+            options.Scope.Add("email");
+            options.Fields.Add("email");
+            options.Fields.Add("name");
+        });
+    }
 }
 
 public partial class Program;

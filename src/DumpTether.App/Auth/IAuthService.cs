@@ -19,6 +19,15 @@ public interface IAuthService
         AuthRequestMetadata metadata,
         CancellationToken cancellationToken);
 
+    Task<LoginUserResponse> ExternalLoginAsync(
+        ExternalLoginRequest request,
+        AuthRequestMetadata metadata,
+        CancellationToken cancellationToken);
+
+    Task<ConfirmEmailResponse> ConfirmEmailAsync(
+        string token,
+        CancellationToken cancellationToken);
+
     Task<bool> LogoutAsync(CancellationToken cancellationToken);
 
     Task<CurrentUserResponse?> GetCurrentAsync(CancellationToken cancellationToken);

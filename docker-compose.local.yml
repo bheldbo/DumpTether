@@ -31,6 +31,7 @@ services:
       Auth__DevelopmentPassword: ${DUMPTETHER_DEVELOPMENT_PASSWORD:-dumptether-dev-password}
       Auth__DevelopmentDisplayName: ${DUMPTETHER_DEVELOPMENT_DISPLAY_NAME:-Dev User}
       EmailConfirmation__Enabled: ${DUMPTETHER_EMAIL_CONFIRMATION_ENABLED:-false}
+      EmailConfirmation__PublicBaseUrl: ${DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL:-http://localhost:55868}
       Email__FromEmail: ${DUMPTETHER_EMAIL_FROM:-noreply@localhost}
       Email__FromName: ${DUMPTETHER_EMAIL_FROM_NAME:-DumpTether}
       Email__Smtp__Enabled: ${DUMPTETHER_EMAIL_SMTP_ENABLED:-false}
@@ -49,6 +50,10 @@ services:
       OAuth__Microsoft__ClientId: ${DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID:-}
       OAuth__Microsoft__ClientSecret: ${DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET:-}
       OAuth__Microsoft__Authority: https://login.microsoftonline.com/common/v2.0
+      OAuth__Facebook__Enabled: ${DUMPTETHER_OAUTH_FACEBOOK_ENABLED:-false}
+      OAuth__Facebook__ClientId: ${DUMPTETHER_OAUTH_FACEBOOK_CLIENT_ID:-}
+      OAuth__Facebook__ClientSecret: ${DUMPTETHER_OAUTH_FACEBOOK_CLIENT_SECRET:-}
+      OAuth__Facebook__Authority: https://www.facebook.com
       Usage__MaxActiveTasksPerWorkspace: ${DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE:-1000}
       Usage__MaxTotalTasksPerWorkspace: ${DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE:-5000}
       ConnectionStrings__DumpTether: Host=postgres;Port=5432;Database=${POSTGRES_DB:-dumptether};Username=${POSTGRES_USER:-dumptether};Password=${POSTGRES_PASSWORD:-dumptether_dev_password}

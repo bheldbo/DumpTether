@@ -15,7 +15,8 @@ public sealed class AppUser
         string normalizedEmail,
         string displayName,
         string passwordHash,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        DateTimeOffset? emailConfirmedAt)
     {
         Id = id;
         Email = email;
@@ -24,6 +25,7 @@ public sealed class AppUser
         PasswordHash = passwordHash;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
+        EmailConfirmedAt = emailConfirmedAt;
         IsActive = true;
     }
 
@@ -43,6 +45,8 @@ public sealed class AppUser
 
     public DateTimeOffset? LastLoginAt { get; private set; }
 
+    public DateTimeOffset? EmailConfirmedAt { get; private set; }
+
     public bool IsActive { get; private set; } = true;
 
     public IReadOnlyCollection<UserSession> Sessions => _sessions.AsReadOnly();
@@ -54,7 +58,8 @@ public sealed class AppUser
         string email,
         string? displayName,
         string passwordHash,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        bool emailIsConfirmed = true)
     {
         var normalizedEmail = NormalizeEmail(email);
         var trimmedDisplayName = DomainGuards.OptionalTrimmed(displayName) ??
@@ -66,7 +71,8 @@ public sealed class AppUser
             normalizedEmail,
             trimmedDisplayName,
             DomainGuards.NotBlank(passwordHash, nameof(passwordHash)),
-            createdAt);
+            createdAt,
+            emailIsConfirmed ? createdAt : null);
     }
 
     public static string NormalizeEmail(string email)
@@ -78,6 +84,12 @@ public sealed class AppUser
     {
         LastLoginAt = loggedInAt;
         UpdatedAt = loggedInAt;
+    }
+
+    public void MarkEmailConfirmed(DateTimeOffset confirmedAt)
+    {
+        EmailConfirmedAt ??= confirmedAt;
+        UpdatedAt = confirmedAt;
     }
 
     public void Deactivate(DateTimeOffset deactivatedAt)

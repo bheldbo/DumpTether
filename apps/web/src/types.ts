@@ -89,6 +89,7 @@ export interface AuthUserResponse {
   displayName: string;
   createdAt: string;
   lastLoginAt: string | null;
+  emailConfirmedAt: string | null;
 }
 
 export interface AuthWorkspaceResponse {
@@ -107,6 +108,7 @@ export interface RegisterUserRequest {
 export interface RegisterUserResponse {
   user: AuthUserResponse;
   workspace: AuthWorkspaceResponse;
+  emailConfirmationRequired: boolean;
 }
 
 export interface LoginUserRequest {
@@ -131,6 +133,8 @@ export interface AuthClientOptionsResponse {
   requiresAuthentication: boolean;
   guestSessionsEnabled: boolean;
   developmentLoginEnabled: boolean;
+  emailConfirmationEnabled: boolean;
+  oAuthProviders: string[];
 }
 
 export interface UpdateWorkspaceRequest {

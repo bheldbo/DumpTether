@@ -8,10 +8,15 @@ public static class RuntimeConfigurationValidator
     {
         var missingKeys = new List<string>();
 
-        if (configuration.GetValue<bool>("EmailConfirmation:Enabled") ||
-            configuration.GetValue<bool>("Mfa:Email:Enabled"))
+        if (configuration.GetValue<bool>("EmailConfirmation:Enabled"))
         {
-            AddMissingEmailKeys(configuration, missingKeys);
+            AddMissingBrevoApiKeys(configuration, missingKeys);
+            AddIfMissing(configuration, "EmailConfirmation:PublicBaseUrl", missingKeys);
+        }
+
+        if (configuration.GetValue<bool>("Mfa:Email:Enabled"))
+        {
+            AddMissingBrevoApiKeys(configuration, missingKeys);
         }
 
         if (configuration.GetValue<bool>("Email:Smtp:Enabled"))
@@ -27,6 +32,7 @@ public static class RuntimeConfigurationValidator
 
         AddMissingOAuthKeys(configuration, "Google", missingKeys);
         AddMissingOAuthKeys(configuration, "Microsoft", missingKeys);
+        AddMissingOAuthKeys(configuration, "Facebook", missingKeys);
 
         if (!isDevelopment &&
             configuration.GetValue<bool>("Auth:EnableDevelopmentLogin"))
@@ -53,6 +59,19 @@ public static class RuntimeConfigurationValidator
         AddIfMissing(configuration, "Email:Smtp:Port", missingKeys);
         AddIfMissing(configuration, "Email:Smtp:Username", missingKeys);
         AddIfMissing(configuration, "Email:Smtp:Password", missingKeys);
+    }
+
+    private static void AddMissingBrevoApiKeys(
+        IConfiguration configuration,
+        List<string> missingKeys)
+    {
+        if (!configuration.GetValue<bool>("Email:BrevoApi:Enabled"))
+        {
+            missingKeys.Add("Email:BrevoApi:Enabled");
+        }
+
+        AddIfMissing(configuration, "Email:BrevoApi:ApiKey", missingKeys);
+        AddIfMissing(configuration, "Email:FromEmail", missingKeys);
     }
 
     private static void AddMissingOAuthKeys(

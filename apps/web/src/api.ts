@@ -166,6 +166,11 @@ export function getAuthOptions(): Promise<AuthClientOptionsResponse> {
   return request<AuthClientOptionsResponse>('/api/auth/options');
 }
 
+export function beginOAuthLogin(provider: string) {
+  const returnUrl = encodeURIComponent(window.location.href);
+  window.location.assign(`${apiBaseUrl}/api/auth/oauth/${provider}?returnUrl=${returnUrl}`);
+}
+
 export async function developmentLogin(): Promise<LoginUserResponse> {
   const response = await request<LoginUserResponse>('/api/auth/development-login', {
     method: 'POST',

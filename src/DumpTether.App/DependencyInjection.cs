@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using DumpTether.App.Auth;
 using DumpTether.App.ArchiveResolutions;
+using DumpTether.App.Email;
 using DumpTether.App.Projects;
 using DumpTether.App.Tasks;
 using DumpTether.App.Templates;
@@ -16,6 +17,7 @@ public static class DependencyInjection
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IPasswordHashService, PasswordHashService>();
         services.AddSingleton<ISessionTokenService, SessionTokenService>();
+        services.AddSingleton<IEmailSender, NoOpEmailSender>();
         services.AddScoped<IArchiveResolutionService, ArchiveResolutionService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserSessionProvider, CurrentUserSessionProvider>();

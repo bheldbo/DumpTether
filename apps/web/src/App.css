@@ -1760,6 +1760,12 @@ label {
   gap: 10px;
 }
 
+.oauth-login-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .auth-mode-toggle {
   display: inline-flex;
   width: fit-content;

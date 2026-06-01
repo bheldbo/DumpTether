@@ -221,7 +221,8 @@ public sealed class AuthApiTests
             () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
 
         Assert.Contains("DumpTether configuration is incomplete", exception.Message);
-        Assert.Contains("Email:Smtp:Password", exception.Message);
+        Assert.Contains("Email:BrevoApi:Enabled", exception.Message);
+        Assert.Contains("Email:BrevoApi:ApiKey", exception.Message);
         Assert.Contains("Email:FromEmail", exception.Message);
     }
 

@@ -21,7 +21,8 @@ public sealed record AuthUserResponse(
     string Email,
     string DisplayName,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? LastLoginAt);
+    DateTimeOffset? LastLoginAt,
+    DateTimeOffset? EmailConfirmedAt);
 
 public sealed record AuthWorkspaceResponse(
     Guid Id,
@@ -31,7 +32,8 @@ public sealed record AuthWorkspaceResponse(
 
 public sealed record RegisterUserResponse(
     AuthUserResponse User,
-    AuthWorkspaceResponse Workspace);
+    AuthWorkspaceResponse Workspace,
+    bool EmailConfirmationRequired);
 
 public sealed record LoginUserResponse(
     AuthUserResponse User,
@@ -46,7 +48,23 @@ public sealed record CurrentUserResponse(
 public sealed record AuthClientOptionsResponse(
     bool RequiresAuthentication,
     bool GuestSessionsEnabled,
-    bool DevelopmentLoginEnabled);
+    bool DevelopmentLoginEnabled,
+    bool EmailConfirmationEnabled,
+    IReadOnlyList<string> OAuthProviders);
+
+public sealed record ConfirmEmailResponse(
+    Guid UserId,
+    string Email,
+    DateTimeOffset ConfirmedAt);
+
+public sealed record ExternalLoginRequest(
+    string Provider,
+    string ProviderUserId,
+    string Email,
+    string? DisplayName = null);
+
+public sealed record TestEmailRequest(
+    string Email);
 
 public sealed record CurrentUserSession(
     Guid UserId,

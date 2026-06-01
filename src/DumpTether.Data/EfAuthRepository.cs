@@ -61,6 +61,42 @@ internal sealed class EfAuthRepository : IAuthRepository
         return await query.SingleOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<EmailConfirmationToken?> GetEmailConfirmationTokenByHashAsync(
+        string tokenHash,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.EmailConfirmationTokens
+            .Where(token => token.TokenHash == tokenHash);
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<ExternalLogin?> GetExternalLoginAsync(
+        string provider,
+        string providerUserId,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var normalizedProvider = ExternalLogin.NormalizeProvider(provider);
+        var query = _dbContext.ExternalLogins
+            .Where(login =>
+                login.Provider == normalizedProvider &&
+                login.ProviderUserId == providerUserId);
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<UserWorkspaceMembership>> ListWorkspacesForUserAsync(
         Guid userId,
         CancellationToken cancellationToken)
@@ -90,6 +126,20 @@ internal sealed class EfAuthRepository : IAuthRepository
     public async Task AddSessionAsync(UserSession session, CancellationToken cancellationToken)
     {
         await _dbContext.UserSessions.AddAsync(session, cancellationToken);
+    }
+
+    public async Task AddEmailConfirmationTokenAsync(
+        EmailConfirmationToken token,
+        CancellationToken cancellationToken)
+    {
+        await _dbContext.EmailConfirmationTokens.AddAsync(token, cancellationToken);
+    }
+
+    public async Task AddExternalLoginAsync(
+        ExternalLogin externalLogin,
+        CancellationToken cancellationToken)
+    {
+        await _dbContext.ExternalLogins.AddAsync(externalLogin, cancellationToken);
     }
 
     public async Task AddWorkspaceMembershipAsync(

@@ -19,6 +19,17 @@ public interface IAuthRepository
         bool trackChanges,
         CancellationToken cancellationToken);
 
+    Task<EmailConfirmationToken?> GetEmailConfirmationTokenByHashAsync(
+        string tokenHash,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task<ExternalLogin?> GetExternalLoginAsync(
+        string provider,
+        string providerUserId,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<UserWorkspaceMembership>> ListWorkspacesForUserAsync(
         Guid userId,
         CancellationToken cancellationToken);
@@ -26,6 +37,12 @@ public interface IAuthRepository
     Task AddUserAsync(AppUser user, CancellationToken cancellationToken);
 
     Task AddSessionAsync(UserSession session, CancellationToken cancellationToken);
+
+    Task AddEmailConfirmationTokenAsync(
+        EmailConfirmationToken token,
+        CancellationToken cancellationToken);
+
+    Task AddExternalLoginAsync(ExternalLogin externalLogin, CancellationToken cancellationToken);
 
     Task AddWorkspaceMembershipAsync(
         WorkspaceMembership membership,

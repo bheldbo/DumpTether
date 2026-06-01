@@ -47,6 +47,9 @@ internal sealed class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         builder.Property(user => user.LastLoginAt)
             .HasColumnName("last_login_at");
 
+        builder.Property(user => user.EmailConfirmedAt)
+            .HasColumnName("email_confirmed_at");
+
         builder.Property(user => user.IsActive)
             .HasColumnName("is_active")
             .HasDefaultValue(true)

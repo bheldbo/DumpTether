@@ -14,6 +14,7 @@ import {
   ApiError,
   archiveProjectTasks,
   archiveTaskItem,
+  beginOAuthLogin,
   createArchiveResolution,
   createProject,
   createSavedView,
@@ -69,6 +70,7 @@ import type {
   LoginUserRequest,
   ProjectResponse,
   RegisterUserRequest,
+  RegisterUserResponse,
   SavedViewArchiveFilter,
   SavedViewFollowUpFilter,
   SavedViewResponse,
@@ -198,6 +200,8 @@ const defaultAuthOptions: AuthClientOptionsResponse = {
   requiresAuthentication: true,
   guestSessionsEnabled: true,
   developmentLoginEnabled: false,
+  emailConfirmationEnabled: false,
+  oAuthProviders: [],
 };
 
 type ConnectionStatus = 'checking' | 'online' | 'offline';
@@ -575,7 +579,14 @@ function App() {
 
   const handleRegister = async (requestBody: RegisterUserRequest) => {
     try {
-      await registerUser(requestBody);
+      const registered = await registerUser(requestBody);
+
+      if (registered.emailConfirmationRequired) {
+        showToast(t('emailConfirmationSent'), 'info');
+        setErrorMessage(null);
+        return registered;
+      }
+
       const loggedIn = await loginUser({
         email: requestBody.email,
         password: requestBody.password,
@@ -584,6 +595,7 @@ function App() {
       await handleAuthenticated(loggedIn);
       showToast(t('authRegistered'), 'info');
       setErrorMessage(null);
+      return registered;
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
       throw error;
@@ -4101,7 +4113,7 @@ function AuthPanel({
   onGuestLogin: () => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout?: () => Promise<void>;
-  onRegister: (requestBody: RegisterUserRequest) => Promise<void>;
+  onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
   temporarySessionIsActive: boolean;
   t: Translate;
   variant: 'gate' | 'settings';
@@ -4123,12 +4135,16 @@ function AuthPanel({
 
     try {
       if (mode === 'register') {
-        await onRegister({
+        const registered = await onRegister({
           email: email.trim(),
           password,
           displayName: displayName.trim() || null,
         });
-        setStatusMessage(t('authRegistered'));
+        setStatusMessage(
+          registered.emailConfirmationRequired
+            ? t('emailConfirmationSent')
+            : t('authRegistered'),
+        );
       } else {
         await onLogin({
           email: email.trim(),
@@ -4252,6 +4268,22 @@ function AuthPanel({
           {t('register')}
         </button>
       </div>
+
+      {authOptions.oAuthProviders.length > 0 ? (
+        <div className="oauth-login-list">
+          {authOptions.oAuthProviders.map((provider) => (
+            <button
+              className="secondary-action"
+              disabled={isSubmitting || isLoading}
+              key={provider}
+              onClick={() => beginOAuthLogin(provider)}
+              type="button"
+            >
+              {formatOAuthProvider(provider, t)}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <form className="auth-form" onSubmit={(event) => void submitAuthForm(event)}>
         {mode === 'register' ? (
@@ -4377,7 +4409,7 @@ function AccountPanel({
   onGuestLogin: () => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout: () => Promise<void>;
-  onRegister: (requestBody: RegisterUserRequest) => Promise<void>;
+  onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
   temporarySessionIsActive: boolean;
   t: Translate;
 }) {
@@ -4777,6 +4809,19 @@ function formatWorkspaceRole(
   t: Translate,
 ) {
   return role === 1 || role === 'Owner' ? t('roleOwner') : t('roleMember');
+}
+
+function formatOAuthProvider(provider: string, t: Translate) {
+  const normalizedProvider = provider.toLowerCase();
+  const providerName = normalizedProvider === 'google'
+    ? 'Google'
+    : normalizedProvider === 'microsoft'
+      ? 'Microsoft'
+      : normalizedProvider === 'facebook'
+        ? 'Facebook'
+        : provider;
+
+  return `${t('continueWith')} ${providerName}`;
 }
 
 function Icon({ name }: { name: IconName }) {

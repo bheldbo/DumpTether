@@ -1,5 +1,9 @@
 using System.ComponentModel.DataAnnotations;
+using System.Net;
+using System.Security.Claims;
 using DumpTether.App.Auth;
+using DumpTether.App.Email;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
@@ -11,17 +15,26 @@ namespace DumpTether.Api.Controllers;
 public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly IEmailSender _emailSender;
     private readonly IWebHostEnvironment _environment;
     private readonly IOptions<AuthOptions> _authOptions;
+    private readonly IOptions<EmailConfirmationOptions> _emailConfirmationOptions;
+    private readonly IOptions<OAuthOptions> _oauthOptions;
 
     public AuthController(
         IAuthService authService,
+        IEmailSender emailSender,
         IWebHostEnvironment environment,
-        IOptions<AuthOptions> authOptions)
+        IOptions<AuthOptions> authOptions,
+        IOptions<EmailConfirmationOptions> emailConfirmationOptions,
+        IOptions<OAuthOptions> oauthOptions)
     {
         _authService = authService;
+        _emailSender = emailSender;
         _environment = environment;
         _authOptions = authOptions;
+        _emailConfirmationOptions = emailConfirmationOptions;
+        _oauthOptions = oauthOptions;
     }
 
     [HttpGet("options")]
@@ -31,7 +44,9 @@ public sealed class AuthController : ControllerBase
         return Ok(new AuthClientOptionsResponse(
             options.RequireAuthentication,
             options.AllowGuestSessions,
-            _environment.IsDevelopment() && options.EnableDevelopmentLogin));
+            _environment.IsDevelopment() && options.EnableDevelopmentLogin,
+            _emailConfirmationOptions.Value.Enabled,
+            _oauthOptions.Value.EnabledProviders()));
     }
 
     [EnableRateLimiting("auth")]
@@ -52,6 +67,12 @@ public sealed class AuthController : ControllerBase
         catch (ValidationException exception)
         {
             return BadRequest(new { error = exception.Message });
+        }
+        catch (EmailDeliveryException exception)
+        {
+            return StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { error = exception.Message });
         }
     }
 
@@ -82,6 +103,115 @@ public sealed class AuthController : ControllerBase
         {
             return Unauthorized(new { error = "Invalid email or password." });
         }
+        catch (EmailConfirmationRequiredException)
+        {
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                new { error = "Email confirmation is required." });
+        }
+    }
+
+    [HttpGet("confirm-email")]
+    public async Task<IActionResult> ConfirmEmail(
+        [FromQuery] string? token,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _authService.ConfirmEmailAsync(token ?? string.Empty, cancellationToken);
+            return Content(
+                $"""
+                <!doctype html>
+                <html lang="en">
+                <head><meta charset="utf-8"><title>DumpTether email confirmed</title></head>
+                <body style="font-family: system-ui, sans-serif; padding: 2rem;">
+                  <h1>Email confirmed</h1>
+                  <p>{WebUtility.HtmlEncode(response.Email)} is ready to use with DumpTether.</p>
+                </body>
+                </html>
+                """,
+                "text/html");
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpGet("oauth/{provider}")]
+    public IActionResult BeginOAuth(
+        string provider,
+        [FromQuery] string? returnUrl = null)
+    {
+        var scheme = NormalizeEnabledOAuthProvider(provider);
+
+        if (scheme is null)
+        {
+            return NotFound();
+        }
+
+        var redirectUri = Url.Action(
+            nameof(CompleteOAuth),
+            values: new { provider = scheme, returnUrl }) ?? "/api/auth/me";
+        var properties = new AuthenticationProperties
+        {
+            RedirectUri = redirectUri
+        };
+
+        return Challenge(properties, scheme);
+    }
+
+    [HttpGet("oauth/{provider}/complete")]
+    public async Task<IActionResult> CompleteOAuth(
+        string provider,
+        [FromQuery] string? returnUrl,
+        CancellationToken cancellationToken)
+    {
+        var scheme = NormalizeEnabledOAuthProvider(provider);
+
+        if (scheme is null)
+        {
+            return NotFound();
+        }
+
+        var result = await HttpContext.AuthenticateAsync(AuthSchemes.ExternalCookie);
+        await HttpContext.SignOutAsync(AuthSchemes.ExternalCookie);
+
+        if (!result.Succeeded || result.Principal is null)
+        {
+            return BadRequest(new { error = "External login did not complete." });
+        }
+
+        var providerUserId = result.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        var email = result.Principal.FindFirstValue(ClaimTypes.Email);
+
+        if (string.IsNullOrWhiteSpace(providerUserId) || string.IsNullOrWhiteSpace(email))
+        {
+            return BadRequest(new { error = "External login did not provide an email address." });
+        }
+
+        LoginUserResponse response;
+
+        try
+        {
+            response = await _authService.ExternalLoginAsync(
+                new ExternalLoginRequest(
+                    scheme,
+                    providerUserId,
+                    email,
+                    result.Principal.FindFirstValue(ClaimTypes.Name)),
+                new AuthRequestMetadata(
+                    Request.Headers.UserAgent.FirstOrDefault(),
+                    HttpContext.Connection.RemoteIpAddress?.ToString()),
+                cancellationToken);
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+
+        AppendSessionCookie(response);
+        return Redirect(NormalizeReturnUrl(returnUrl));
     }
 
     [EnableRateLimiting("auth")]
@@ -154,6 +284,37 @@ public sealed class AuthController : ControllerBase
         return response is null ? Unauthorized() : Ok(response);
     }
 
+    [EnableRateLimiting("auth")]
+    [HttpPost("test-email")]
+    public async Task<IActionResult> SendTestEmail(
+        TestEmailRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!_environment.IsDevelopment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            await _emailSender.SendAsync(
+                new EmailMessage(
+                    request.Email,
+                    null,
+                    "DumpTether email test",
+                    "<p>Your DumpTether Brevo API configuration can send email.</p>",
+                    "Your DumpTether Brevo API configuration can send email."),
+                cancellationToken);
+            return Accepted(new { message = "Test email sent." });
+        }
+        catch (EmailDeliveryException exception)
+        {
+            return StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { error = exception.Message });
+        }
+    }
+
     private void AppendSessionCookie(LoginUserResponse response)
     {
         // TODO auth-hardening: if the frontend switches from bearer storage to cookies,
@@ -168,5 +329,35 @@ public sealed class AuthController : ControllerBase
                 Secure = !_environment.IsDevelopment(),
                 Expires = response.ExpiresAt
             });
+    }
+
+    private string? NormalizeEnabledOAuthProvider(string provider)
+    {
+        var normalized = provider.Trim().ToLowerInvariant();
+        var enabledProviders = _oauthOptions.Value.EnabledProviders();
+
+        return enabledProviders.Contains(normalized, StringComparer.Ordinal)
+            ? normalized
+            : null;
+    }
+
+    private string NormalizeReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl))
+        {
+            return "/";
+        }
+
+        if (Uri.TryCreate(returnUrl, UriKind.Absolute, out var absolute) &&
+            absolute.Scheme is "http" or "https" &&
+            (string.Equals(absolute.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase) ||
+                (_environment.IsDevelopment() &&
+                    (absolute.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                        absolute.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)))))
+        {
+            return absolute.ToString();
+        }
+
+        return returnUrl.StartsWith('/') ? returnUrl : "/";
     }
 }

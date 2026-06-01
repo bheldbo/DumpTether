@@ -92,7 +92,7 @@ That dev account is a normal `AppUser` with a normal `UserSession` and workspace
 
 Temporary guest sessions are also available for trying the wall without registering. They use the same backend session/workspace boundary, but the browser keeps the token in tab-scoped storage and the UI warns the user to sign up or log in to keep the work.
 
-Email confirmation, OAuth login, and email MFA are prepared as configuration surfaces but are not implemented as full flows yet. If one of those future features is enabled without the required email/OAuth settings, the API fails startup with a clear `DumpTether configuration is incomplete` exception listing the missing keys.
+Email confirmation now uses the Brevo transactional email API when enabled. OAuth login is wired for Google, Microsoft, and Facebook when each provider has client configuration. Email MFA is still a future flow, but its config is validated before it can be enabled. If one of these auth features is enabled without the required settings, the API fails startup with a clear `DumpTether configuration is incomplete` exception listing the missing keys.
 
 Basic abuse guardrails are in place for the MVP:
 
@@ -398,15 +398,64 @@ Useful local/runtime environment variables:
 - `Auth__AllowGuestSessions`: allows temporary browser-tab sessions.
 - `Auth__EnableDevelopmentLogin`: local-only dev login button.
 - `EmailConfirmation__Enabled`: future email confirmation gate.
+- `EmailConfirmation__PublicBaseUrl`: public API base URL used to build confirmation links.
 - `Email__FromEmail`: sender address for transactional email.
 - `Email__Smtp__Enabled`: enables SMTP config validation.
 - `Email__Smtp__Host`: SMTP host, for Brevo usually `smtp-relay.brevo.com`.
 - `Email__Smtp__Port`: SMTP port, usually `587`.
 - `Email__Smtp__Username`: SMTP login, store only in `.env` or server secrets.
 - `Email__Smtp__Password`: SMTP password, store only in `.env` or server secrets.
-- `Email__BrevoApi__Enabled` and `Email__BrevoApi__ApiKey`: future Brevo API mode.
+- `Email__BrevoApi__Enabled` and `Email__BrevoApi__ApiKey`: Brevo transactional email API mode.
 - `Mfa__Email__Enabled`: future email MFA for suspicious logins.
-- `OAuth__Google__Enabled` / `OAuth__Microsoft__Enabled`: future OAuth providers.
-- `OAuth__Google__ClientId`, `OAuth__Google__ClientSecret`, `OAuth__Microsoft__ClientId`, `OAuth__Microsoft__ClientSecret`: future OAuth secrets.
+- `OAuth__Google__Enabled`, `OAuth__Microsoft__Enabled`, `OAuth__Facebook__Enabled`: OAuth providers.
+- `OAuth__Google__ClientId`, `OAuth__Google__ClientSecret`, `OAuth__Microsoft__ClientId`, `OAuth__Microsoft__ClientSecret`, `OAuth__Facebook__ClientId`, `OAuth__Facebook__ClientSecret`: OAuth secrets.
 
 If you paste or commit an SMTP/API password by accident, rotate it in the provider dashboard before using it again.
+
+### Brevo Email Confirmation
+
+For Brevo API mode, you do not need the SMTP login/password. Set the API values in your uncommitted `.env`:
+
+```powershell
+DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true
+DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL=http://localhost:55868
+DUMPTETHER_EMAIL_FROM=your-verified-sender@example.com
+DUMPTETHER_EMAIL_BREVO_API_ENABLED=true
+DUMPTETHER_EMAIL_BREVO_API_KEY=your-rotated-brevo-api-key
+```
+
+Restart the API, then test the provider directly in local development:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/auth/test-email `
+  -H "Content-Type: application/json" `
+  -d "{\"email\":\"you@example.com\"}"
+```
+
+Then test the real confirmation flow by registering a new account. The email link opens `/api/auth/confirm-email?token=...`, marks the user confirmed, and invalidates the token.
+
+### OAuth Setup
+
+OAuth is available only for providers explicitly enabled in runtime config. Register these redirect URIs with the providers:
+
+```text
+http://localhost:55868/api/auth/oauth/google/callback
+http://localhost:55868/api/auth/oauth/microsoft/callback
+http://localhost:55868/api/auth/oauth/facebook/callback
+```
+
+Production should use the same paths on the production API origin. Example local config:
+
+```powershell
+DUMPTETHER_OAUTH_GOOGLE_ENABLED=true
+DUMPTETHER_OAUTH_GOOGLE_CLIENT_ID=...
+DUMPTETHER_OAUTH_GOOGLE_CLIENT_SECRET=...
+DUMPTETHER_OAUTH_MICROSOFT_ENABLED=true
+DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID=...
+DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET=...
+DUMPTETHER_OAUTH_FACEBOOK_ENABLED=true
+DUMPTETHER_OAUTH_FACEBOOK_CLIENT_ID=...
+DUMPTETHER_OAUTH_FACEBOOK_CLIENT_SECRET=...
+```
+
+OAuth-created users are treated as email-confirmed because the external provider is the login proof for that route.
