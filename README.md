@@ -1,8 +1,8 @@
 # DumpTether
 
-DumpTether is a lightweight personal task-and-note system that turns messy working notes into a plain task wall with structured notes, templates, views, and archive reasons.
+DumpTether is a lightweight personal task-and-note system that turns messy working notes into a plain task wall with structured notes, templates, searchability and archive reasons.
 
-This repository is the initial modular monolith scaffold with the first task item API surface.
+This repository is the initial Minimal Viable Product (MVP) and my learning experience with agentic warfare.
 
 ## MVP Boundaries
 
