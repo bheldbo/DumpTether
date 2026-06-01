@@ -81,6 +81,62 @@ export interface WorkspaceResponse {
   createdAt: string;
 }
 
+export type WorkspaceMembershipRole = 'Owner' | 'Member' | 1 | 2;
+
+export interface AuthUserResponse {
+  id: string;
+  email: string;
+  displayName: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+  emailConfirmedAt: string | null;
+}
+
+export interface AuthWorkspaceResponse {
+  id: string;
+  name: string;
+  color: string | null;
+  role: WorkspaceMembershipRole;
+}
+
+export interface RegisterUserRequest {
+  email: string;
+  password: string;
+  displayName?: string | null;
+}
+
+export interface RegisterUserResponse {
+  user: AuthUserResponse;
+  workspace: AuthWorkspaceResponse;
+  emailConfirmationRequired: boolean;
+}
+
+export interface LoginUserRequest {
+  email: string;
+  password: string;
+  deviceName?: string | null;
+}
+
+export interface LoginUserResponse {
+  user: AuthUserResponse;
+  workspaces: AuthWorkspaceResponse[];
+  sessionToken: string;
+  expiresAt: string;
+}
+
+export interface CurrentUserResponse {
+  user: AuthUserResponse;
+  workspaces: AuthWorkspaceResponse[];
+}
+
+export interface AuthClientOptionsResponse {
+  requiresAuthentication: boolean;
+  guestSessionsEnabled: boolean;
+  developmentLoginEnabled: boolean;
+  emailConfirmationEnabled: boolean;
+  oAuthProviders: string[];
+}
+
 export interface UpdateWorkspaceRequest {
   name?: string | null;
   color?: string | null;

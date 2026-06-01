@@ -33,8 +33,8 @@ internal sealed class WorkspaceConfiguration : IEntityTypeConfiguration<Workspac
         builder.Ignore(workspace => workspace.TaskTemplates);
         builder.Ignore(workspace => workspace.ArchiveResolutions);
         builder.Ignore(workspace => workspace.SavedViews);
+        builder.Ignore(workspace => workspace.Memberships);
 
-        builder.HasIndex(workspace => workspace.Name)
-            .IsUnique();
+        builder.HasIndex(workspace => workspace.Name);
     }
 }

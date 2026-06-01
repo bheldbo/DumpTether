@@ -117,6 +117,20 @@ public sealed class TaskItemsApiTests
     }
 
     [Fact]
+    public async Task PostTaskItems_WhenWorkspaceActiveTaskLimitReached_ReturnsBadRequest()
+    {
+        using var factory = new DumpTetherApiFactory(maxActiveTasksPerWorkspace: 1);
+        using var client = factory.CreateClient();
+        await CreateTaskItemAsync(client, "First task");
+
+        var response = await client.PostAsJsonAsync(
+            "/api/tasks",
+            new { title = "Second task" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task PostTaskTimeline_AddsTimelineNote()
     {
         using var factory = new DumpTetherApiFactory();

@@ -3,6 +3,8 @@ import type {
   ArchiveProjectTasksRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  AuthClientOptionsResponse,
+  CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CreateProjectRequest,
   CreateSavedViewRequest,
@@ -11,7 +13,11 @@ import type {
   CreateWorkspaceRequest,
   ProjectResponse,
   ProjectArchiveResponse,
+  LoginUserRequest,
+  LoginUserResponse,
   ReopenTaskItemRequest,
+  RegisterUserRequest,
+  RegisterUserResponse,
   SavedViewResponse,
   TaskTemplateDetailResponse,
   TaskTemplateSummaryResponse,
@@ -30,10 +36,38 @@ import type {
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
 const apiBaseUrl = configuredBaseUrl ?? '';
+const sessionTokenStorageKey = 'dumptether.sessionToken';
+const guestSessionTokenStorageKey = 'dumptether.guestSessionToken';
 let currentWorkspaceId: string | null = null;
+let currentSessionToken: string | null = readStoredSessionToken();
+let sessionIsTemporary = readStoredTemporarySessionFlag();
 
 export function setCurrentWorkspaceId(workspaceId: string | null) {
   currentWorkspaceId = workspaceId;
+}
+
+export function getStoredSessionToken() {
+  return currentSessionToken;
+}
+
+export function isTemporarySession() {
+  return sessionIsTemporary;
+}
+
+export function setSessionToken(sessionToken: string | null, options: { temporary?: boolean } = {}) {
+  currentSessionToken = sessionToken;
+  sessionIsTemporary = Boolean(sessionToken && options.temporary);
+
+  if (sessionToken && options.temporary) {
+    window.sessionStorage.setItem(guestSessionTokenStorageKey, sessionToken);
+    window.localStorage.removeItem(sessionTokenStorageKey);
+  } else if (sessionToken) {
+    window.localStorage.setItem(sessionTokenStorageKey, sessionToken);
+    window.sessionStorage.removeItem(guestSessionTokenStorageKey);
+  } else {
+    window.localStorage.removeItem(sessionTokenStorageKey);
+    window.sessionStorage.removeItem(guestSessionTokenStorageKey);
+  }
 }
 
 export class ApiError extends Error {
@@ -49,8 +83,10 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
+    credentials: 'include',
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(currentSessionToken ? { Authorization: `Bearer ${currentSessionToken}` } : {}),
       ...(currentWorkspaceId ? { 'X-DumpTether-Workspace-Id': currentWorkspaceId } : {}),
       ...init?.headers,
     },
@@ -75,6 +111,86 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+function readStoredSessionToken() {
+  return window.localStorage.getItem(sessionTokenStorageKey) ??
+    window.sessionStorage.getItem(guestSessionTokenStorageKey);
+}
+
+function readStoredTemporarySessionFlag() {
+  return !window.localStorage.getItem(sessionTokenStorageKey) &&
+    Boolean(window.sessionStorage.getItem(guestSessionTokenStorageKey));
+}
+
+export function registerUser(
+  requestBody: RegisterUserRequest,
+): Promise<RegisterUserResponse> {
+  return request<RegisterUserResponse>('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export async function loginUser(
+  requestBody: LoginUserRequest,
+): Promise<LoginUserResponse> {
+  const response = await request<LoginUserResponse>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+
+  setSessionToken(response.sessionToken);
+  return response;
+}
+
+export async function logoutUser(): Promise<void> {
+  try {
+    await request<void>('/api/auth/logout', {
+      method: 'POST',
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 401)) {
+      throw error;
+    }
+  } finally {
+    setSessionToken(null);
+  }
+}
+
+export function getCurrentUser(): Promise<CurrentUserResponse> {
+  return request<CurrentUserResponse>('/api/auth/me');
+}
+
+export function getAuthOptions(): Promise<AuthClientOptionsResponse> {
+  return request<AuthClientOptionsResponse>('/api/auth/options');
+}
+
+export function beginOAuthLogin(provider: string) {
+  const returnUrl = encodeURIComponent(window.location.href);
+  window.location.assign(`${apiBaseUrl}/api/auth/oauth/${provider}?returnUrl=${returnUrl}`);
+}
+
+export async function developmentLogin(): Promise<LoginUserResponse> {
+  const response = await request<LoginUserResponse>('/api/auth/development-login', {
+    method: 'POST',
+  });
+
+  setSessionToken(response.sessionToken);
+  return response;
+}
+
+export async function guestLogin(): Promise<LoginUserResponse> {
+  const response = await request<LoginUserResponse>('/api/auth/guest', {
+    method: 'POST',
+  });
+
+  setSessionToken(response.sessionToken, { temporary: true });
+  return response;
+}
+
+export function checkHealth(): Promise<{ status: string; service: string }> {
+  return request<{ status: string; service: string }>('/health');
 }
 
 export function listTaskItems(

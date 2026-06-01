@@ -22,6 +22,11 @@ public interface ITaskItemRepository
         bool includeArchived,
         CancellationToken cancellationToken);
 
+    Task<int> CountAsync(
+        Guid workspaceId,
+        bool includeArchived,
+        CancellationToken cancellationToken);
+
     Task<TaskItem?> GetByIdAsync(
         Guid id,
         Guid workspaceId,

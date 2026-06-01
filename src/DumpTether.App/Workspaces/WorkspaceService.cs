@@ -1,20 +1,28 @@
+using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.Domain;
+using Microsoft.Extensions.Options;
 
 namespace DumpTether.App.Workspaces;
 
 internal sealed class WorkspaceService : IWorkspaceService
 {
     private readonly IClock _clock;
+    private readonly IOptions<AuthOptions> _authOptions;
+    private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
     private readonly IWorkspaceRepository _workspaceRepository;
 
     public WorkspaceService(
         IClock clock,
+        IOptions<AuthOptions> authOptions,
+        ICurrentUserSessionProvider currentUserSessionProvider,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
         IWorkspaceRepository workspaceRepository)
     {
         _clock = clock;
+        _authOptions = authOptions;
+        _currentUserSessionProvider = currentUserSessionProvider;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _workspaceRepository = workspaceRepository;
     }
@@ -22,7 +30,10 @@ internal sealed class WorkspaceService : IWorkspaceService
     public async Task<IReadOnlyList<WorkspaceResponse>> ListAsync(CancellationToken cancellationToken)
     {
         await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
-        var workspaces = await _workspaceRepository.ListAsync(cancellationToken);
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var workspaces = currentSession is null
+            ? await _workspaceRepository.ListAsync(cancellationToken)
+            : await _workspaceRepository.ListForUserAsync(currentSession.UserId, cancellationToken);
 
         return workspaces
             .Select(MapWorkspace)
@@ -46,6 +57,21 @@ internal sealed class WorkspaceService : IWorkspaceService
         if (request.Color is not null)
         {
             workspace.ChangeColor(request.Color);
+        }
+
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        if (currentSession is null && _authOptions.Value.RequireAuthentication)
+        {
+            throw new UnauthorizedAccessException("Authentication is required.");
+        }
+
+        if (currentSession is not null)
+        {
+            workspace.AddMembership(
+                currentSession.UserId,
+                WorkspaceMembershipRole.Owner,
+                _clock.UtcNow);
         }
 
         await _workspaceRepository.AddAsync(workspace, cancellationToken);

@@ -23,7 +23,9 @@ src/DumpTether.App/       Application services and use cases
 src/DumpTether.Data/      EF Core persistence
 src/DumpTether.Domain/    Domain model and business rules
 docs/adr/                 Architecture decision records
+docs/deployment/          Deployment notes and examples
 docs/security/            Security principles
+deploy/docker/            Production Docker Compose examples
 ```
 
 ## Prerequisites
@@ -75,7 +77,60 @@ Run the API:
 dotnet run --project src/DumpTether.Api --launch-profile DumpTether.Api
 ```
 
-The first task endpoints use a temporary development workspace and project until authentication and workspace selection are introduced. This is development-only plumbing, not a security boundary.
+Local and hosted requests now use the same user/session/workspace boundary. The API requires authentication by default; the remaining anonymous workspace path is only an explicit test/development escape hatch.
+
+### Authentication Foundation
+
+The first auth foundation is intentionally small and first-party. It stores password hashes only, stores hashed session tokens, and scopes workspace access through `workspace_memberships`.
+
+For UI testing, start the API and web app, open `http://localhost:5173`, and use the login/register panel. In the Visual Studio development profile, the API also enables a development-only button that creates or signs in as:
+
+- Email: `dev@dumptether.local`
+- Password: `dumptether-dev-password`
+
+That dev account is a normal `AppUser` with a normal `UserSession` and workspace membership. Production config disables the dev login endpoint.
+
+Temporary guest sessions are also available for trying the wall without registering. They use the same backend session/workspace boundary, but the browser keeps the token in tab-scoped storage and the UI warns the user to sign up or log in to keep the work.
+
+Email confirmation now uses the Brevo transactional email API when enabled. OAuth login is wired for Google, Microsoft, and Facebook when each provider has client configuration. Email MFA is still a future flow, but its config is validated before it can be enabled. If one of these auth features is enabled without the required settings, the API fails startup with a clear `DumpTether configuration is incomplete` exception listing the missing keys.
+
+Basic abuse guardrails are in place for the MVP:
+
+- Auth endpoints are rate limited.
+- Task write endpoints are rate limited.
+- A workspace is capped at 1,000 active tasks and 5,000 total tasks by default.
+
+These are safety defaults, not a billing model. Real paid/free plans can later move these limits into persisted workspace/account configuration.
+
+Register a user and default workspace:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/auth/register `
+  -H "Content-Type: application/json" `
+  -d "{\"email\":\"you@example.com\",\"password\":\"change-this-password\",\"displayName\":\"You\"}"
+```
+
+Login and copy the returned `sessionToken` for API testing:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/auth/login `
+  -H "Content-Type: application/json" `
+  -d "{\"email\":\"you@example.com\",\"password\":\"change-this-password\",\"deviceName\":\"local dev\"}"
+```
+
+Call authenticated endpoints with the opaque session token:
+
+```powershell
+curl.exe http://localhost:55868/api/auth/me `
+  -H "Authorization: Bearer {session-token}"
+```
+
+Logout revokes the current session:
+
+```powershell
+curl.exe -X POST http://localhost:55868/api/auth/logout `
+  -H "Authorization: Bearer {session-token}"
+```
 
 Create a task item:
 
@@ -201,6 +256,35 @@ npm.cmd run dev
 
 Use `npm.cmd` from PowerShell if the `npm.ps1` shim is blocked by local execution policy.
 
+### Docker
+
+The API has a multi-stage Dockerfile at `src/DumpTether.Api/Dockerfile`. The container listens on port `8080` and does not require the .NET SDK on the server.
+
+For local containerized API + PostgreSQL:
+
+```powershell
+Copy-Item .env.example .env
+docker compose -f docker-compose.local.yml up --build
+```
+
+`docker-compose.local.yml` exposes PostgreSQL on `localhost:5432` for developer tools and exposes the API on `http://localhost:55868`. It applies migrations on API startup for local convenience.
+
+For local PostgreSQL only, keep using:
+
+```powershell
+docker compose up -d
+```
+
+For production, use `deploy/docker/docker-compose.prod.example.yml` as the canonical starting point and provide real values through an uncommitted `.env.prod` or host secret store:
+
+```powershell
+docker compose --env-file deploy/docker/.env.prod.example -f deploy/docker/docker-compose.prod.example.yml config
+```
+
+The production example includes PostgreSQL, the API, and a Caddy reverse proxy placeholder. It does not publish the PostgreSQL port. The API reaches PostgreSQL through the Docker network using `Host=postgres`. Keep `DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP=false` in normal production operation unless you intentionally run a controlled migration step.
+
+See `docs/deployment/docker-compose-production.md` for image build, server `.env.prod`, logs, API restart, PostgreSQL backup, and future GHCR deployment notes.
+
 ## Visual Studio
 
 Open `DumpTether.sln` in Visual Studio 2022.
@@ -306,3 +390,80 @@ docker compose config
 ## Configuration
 
 Configuration is split into deployment/runtime configuration, user/workspace configuration, and integration configuration. Real secrets must not be committed to source control.
+
+Useful local/runtime environment variables:
+
+- `ConnectionStrings__DumpTether`: PostgreSQL connection string.
+- `Auth__RequireAuthentication`: requires a session for the app.
+- `Auth__AllowGuestSessions`: allows temporary browser-tab sessions.
+- `Auth__EnableDevelopmentLogin`: local-only dev login button.
+- `EmailConfirmation__Enabled`: requires newly registered email/password users to confirm their email before login.
+- `EmailConfirmation__PublicBaseUrl`: public API base URL used to build confirmation links.
+- `Email__FromEmail`: sender address for transactional email.
+- `Email__Smtp__Enabled`: enables SMTP config validation.
+- `Email__Smtp__Host`: SMTP host, for Brevo usually `smtp-relay.brevo.com`.
+- `Email__Smtp__Port`: SMTP port, usually `587`.
+- `Email__Smtp__Username`: SMTP login, store only in `.env` or server secrets.
+- `Email__Smtp__Password`: SMTP password, store only in `.env` or server secrets.
+- `Email__BrevoApi__Enabled` and `Email__BrevoApi__ApiKey`: Brevo transactional email API mode.
+- `Mfa__Email__Enabled`: future email MFA for suspicious logins.
+- `OAuth__Google__Enabled`, `OAuth__Microsoft__Enabled`, `OAuth__Facebook__Enabled`: OAuth providers.
+- `OAuth__Google__ClientId`, `OAuth__Google__ClientSecret`, `OAuth__Microsoft__ClientId`, `OAuth__Microsoft__ClientSecret`, `OAuth__Facebook__ClientId`, `OAuth__Facebook__ClientSecret`: OAuth secrets.
+
+If you paste or commit an SMTP/API password by accident, rotate it in the provider dashboard before using it again.
+
+### Brevo Email Confirmation
+
+For Brevo API mode, you do not need the SMTP login/password. Set the API values in your uncommitted `.env`:
+
+```powershell
+DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true
+DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL=http://localhost:55868
+DUMPTETHER_EMAIL_FROM=your-verified-sender@example.com
+DUMPTETHER_EMAIL_BREVO_API_ENABLED=true
+DUMPTETHER_EMAIL_BREVO_API_KEY=your-rotated-brevo-api-key
+```
+
+`DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true` means DumpTether will require confirmation before email/password login. `DUMPTETHER_EMAIL_BREVO_API_ENABLED=true` means the email sender is Brevo's transactional API. They are separate on purpose so the same sender can later be used for password reset or email MFA without forcing every environment to require email confirmation.
+
+The sender address in `DUMPTETHER_EMAIL_FROM` must be verified/allowed in Brevo. The confirmation link is built from `DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL`, so local development usually points at the API, for example `http://localhost:55868`.
+
+Restart the API, then test the provider directly in local development:
+
+```powershell
+curl.exe -X POST "http://localhost:55868/api/auth/test-email" -H "Content-Type: application/json" --data-raw '{ "email": "you@example.com" }'
+```
+
+The test email subject is `DumpTether email test` and the body says the Brevo API configuration can send email. The real registration email subject is `Confirm your DumpTether email`; it contains a confirmation link and a note that the link expires.
+
+Then test the real confirmation flow by registering a new account. The email link opens `/api/auth/confirm-email?token=...`, marks the user confirmed, and invalidates the token.
+
+Root `.env` files are read by Docker Compose through `env_file`. Visual Studio launch profiles do not automatically import the root `.env`; for local F5 testing, use environment variables, user secrets, or an ignored `appsettings.Local.json`. Keep real API keys and SMTP passwords out of committed `appsettings*.json` files.
+
+Forgot password is not implemented yet. It should use the same Brevo sender with a separate password-reset token table and one-time, expiring links.
+
+### OAuth Setup
+
+OAuth is available only for providers explicitly enabled in runtime config. Register these redirect URIs with the providers:
+
+```text
+http://localhost:55868/api/auth/oauth/google/callback
+http://localhost:55868/api/auth/oauth/microsoft/callback
+http://localhost:55868/api/auth/oauth/facebook/callback
+```
+
+Production should use the same paths on the production API origin. Example local config:
+
+```powershell
+DUMPTETHER_OAUTH_GOOGLE_ENABLED=true
+DUMPTETHER_OAUTH_GOOGLE_CLIENT_ID=...
+DUMPTETHER_OAUTH_GOOGLE_CLIENT_SECRET=...
+DUMPTETHER_OAUTH_MICROSOFT_ENABLED=true
+DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID=...
+DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET=...
+DUMPTETHER_OAUTH_FACEBOOK_ENABLED=true
+DUMPTETHER_OAUTH_FACEBOOK_CLIENT_ID=...
+DUMPTETHER_OAUTH_FACEBOOK_CLIENT_SECRET=...
+```
+
+OAuth-created users are treated as email-confirmed because the external provider is the login proof for that route.

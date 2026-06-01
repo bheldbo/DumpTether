@@ -18,9 +18,24 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
 
     private SqliteConnection? _connection;
     private readonly string? _previousConnectionString;
+    private readonly bool _requireAuthentication;
+    private readonly bool _enableDevelopmentLogin;
+    private readonly int _maxActiveTasksPerWorkspace;
+    private readonly int _maxTotalTasksPerWorkspace;
+    private readonly IReadOnlyDictionary<string, string?> _extraConfiguration;
 
-    public DumpTetherApiFactory()
+    public DumpTetherApiFactory(
+        bool requireAuthentication = false,
+        bool enableDevelopmentLogin = false,
+        int maxActiveTasksPerWorkspace = 1000,
+        int maxTotalTasksPerWorkspace = 5000,
+        IReadOnlyDictionary<string, string?>? extraConfiguration = null)
     {
+        _requireAuthentication = requireAuthentication;
+        _enableDevelopmentLogin = enableDevelopmentLogin;
+        _maxActiveTasksPerWorkspace = maxActiveTasksPerWorkspace;
+        _maxTotalTasksPerWorkspace = maxTotalTasksPerWorkspace;
+        _extraConfiguration = extraConfiguration ?? new Dictionary<string, string?>();
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
         Environment.SetEnvironmentVariable(ConnectionStringKey, TestConnectionString);
     }
@@ -34,11 +49,22 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureAppConfiguration((_, configurationBuilder) =>
         {
-            configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+            var configuration = new Dictionary<string, string?>
             {
                 ["ConnectionStrings:DumpTether"] =
-                    "Host=localhost;Database=dumptether_tests;Username=dumptether;Password=dumptether"
-            });
+                    "Host=localhost;Database=dumptether_tests;Username=dumptether;Password=dumptether",
+                ["Auth:RequireAuthentication"] = _requireAuthentication.ToString(),
+                ["Auth:EnableDevelopmentLogin"] = _enableDevelopmentLogin.ToString(),
+                ["Usage:MaxActiveTasksPerWorkspace"] = _maxActiveTasksPerWorkspace.ToString(),
+                ["Usage:MaxTotalTasksPerWorkspace"] = _maxTotalTasksPerWorkspace.ToString()
+            };
+
+            foreach (var item in _extraConfiguration)
+            {
+                configuration[item.Key] = item.Value;
+            }
+
+            configurationBuilder.AddInMemoryCollection(configuration);
         });
 
         builder.ConfigureServices(services =>

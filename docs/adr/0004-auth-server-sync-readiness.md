@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -18,16 +18,23 @@ The product should not duplicate business rules between web, desktop, and server
 
 The hosted service should become multi-tenant around explicit user and workspace ownership:
 
-- `User`
+- `AppUser`
 - `Workspace`
-- `WorkspaceMember`
+- `WorkspaceMembership`
 - `Device`
 - `UserSession`
 - `RefreshToken`
 
 Workspace-scoped data such as tasks, projects, templates, fields, notes, archive reasons, and saved filters remains tied to `WorkspaceId`.
 
-Server authentication should use:
+The first implementation uses a simple first-party auth foundation:
+
+- `AppUser` with a framework password hash.
+- `UserSession` with a random opaque session token returned to the client and stored only as a hash.
+- `WorkspaceMembership` as the authorization boundary for authenticated workspace access.
+- Secure, HttpOnly cookies in production when cookie auth is used, plus bearer token support for API testing and future desktop clients.
+
+Future hardened server authentication should use:
 
 - ASP.NET Core authentication middleware.
 - Short-lived access tokens.
@@ -36,7 +43,7 @@ Server authentication should use:
 - Secure cookies for the website where practical.
 - Bearer tokens only where the desktop app or API clients need them.
 
-The API should resolve the current workspace from authenticated membership, not from the temporary development workspace header. That header is development-only and must be removed before production auth.
+The API should resolve the current workspace from authenticated membership, not from anonymous workspace selection. Local development and hosted production should exercise the same user/session/workspace behavior. A development-only login shortcut may seed and sign in a normal `AppUser`, but it must be disabled outside Development.
 
 The desktop app should keep local state in SQLite. Sync should use the same API shape and application rules, with metadata added before offline sync is implemented:
 
@@ -84,6 +91,6 @@ Production auth work should include:
 
 ## Consequences
 
-Login is worth doing soon, but as its own milestone. It should not be mixed into UI polish. The current development workspace selector is a stepping stone for product flow only, not a security boundary.
+Authenticated requests are scoped through membership. A test/development-only anonymous workspace escape hatch may remain for test fixtures, but the running app should require login by default. Password reset, MFA, OAuth, and sync remain future milestones.
 
 The same C# Domain/App logic remains reusable by the hosted API and the future desktop sidecar API.

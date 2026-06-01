@@ -6,6 +6,20 @@
       "launchUrl": "health",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "Auth__RequireAuthentication": "true",
+        "Auth__AllowGuestSessions": "true",
+        "Auth__EnableDevelopmentLogin": "true",
+        "Auth__DevelopmentEmail": "dev@dumptether.local",
+        "Auth__DevelopmentPassword": "dumptether-dev-password",
+        "Auth__DevelopmentDisplayName": "Dev User",
+        "EmailConfirmation__Enabled": "false",
+        "EmailConfirmation__PublicBaseUrl": "http://localhost:55868",
+        "Email__Smtp__Enabled": "false",
+        "Email__BrevoApi__Enabled": "false",
+        "Mfa__Email__Enabled": "false",
+        "OAuth__Google__Enabled": "false",
+        "OAuth__Microsoft__Enabled": "false",
+        "OAuth__Facebook__Enabled": "false",
         "ConnectionStrings__DumpTether": "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
       },
       "applicationUrl": "http://localhost:55868"

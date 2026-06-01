@@ -1,8 +1,10 @@
 using System.Text.Json;
+using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
 using DumpTether.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace DumpTether.Data;
 
@@ -81,16 +83,22 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     ];
 
     private readonly IClock _clock;
+    private readonly IOptions<AuthOptions> _authOptions;
     private readonly ICurrentWorkspaceSelection _currentWorkspaceSelection;
+    private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly DumpTetherDbContext _dbContext;
 
     public DevelopmentWorkspaceProvider(
         IClock clock,
+        IOptions<AuthOptions> authOptions,
         ICurrentWorkspaceSelection currentWorkspaceSelection,
+        ICurrentUserSessionProvider currentUserSessionProvider,
         DumpTetherDbContext dbContext)
     {
         _clock = clock;
+        _authOptions = authOptions;
         _currentWorkspaceSelection = currentWorkspaceSelection;
+        _currentUserSessionProvider = currentUserSessionProvider;
         _dbContext = dbContext;
     }
 
@@ -110,13 +118,34 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
     private async Task<DevelopmentWorkspaceContext> GetCurrentCoreAsync(CancellationToken cancellationToken)
     {
-        // TEMPORARY: replace this with authenticated workspace/project selection.
-        var workspace = await GetSelectedWorkspaceAsync(cancellationToken);
+        // TEMPORARY: anonymous development mode still creates a local workspace until auth is required.
+        // Authenticated requests are scoped to workspace membership.
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        if (currentSession is null && _authOptions.Value.RequireAuthentication)
+        {
+            throw new UnauthorizedAccessException("Authentication is required.");
+        }
+
+        var workspace = await GetSelectedWorkspaceAsync(
+            currentSession?.UserId,
+            cancellationToken);
 
         if (workspace is null)
         {
             workspace = Workspace.Create(DevelopmentWorkspaceName, _clock.UtcNow);
             await _dbContext.Workspaces.AddAsync(workspace, cancellationToken);
+
+            if (currentSession is not null)
+            {
+                await _dbContext.WorkspaceMemberships.AddAsync(
+                    WorkspaceMembership.Create(
+                        workspace.Id,
+                        currentSession.UserId,
+                        WorkspaceMembershipRole.Owner,
+                        _clock.UtcNow),
+                    cancellationToken);
+            }
         }
 
         if (string.Equals(
@@ -242,8 +271,46 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         return new DevelopmentWorkspaceContext(workspace.Id, project.Id);
     }
 
-    private async Task<Workspace?> GetSelectedWorkspaceAsync(CancellationToken cancellationToken)
+    private async Task<Workspace?> GetSelectedWorkspaceAsync(
+        Guid? currentUserId,
+        CancellationToken cancellationToken)
     {
+        if (currentUserId.HasValue)
+        {
+            if (_currentWorkspaceSelection.WorkspaceId.HasValue)
+            {
+                var selectedWorkspaceId = _currentWorkspaceSelection.WorkspaceId.Value;
+                var selectedWorkspace = await _dbContext.WorkspaceMemberships
+                    .Where(membership =>
+                        membership.UserId == currentUserId.Value &&
+                        membership.WorkspaceId == selectedWorkspaceId)
+                    .Join(
+                        _dbContext.Workspaces,
+                        membership => membership.WorkspaceId,
+                        workspace => workspace.Id,
+                        (_, workspace) => workspace)
+                    .SingleOrDefaultAsync(cancellationToken);
+
+                if (selectedWorkspace is not null)
+                {
+                    return selectedWorkspace;
+                }
+            }
+
+            var userWorkspaces = await _dbContext.WorkspaceMemberships
+                .Where(membership => membership.UserId == currentUserId.Value)
+                .Join(
+                    _dbContext.Workspaces,
+                    membership => membership.WorkspaceId,
+                    workspace => workspace.Id,
+                    (_, workspace) => workspace)
+                .ToListAsync(cancellationToken);
+
+            return userWorkspaces
+                .OrderBy(workspace => workspace.CreatedAt)
+                .FirstOrDefault();
+        }
+
         if (_currentWorkspaceSelection.WorkspaceId.HasValue)
         {
             var selectedWorkspace = await _dbContext.Workspaces

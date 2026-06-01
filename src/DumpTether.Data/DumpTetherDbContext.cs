@@ -12,6 +12,16 @@ public sealed class DumpTetherDbContext : DbContext
 
     public DbSet<Workspace> Workspaces => Set<Workspace>();
 
+    public DbSet<AppUser> AppUsers => Set<AppUser>();
+
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
+
+    public DbSet<WorkspaceMembership> WorkspaceMemberships => Set<WorkspaceMembership>();
+
+    public DbSet<EmailConfirmationToken> EmailConfirmationTokens => Set<EmailConfirmationToken>();
+
+    public DbSet<ExternalLogin> ExternalLogins => Set<ExternalLogin>();
+
     public DbSet<Project> Projects => Set<Project>();
 
     public DbSet<TaskItem> TaskItems => Set<TaskItem>();

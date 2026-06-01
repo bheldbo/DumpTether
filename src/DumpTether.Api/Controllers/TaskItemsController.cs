@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DumpTether.Api.Controllers;
 
@@ -15,6 +16,7 @@ public sealed class TaskItemsController : ControllerBase
         _taskItemService = taskItemService;
     }
 
+    [EnableRateLimiting("task-writes")]
     [HttpPost]
     public async Task<ActionResult<TaskItemDetailResponse>> Create(
         CreateTaskItemRequest request,
@@ -92,6 +94,7 @@ public sealed class TaskItemsController : ControllerBase
         return response is null ? NotFound() : Ok(response);
     }
 
+    [EnableRateLimiting("task-writes")]
     [HttpPatch("{id:guid}")]
     public async Task<ActionResult<TaskItemDetailResponse>> Update(
         Guid id,
@@ -113,6 +116,7 @@ public sealed class TaskItemsController : ControllerBase
         }
     }
 
+    [EnableRateLimiting("task-writes")]
     [HttpPost("{id:guid}/timeline")]
     public async Task<ActionResult<TaskItemDetailResponse>> AddTimelineEntry(
         Guid id,
@@ -134,6 +138,7 @@ public sealed class TaskItemsController : ControllerBase
         }
     }
 
+    [EnableRateLimiting("task-writes")]
     [HttpPatch("{id:guid}/timeline/{entryId:guid}")]
     public async Task<ActionResult<TaskItemDetailResponse>> UpdateTimelineEntry(
         Guid id,
@@ -164,6 +169,7 @@ public sealed class TaskItemsController : ControllerBase
         }
     }
 
+    [EnableRateLimiting("task-writes")]
     [HttpDelete("{id:guid}/timeline/{entryId:guid}")]
     public async Task<ActionResult<TaskItemDetailResponse>> DeleteTimelineEntry(
         Guid id,
@@ -192,6 +198,7 @@ public sealed class TaskItemsController : ControllerBase
         }
     }
 
+    [EnableRateLimiting("task-writes")]
     [HttpPost("{id:guid}/archive")]
     public async Task<ActionResult<TaskItemDetailResponse>> Archive(
         Guid id,
@@ -217,6 +224,7 @@ public sealed class TaskItemsController : ControllerBase
         }
     }
 
+    [EnableRateLimiting("task-writes")]
     [HttpPost("{id:guid}/reopen")]
     public async Task<ActionResult<TaskItemDetailResponse>> Reopen(
         Guid id,

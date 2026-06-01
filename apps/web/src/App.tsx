@@ -11,18 +11,23 @@ import {
 } from 'react';
 import {
   addTaskTimelineEntry,
+  ApiError,
   archiveProjectTasks,
   archiveTaskItem,
+  beginOAuthLogin,
   createArchiveResolution,
   createProject,
-  createSavedView,
   createTaskItem,
   createTaskTemplate,
   createWorkspace,
   deleteArchiveResolution,
-  deleteSavedView,
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
+  developmentLogin,
+  checkHealth,
+  getAuthOptions,
+  getCurrentUser,
+  guestLogin,
   getTaskItem,
   getTaskTemplate,
   getWorkspace,
@@ -32,10 +37,13 @@ import {
   listTaskItems,
   listTaskTemplates,
   listWorkspaces,
+  loginUser,
+  logoutUser,
   reopenTaskItem,
+  registerUser,
   setCurrentWorkspaceId,
+  isTemporarySession,
   updateArchiveResolution,
-  updateSavedView,
   updateProject,
   updateTaskItem,
   updateTaskTimelineEntry,
@@ -45,20 +53,23 @@ import {
 import './App.css';
 import { FieldEditorList, FieldValueList } from './fieldRenderers';
 import { toFieldValueMap } from './fieldValues';
+import { type Language, type Translate, translate } from './localization';
 import type {
+  AuthClientOptionsResponse,
   ArchiveProjectTasksRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CreateTaskItemRequest,
   FieldDefinitionType,
   FieldValueMap,
+  LoginUserRequest,
   ProjectResponse,
-  SavedViewArchiveFilter,
+  RegisterUserRequest,
+  RegisterUserResponse,
   SavedViewFollowUpFilter,
   SavedViewResponse,
-  SavedViewScope,
-  SavedViewSortDirection,
   SavedViewSortField,
   TaskItemDetailResponse,
   TaskItemSummaryResponse,
@@ -72,9 +83,7 @@ import type {
 } from './types';
 
 type WorkspaceMode = 'tasks' | 'templates';
-type StatusFilterMode = 'any' | 'empty' | 'exact';
-type Language = 'en' | 'da';
-type Translate = (key: TranslationKey) => string;
+type SettingsSectionKey = 'general' | 'statuses' | 'archive' | 'cleanup';
 
 type IconName =
   | 'archive'
@@ -83,12 +92,16 @@ type IconName =
   | 'back'
   | 'check'
   | 'calendarX'
+  | 'cloud'
   | 'clock'
   | 'close'
   | 'edit'
   | 'filterOff'
   | 'inbox'
   | 'list'
+  | 'login'
+  | 'logout'
+  | 'mail'
   | 'note'
   | 'palette'
   | 'panel'
@@ -96,10 +109,12 @@ type IconName =
   | 'refresh'
   | 'search'
   | 'settings'
+  | 'shield'
   | 'status'
   | 'tag'
   | 'templates'
   | 'trash'
+  | 'user'
   | 'waiting';
 
 interface EditableTemplateField {
@@ -110,24 +125,6 @@ interface EditableTemplateField {
   required: boolean;
   sortOrder: number;
   optionsText: string;
-}
-
-interface EditableViewDraft {
-  name: string;
-  scope: SavedViewScope;
-  projectId: string;
-  statusMode: StatusFilterMode;
-  statusValue: string;
-  category: string;
-  color: string;
-  archive: SavedViewArchiveFilter;
-  followUp: '' | SavedViewFollowUpFilter;
-  notViewedSinceDays: string;
-  notTouchedSinceDays: string;
-  text: string;
-  sortField: SavedViewSortField;
-  sortDirection: SavedViewSortDirection;
-  sortOrder: string;
 }
 
 interface TaskWallFilters {
@@ -148,21 +145,12 @@ const fieldTypes: FieldDefinitionType[] = [
   'Select',
 ];
 
-const archiveFilters: SavedViewArchiveFilter[] = ['Active', 'Archived', 'All'];
 const followUpFilters: SavedViewFollowUpFilter[] = [
   'Any',
   'Overdue',
   'Today',
   'ThisWeek',
 ];
-const sortFields: SavedViewSortField[] = [
-  'lastTouchedAt',
-  'createdAt',
-  'followUpAt',
-  'title',
-  'status',
-];
-const sortDirections: SavedViewSortDirection[] = ['desc', 'asc'];
 const staleAfterDays = 14;
 const colorChoices = [
   '#FDE68A',
@@ -176,229 +164,35 @@ const colorChoices = [
 const languageStorageKey = 'dumptether.language';
 const workspaceStorageKey = 'dumptether.workspace';
 const statusOptionsStorageKey = 'dumptether.statusOptions';
-const translations = {
-  en: {
-    addTask: 'Add task',
-    allProjects: 'All categories',
-    anyCategory: 'Any category',
-    anyColor: 'Any color',
-    anyFollowUp: 'Any follow-up',
-    anyProject: 'Any category',
-    anyStatus: 'Any status',
-    archive: 'Archive',
-    archiveAction: 'Archive',
-    archiveTasks: 'Archive task(s)',
-    collapseSidebar: 'Collapse sidebar',
-    color: 'Color',
-    danish: 'Danish',
-    activeTask: 'Active task',
-    archivedTask: 'Archived task',
-    backToWall: 'Back to wall',
-    board: 'Board',
-    boardColor: 'Board color',
-    cancel: 'Cancel',
-    category: 'Category',
-    confirmDelete: 'Sure?',
-    created: 'Created',
-    editView: 'Edit filter',
-    editBoard: 'Edit board',
-    editProject: 'Edit project',
-    editTask: 'Edit task',
-    english: 'English',
-    expandSidebar: 'Expand sidebar',
-    fieldsForFiltering: 'Fields',
-    fieldsHelp: 'Structured fields make filtering possible without turning the wall into a form.',
-    filterWall: 'Filter wall...',
-    followUpDate: 'Follow-up date',
-    keep: 'Keep',
-    language: 'Language',
-    lastUpdated: 'Last updated',
-    loadingTasks: 'Loading tasks...',
-    newTask: 'New task',
-    newTaskPlaceholder: 'Add a task and press Enter...',
-    newView: 'Save filter',
-    note: 'Note',
-    noteCount: 'notes',
-    notes: 'Notes',
-    noTaskColors: 'No task colors yet',
-    noTasks: 'Nothing here yet. Use + to add your first task.',
-    noTasksMatch: 'No tasks match these filters. Reset filters to see the whole wall again.',
-    noCategory: 'No category',
-    noFollowUp: 'No follow-up',
-    noStatus: 'No status',
-    notTouchedDays: 'Not touched days',
-    overview: 'All tasks',
-    refresh: 'Refresh',
-    resetFilters: 'Reset filters',
-    saved: 'Saved',
-    saveFailed: 'Save failed',
-    savedViews: 'Wall',
-    saveFields: 'Save fields',
-    save: 'Save',
-    saving: 'Saving...',
-    settings: 'Settings',
-    sortAscending: 'ascending',
-    sortDescending: 'descending',
-    sortedBy: 'Sorted by',
-    status: 'Status',
-    templates: 'Task templates',
-    sortCreated: 'Created',
-    sortFollowUp: 'Follow-up',
-    sortLastTouched: 'Last updated',
-    sortStatus: 'Status',
-    sortTitle: 'Title',
-    projectTags: 'Categories',
-    noNotesYet: 'No notes yet',
-    followUp: 'Follow-up',
-    workspaceColor: 'Workspace color',
-    taskColor: 'Task color',
-    deleteNote: 'Delete note',
-    done: 'Stop selecting',
-    editMode: 'Edit mode',
-    archiveSelected: 'Archive selected',
-    changeCategory: 'Change category',
-    changeColor: 'Change color',
-    changeDueDate: 'Change due date',
-    changeStatus: 'Change status',
-    selectTasksForAction: 'Select task(s) for action',
-    deleteCategoryWarning: 'Archive all active tasks in this category and hide the category?',
-    archiveCategory: 'Archive category',
-    archiveReasons: 'Archive reasons',
-    addArchiveReason: 'Add archive reason',
-    requireArchiveNote: 'Require archive note',
-    statusOptions: 'Status options',
-    addStatus: 'Add status',
-    selectedTasks: 'selected',
-    undo: 'Undo',
-    addNotePlaceholder: 'Add a note and press Enter...',
-    clearColor: 'Clear color',
-    noColor: 'No color',
-    wallHelp: 'Search tasks by text, category, status, field values, color, and dates.',
-    workspaces: 'Boards',
-    allWorkspaces: 'All boards',
-    newWorkspace: 'New board',
-    newProjectTag: 'New category',
-    removeFilters: 'Remove filters',
-    cleanup: 'Cleanup',
-    clearArchive: 'Clear archive',
-    clearOldTasks: 'Clear old tasks...',
-    clearWorkspaceTasks: 'Clear board tasks...',
-    deleteBoard: 'Delete board...',
-    deleteProjectTag: 'Delete project tag...',
-    cleanupFuture: 'Cleanup actions will land with board safety checks.',
-  },
-  da: {
-    addTask: 'Tilføj opgave',
-    allProjects: 'Alle kategorier',
-    anyCategory: 'Alle kategorier',
-    anyColor: 'Alle farver',
-    anyFollowUp: 'Alle opfølgninger',
-    anyProject: 'Alle kategorier',
-    anyStatus: 'Alle statusser',
-    archive: 'Arkiv',
-    archiveAction: 'Arkivér',
-    archiveTasks: 'Arkivér opgave(r)',
-    collapseSidebar: 'Skjul sidebar',
-    color: 'Farve',
-    danish: 'Dansk',
-    activeTask: 'Aktiv opgave',
-    archivedTask: 'Arkiveret opgave',
-    backToWall: 'Tilbage til tavlen',
-    board: 'Tavle',
-    boardColor: 'Tavlefarve',
-    cancel: 'Annuller',
-    category: 'Kategori',
-    confirmDelete: 'Sikker?',
-    created: 'Oprettet',
-    editView: 'Rediger filter',
-    editBoard: 'Rediger tavle',
-    editProject: 'Rediger projekt',
-    editTask: 'Rediger opgave',
-    english: 'Engelsk',
-    expandSidebar: 'Vis sidebar',
-    fieldsForFiltering: 'Felter',
-    fieldsHelp: 'Strukturerede felter gør det muligt at filtrere uden at gøre tavlen til en stor formular.',
-    filterWall: 'Filtrer tavlen...',
-    followUpDate: 'Opfølgning',
-    keep: 'Behold',
-    language: 'Sprog',
-    lastUpdated: 'Sidst opdateret',
-    loadingTasks: 'Indlæser opgaver...',
-    newTask: 'Ny opgave',
-    newTaskPlaceholder: 'Tilføj en opgave og tryk Enter...',
-    newView: 'Gem filter',
-    note: 'Note',
-    noteCount: 'noter',
-    notes: 'Noter',
-    noTaskColors: 'Ingen opgavefarver endnu',
-    noTasks: 'Her er tomt endnu. Brug + for at tilføje din første opgave.',
-    noTasksMatch: 'Ingen opgaver matcher filtrene. Nulstil filtrene for at se hele tavlen igen.',
-    noCategory: 'Ingen kategori',
-    noFollowUp: 'Ingen opfølgning',
-    noStatus: 'Ingen status',
-    notTouchedDays: 'Ikke rørt i dage',
-    overview: 'Alle opgaver',
-    refresh: 'Opdater',
-    resetFilters: 'Nulstil filtre',
-    saved: 'Gemt',
-    saveFailed: 'Kunne ikke gemme',
-    savedViews: 'Tavle',
-    saveFields: 'Gem felter',
-    save: 'Gem',
-    saving: 'Gemmer...',
-    settings: 'Indstillinger',
-    sortAscending: 'stigende',
-    sortDescending: 'faldende',
-    sortedBy: 'Sorteret efter',
-    status: 'Status',
-    templates: 'Opgaveskabeloner',
-    sortCreated: 'Oprettet',
-    sortFollowUp: 'Opfølgning',
-    sortLastTouched: 'Sidst opdateret',
-    sortStatus: 'Status',
-    sortTitle: 'Titel',
-    projectTags: 'Kategorier',
-    noNotesYet: 'Ingen noter endnu',
-    followUp: 'Opfølgning',
-    workspaceColor: 'Tavlefarve',
-    taskColor: 'Opgavefarve',
-    deleteNote: 'Slet note',
-    done: 'Stop valg',
-    editMode: 'Rediger',
-    archiveSelected: 'Arkivér valgte',
-    changeCategory: 'Skift kategori',
-    changeColor: 'Skift farve',
-    changeDueDate: 'Skift dato',
-    changeStatus: 'Skift status',
-    selectTasksForAction: 'Vælg opgave(r) til handling',
-    deleteCategoryWarning: 'Arkivér alle aktive opgaver i denne kategori og skjul kategorien?',
-    archiveCategory: 'Arkivér kategori',
-    archiveReasons: 'Arkivårsager',
-    addArchiveReason: 'Tilføj arkivårsag',
-    requireArchiveNote: 'Kræv arkivnote',
-    statusOptions: 'Statusmuligheder',
-    addStatus: 'Tilføj status',
-    selectedTasks: 'valgt',
-    undo: 'Fortryd',
-    addNotePlaceholder: 'Tilføj en note og tryk Enter...',
-    clearColor: 'Ryd farve',
-    noColor: 'Ingen farve',
-    wallHelp: 'Søg i opgaver efter tekst, kategori, status, feltværdier, farve og datoer.',
-    workspaces: 'Tavler',
-    allWorkspaces: 'Alle tavler',
-    newWorkspace: 'Ny tavle',
-    newProjectTag: 'Ny kategori',
-    removeFilters: 'Fjern filtre',
-    cleanup: 'Oprydning',
-    clearArchive: 'Ryd arkiv',
-    clearOldTasks: 'Ryd gamle opgaver...',
-    clearWorkspaceTasks: 'Ryd opgaver i tavle...',
-    deleteBoard: 'Slet tavle...',
-    deleteProjectTag: 'Slet kategori...',
-    cleanupFuture: 'Oprydning kommer med sikkerhedstjek for tavler.',
-  },
-} as const;
-type TranslationKey = keyof typeof translations.en;
+const defaultAuthOptions: AuthClientOptionsResponse = {
+  requiresAuthentication: true,
+  guestSessionsEnabled: true,
+  developmentLoginEnabled: false,
+  emailConfirmationEnabled: false,
+  oAuthProviders: [],
+};
+
+type ConnectionStatus = 'checking' | 'online' | 'offline';
+
+interface ToastMessage {
+  id: number;
+  tone: 'info' | 'warning' | 'error';
+  message: string;
+}
+
+interface CachedWorkspaceSnapshot {
+  archiveResolutions: ArchiveResolutionResponse[];
+  currentViewId: string | null;
+  knownStatuses: string[];
+  projects: ProjectResponse[];
+  savedViews: SavedViewResponse[];
+  taskColorOptions: string[];
+  taskItems: TaskItemSummaryResponse[];
+  templates: TaskTemplateDetailResponse[];
+  viewCounts: Record<string, number>;
+  workspace: WorkspaceResponse | null;
+  workspaces: WorkspaceResponse[];
+}
 
 function App() {
   const [savedViews, setSavedViews] = useState<SavedViewResponse[]>([]);
@@ -420,11 +214,17 @@ function App() {
   const [currentViewId, setCurrentViewId] = useState<string | null>(getInitialViewId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskItemDetailResponse | null>(null);
-  const [editingView, setEditingView] = useState<SavedViewResponse | null>(null);
-  const [viewEditorIsOpen, setViewEditorIsOpen] = useState(false);
   const [archiveDialogIsOpen, setArchiveDialogIsOpen] = useState(false);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
   const [settingsIsOpen, setSettingsIsOpen] = useState(false);
+  const [accountIsOpen, setAccountIsOpen] = useState(false);
+  const [authOptions, setAuthOptions] =
+    useState<AuthClientOptionsResponse>(defaultAuthOptions);
+  const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
+  const [temporarySessionIsActive, setTemporarySessionIsActive] = useState(isTemporarySession);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
+  const [lastPingedAt, setLastPingedAt] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [language, setLanguage] = useState<Language>(getInitialLanguage);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     getInitialWorkspaceId,
@@ -432,6 +232,7 @@ function App() {
   const [taskColorOptions, setTaskColorOptions] = useState<string[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const t = useCallback<Translate>((key) => translate(language, key), [language]);
@@ -445,14 +246,98 @@ function App() {
     [currentViewId, savedViews],
   );
 
+  const showToast = useCallback((message: string, tone: ToastMessage['tone'] = 'info') => {
+    const id = Date.now();
+    setToasts((currentToasts) => [
+      ...currentToasts.slice(-2),
+      { id, message, tone },
+    ]);
+    window.setTimeout(() => {
+      setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== id));
+    }, 5200);
+  }, []);
+
+  const pingBackend = useCallback(async (showOfflineToast = false) => {
+    const pingedAt = new Date().toISOString();
+
+    try {
+      await checkHealth();
+      setConnectionStatus('online');
+      setLastPingedAt(pingedAt);
+    } catch {
+      setConnectionStatus('offline');
+      setLastPingedAt(pingedAt);
+      if (showOfflineToast) {
+        showToast(t('connectionLostToast'), 'error');
+      }
+    }
+  }, [showToast, t]);
+
+  const loadAuth = useCallback(async () => {
+    setIsLoadingAuth(true);
+
+    try {
+      const options = await getAuthOptions();
+      setAuthOptions(options);
+      setConnectionStatus('online');
+
+      try {
+        const user = await getCurrentUser();
+        setCurrentUser(user);
+        setTemporarySessionIsActive(isTemporarySession());
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          setCurrentUser(null);
+          setTemporarySessionIsActive(false);
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      setConnectionStatus('offline');
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsLoadingAuth(false);
+    }
+  }, []);
+
   const loadWorkspace = useCallback(
     async (
       preferredViewId: string | null = currentViewId,
       preferredWorkspaceId: string | null = selectedWorkspaceId,
+      options: { force?: boolean } = {},
     ) => {
       setIsLoadingWorkspace(true);
 
       try {
+        const cacheIdentity = currentUser?.user.id ?? 'anonymous';
+        const cacheWorkspaceId = preferredWorkspaceId ?? 'default';
+        const cacheViewId = preferredViewId ?? 'default';
+        const workspaceCacheKey = buildWorkspaceCacheKey(
+          cacheWorkspaceId,
+          cacheViewId,
+          cacheIdentity,
+        );
+
+        if (!options.force) {
+          const cachedSnapshot = readCachedWorkspaceSnapshot(workspaceCacheKey);
+          if (cachedSnapshot) {
+            setWorkspaces(cachedSnapshot.workspaces);
+            setWorkspace(cachedSnapshot.workspace);
+            setSelectedWorkspaceId(cachedSnapshot.workspace?.id ?? preferredWorkspaceId);
+            setSavedViews(cachedSnapshot.savedViews);
+            setProjects(cachedSnapshot.projects);
+            setArchiveResolutions(cachedSnapshot.archiveResolutions);
+            setTemplates(cachedSnapshot.templates);
+            setTaskColorOptions(cachedSnapshot.taskColorOptions);
+            setKnownStatuses(cachedSnapshot.knownStatuses);
+            setCurrentViewId(cachedSnapshot.currentViewId);
+            setTaskItems(cachedSnapshot.taskItems);
+            setViewCounts(cachedSnapshot.viewCounts);
+            setIsLoadingWorkspace(false);
+          }
+        }
+
         setCurrentWorkspaceId(null);
         const workspaceList = await listWorkspaces();
         const effectiveWorkspaceId =
@@ -471,6 +356,11 @@ function App() {
           listTaskTemplates(),
         ]);
         const selectedViewId = pickSavedViewId(views, preferredViewId);
+        const resolvedWorkspaceCacheKey = buildWorkspaceCacheKey(
+          workspaceInfo.id,
+          selectedViewId ?? 'default',
+          cacheIdentity,
+        );
         const [templateDetails, selectedTasks, countEntries, allTasksForColors] = await Promise.all([
           Promise.all(templateSummaries.map((template) => getTaskTemplate(template.id))),
           selectedViewId ? listTaskItems({ viewId: selectedViewId }) : Promise.resolve([]),
@@ -495,6 +385,21 @@ function App() {
         setCurrentViewId(selectedViewId);
         setTaskItems(selectedTasks);
         setViewCounts(Object.fromEntries(countEntries));
+        const snapshot = {
+          archiveResolutions: resolutions,
+          currentViewId: selectedViewId,
+          knownStatuses: uniqueSorted(allTasksForColors.map((taskItem) => taskItem.status)),
+          projects: projectList,
+          savedViews: views,
+          taskColorOptions: mergeColorOptions(getTaskColors(allTasksForColors)),
+          taskItems: selectedTasks,
+          templates: templateDetails,
+          viewCounts: Object.fromEntries(countEntries),
+          workspace: workspaceInfo,
+          workspaces: workspaceList,
+        };
+        writeCachedWorkspaceSnapshot(workspaceCacheKey, snapshot);
+        writeCachedWorkspaceSnapshot(resolvedWorkspaceCacheKey, snapshot);
         setErrorMessage(null);
 
         if (selectedTaskId && !selectedTasks.some((taskItem) => taskItem.id === selectedTaskId)) {
@@ -507,21 +412,44 @@ function App() {
         setIsLoadingWorkspace(false);
       }
     },
-    [currentViewId, selectedTaskId, selectedWorkspaceId],
+    [currentUser, currentViewId, selectedTaskId, selectedWorkspaceId],
   );
 
   useEffect(() => {
-    if (hasBootstrapped) {
+    void loadAuth();
+  }, [loadAuth]);
+
+  useEffect(() => {
+    if (hasBootstrapped || isLoadingAuth) {
+      return;
+    }
+
+    if (authOptions.requiresAuthentication && !currentUser) {
+      setIsLoadingWorkspace(false);
       return;
     }
 
     setHasBootstrapped(true);
     void loadWorkspace(currentViewId);
-  }, [currentViewId, hasBootstrapped, loadWorkspace]);
+  }, [
+    authOptions.requiresAuthentication,
+    currentUser,
+    currentViewId,
+    hasBootstrapped,
+    isLoadingAuth,
+    loadWorkspace,
+  ]);
 
   useEffect(() => {
     window.localStorage.setItem(languageStorageKey, language);
   }, [language]);
+
+  useEffect(() => {
+    void pingBackend(false);
+    const intervalId = window.setInterval(() => void pingBackend(true), 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [pingBackend]);
 
   useEffect(() => {
     if (mode !== 'tasks' || !selectedTaskId) {
@@ -597,6 +525,107 @@ function App() {
     }
   };
 
+  const handleAuthenticated = async (userState: CurrentUserResponse) => {
+    setCurrentUser(userState);
+    setTemporarySessionIsActive(isTemporarySession());
+    const workspaceId = userState.workspaces[0]?.id ?? null;
+    setSelectedWorkspaceId(workspaceId);
+    setSelectedTaskId(null);
+    setSelectedTask(null);
+    setHasBootstrapped(true);
+    await loadWorkspace(null, workspaceId);
+  };
+
+  const handleLogin = async (requestBody: LoginUserRequest) => {
+    try {
+      const loggedIn = await loginUser(requestBody);
+      await handleAuthenticated(loggedIn);
+      showToast(t('authLoggedIn'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleRegister = async (requestBody: RegisterUserRequest) => {
+    try {
+      const registered = await registerUser(requestBody);
+
+      if (registered.emailConfirmationRequired) {
+        showToast(t('emailConfirmationSent'), 'info');
+        setErrorMessage(null);
+        return registered;
+      }
+
+      const loggedIn = await loginUser({
+        email: requestBody.email,
+        password: requestBody.password,
+        deviceName: 'web browser',
+      });
+      await handleAuthenticated(loggedIn);
+      showToast(t('authRegistered'), 'info');
+      setErrorMessage(null);
+      return registered;
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleDevelopmentLogin = async () => {
+    try {
+      const loggedIn = await developmentLogin();
+      await handleAuthenticated(loggedIn);
+      showToast(t('authLoggedIn'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      const loggedIn = await guestLogin();
+      await handleAuthenticated(loggedIn);
+      setTemporarySessionIsActive(true);
+      showToast(t('guestModeToast'), 'warning');
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      setCurrentUser(null);
+      setTemporarySessionIsActive(false);
+      setCurrentWorkspaceId(null);
+      setSelectedWorkspaceId(null);
+      setWorkspace(null);
+      setWorkspaces([]);
+      setSavedViews([]);
+      setProjects([]);
+      setTaskItems([]);
+      setSelectedTaskId(null);
+      setSelectedTask(null);
+      window.localStorage.removeItem(workspaceStorageKey);
+      setHasBootstrapped(false);
+
+      if (!authOptions.requiresAuthentication) {
+        await loadWorkspace(null, null);
+      }
+
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
   const handleCreateProject = async (name: string, color?: string | null) => {
     try {
       const created = await createProject({
@@ -636,8 +665,10 @@ function App() {
           [currentViewId]: (counts[currentViewId] ?? 0) + 1,
         }));
       }
+      return created;
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+      return null;
     }
   };
 
@@ -883,36 +914,6 @@ function App() {
     );
   };
 
-  const handleSaveView = async (
-    id: string | null,
-    requestBody: Parameters<typeof createSavedView>[0],
-  ) => {
-    try {
-      const savedView = id
-        ? await updateSavedView(id, requestBody)
-        : await createSavedView(requestBody);
-      setMode('tasks');
-      setCurrentViewId(savedView.id);
-      setEditingView(null);
-      setViewEditorIsOpen(false);
-      updateUrl('tasks', savedView.id);
-      await loadWorkspace(savedView.id);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    }
-  };
-
-  const handleDeleteView = async (id: string) => {
-    try {
-      await deleteSavedView(id);
-      setEditingView(null);
-      setViewEditorIsOpen(false);
-      await loadWorkspace(null);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    }
-  };
-
   const handleUpdateWorkspace = async (requestBody: UpdateWorkspaceRequest) => {
     try {
       const updated = await updateWorkspace(requestBody);
@@ -950,15 +951,19 @@ function App() {
         language={language}
         mode={mode}
         onCreateWorkspace={handleCreateWorkspace}
+        onOpenAccount={() => setAccountIsOpen(true)}
         onOpenSettings={() => setSettingsIsOpen(true)}
         onOpenTemplates={handleOpenTemplates}
-        onRefresh={() => void loadWorkspace(currentViewId)}
+        onRefresh={() => void loadWorkspace(currentViewId, selectedWorkspaceId, { force: true })}
         onSelectWorkspace={handleSelectWorkspace}
         onSelectView={handleSelectSavedView}
         onToggleSidebar={() => setSidebarIsCollapsed((isCollapsed) => !isCollapsed)}
+        connectionStatus={connectionStatus}
+        lastPingedAt={lastPingedAt}
         savedViews={savedViews}
         sidebarIsCollapsed={sidebarIsCollapsed}
         templateCount={templates.length}
+        temporarySessionIsActive={temporarySessionIsActive}
         t={t}
         workspace={workspace}
         workspaces={workspaces}
@@ -972,7 +977,25 @@ function App() {
           </div>
         ) : null}
 
-        {mode === 'templates' ? (
+        {isLoadingAuth ? (
+          <section className="auth-gate" aria-label={t('account')}>
+            <p className="detail-kicker">DumpTether</p>
+            <h2>{t('loadingAccount')}</h2>
+          </section>
+        ) : authOptions.requiresAuthentication && !currentUser ? (
+          <AuthPanel
+            authOptions={authOptions}
+            currentUser={currentUser}
+            isLoading={isLoadingAuth}
+            onDevelopmentLogin={handleDevelopmentLogin}
+            onGuestLogin={handleGuestLogin}
+            onLogin={handleLogin}
+            onRegister={handleRegister}
+            temporarySessionIsActive={temporarySessionIsActive}
+            t={t}
+            variant="gate"
+          />
+        ) : mode === 'templates' ? (
           <TemplatesPage
             isLoading={isLoadingWorkspace}
             onDeleteTemplate={handleDeleteTemplate}
@@ -1023,21 +1046,6 @@ function App() {
         )}
       </section>
 
-      {viewEditorIsOpen ? (
-        <ViewEditorPanel
-          onClose={() => {
-            setViewEditorIsOpen(false);
-            setEditingView(null);
-          }}
-          onDeleteView={handleDeleteView}
-          onSaveView={handleSaveView}
-          colorOptions={taskColorOptions}
-          projects={projects}
-          savedView={editingView}
-          t={t}
-        />
-      ) : null}
-
       {settingsIsOpen ? (
         <SettingsPanel
           archiveResolutions={archiveResolutions}
@@ -1052,16 +1060,35 @@ function App() {
           t={t}
         />
       ) : null}
+      {accountIsOpen ? (
+        <AccountPanel
+          authOptions={authOptions}
+          currentUser={currentUser}
+          isLoadingAuth={isLoadingAuth}
+          onClose={() => setAccountIsOpen(false)}
+          onDevelopmentLogin={handleDevelopmentLogin}
+          onGuestLogin={handleGuestLogin}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          onRegister={handleRegister}
+          temporarySessionIsActive={temporarySessionIsActive}
+          t={t}
+        />
+      ) : null}
+      <ToastStack toasts={toasts} />
     </main>
   );
 }
 
 function Sidebar({
+  connectionStatus,
   counts,
   currentViewId,
+  lastPingedAt,
   language,
   mode,
   onCreateWorkspace,
+  onOpenAccount,
   onOpenSettings,
   onOpenTemplates,
   onRefresh,
@@ -1071,15 +1098,19 @@ function Sidebar({
   savedViews,
   sidebarIsCollapsed,
   t,
+  temporarySessionIsActive,
   templateCount,
   workspace,
   workspaces,
 }: {
+  connectionStatus: ConnectionStatus;
   counts: Record<string, number>;
   currentViewId: string | null;
+  lastPingedAt: string | null;
   language: Language;
   mode: WorkspaceMode;
   onCreateWorkspace: (name: string) => Promise<void>;
+  onOpenAccount: () => void;
   onOpenSettings: () => void;
   onOpenTemplates: () => void;
   onRefresh: () => void;
@@ -1089,6 +1120,7 @@ function Sidebar({
   savedViews: SavedViewResponse[];
   sidebarIsCollapsed: boolean;
   t: Translate;
+  temporarySessionIsActive: boolean;
   templateCount: number;
   workspace: WorkspaceResponse | null;
   workspaces: WorkspaceResponse[];
@@ -1234,10 +1266,42 @@ function Sidebar({
           <span className="nav-label">{t('settings')}</span>
           <span className="nav-count">{language.toUpperCase()}</span>
         </button>
+        <button className="nav-item" onClick={onOpenAccount} type="button">
+          <Icon name="user" />
+          <span className="nav-label">{t('account')}</span>
+          {temporarySessionIsActive ? (
+            <span className="nav-count">{t('guestModeShort')}</span>
+          ) : null}
+        </button>
         <button className="refresh-button" onClick={onRefresh} type="button">
           <Icon name="refresh" />
           <span className="nav-label">{t('refresh')}</span>
         </button>
+        {temporarySessionIsActive ? (
+          <button className="nav-item guest-warning-link" onClick={onOpenAccount} type="button">
+            <Icon name="waiting" />
+            <span className="nav-label">{t('guestModeShort')}</span>
+          </button>
+        ) : null}
+        <div className="sidebar-footer">
+          <span
+            className="connection-indicator"
+            data-state={connectionStatus}
+            title={`${connectionStatus === 'online' ? t('backendOnline') : t('backendOffline')}${
+              lastPingedAt ? ` · ${t('lastPinged')}: ${formatDateTime(lastPingedAt)}` : ''
+            }`}
+          >
+            <span />
+            <strong>{connectionStatus === 'online' ? t('online') : t('offline')}</strong>
+            {lastPingedAt ? (
+              <small>{formatRelativeDate(lastPingedAt)}</small>
+            ) : null}
+          </span>
+          <a href="https://github.com/bheldbo/DumpTether" rel="noreferrer" target="_blank">
+            GitHub
+          </a>
+          <span>© 2026</span>
+        </div>
       </div>
     </aside>
   );
@@ -1292,7 +1356,7 @@ function TaskBoard({
   onCreateTaskItem: (
     title: string,
     options?: Partial<CreateTaskItemRequest>,
-  ) => Promise<void>;
+  ) => Promise<TaskItemDetailResponse | null>;
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
@@ -1324,10 +1388,22 @@ function TaskBoard({
     () => applyTaskWallFilters(taskItems, filters),
     [filters, taskItems],
   );
+  const [draftTaskIsOpen, setDraftTaskIsOpen] = useState(false);
   const focusedTaskItem = selectedTaskId
     ? visibleTaskItems.find((taskItem) => taskItem.id === selectedTaskId) ?? null
     : null;
-  const displayedTaskItems = focusedTaskItem ? [focusedTaskItem] : visibleTaskItems;
+  const focusModeIsEnabled = Boolean(focusedTaskItem) || draftTaskIsOpen;
+  const displayedTaskItems = focusedTaskItem || draftTaskIsOpen
+    ? focusedTaskItem ? [focusedTaskItem] : []
+    : visibleTaskItems;
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects],
+  );
+  const projectByName = useMemo(
+    () => new Map(projects.map((project) => [project.name.toLowerCase(), project])),
+    [projects],
+  );
   const filterOptions = useMemo(
     () => buildTaskFilterOptions(taskItems, colorOptions),
     [colorOptions, taskItems],
@@ -1370,6 +1446,14 @@ function TaskBoard({
     onCloseTaskItem();
   }, [onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
 
+  const openCreateTask = useCallback(() => {
+    if (focusedTaskItem || draftTaskIsOpen || !canCreateTask) {
+      return;
+    }
+
+    setDraftTaskIsOpen(true);
+  }, [canCreateTask, draftTaskIsOpen, focusedTaskItem]);
+
   useEffect(() => {
     if (!selectedTaskId || archiveDialogIsOpen) {
       return undefined;
@@ -1388,13 +1472,38 @@ function TaskBoard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [archiveDialogIsOpen, closeFocusedTask, selectedTaskId]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (isTextEditingTarget(event.target)) {
+        return;
+      }
+
+      if (event.altKey && event.key.toLowerCase() === 'n') {
+        event.preventDefault();
+        openCreateTask();
+      }
+
+      if (event.altKey && event.key.toLowerCase() === 'x') {
+        event.preventDefault();
+        if (visibleTaskItems.length > 0) {
+          setEditModeIsEnabled((isEnabled) => !isEnabled);
+          window.dispatchEvent(new CustomEvent('dumptether:open-actions'));
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [openCreateTask, visibleTaskItems.length]);
+
   return (
     <section
       className="task-board"
       aria-labelledby="task-board-title"
-      data-focus-mode={Boolean(focusedTaskItem)}
+      data-focus-mode={focusModeIsEnabled}
     >
-      {!focusedTaskItem ? (
+      {!focusModeIsEnabled ? (
         <WorkspaceHeader
           currentView={currentView}
           onCreateProject={onCreateProject}
@@ -1414,7 +1523,7 @@ function TaskBoard({
         />
       ) : null}
 
-      {!focusedTaskItem ? (
+      {!focusModeIsEnabled ? (
         <TaskFilterBar
           filters={filters}
           filtersAreActive={filtersAreActive}
@@ -1439,9 +1548,29 @@ function TaskBoard({
           </p>
         ) : null}
 
+        {draftTaskIsOpen ? (
+          <DraftTaskCard
+            onCancel={() => setDraftTaskIsOpen(false)}
+            onCreateTaskItem={onCreateTaskItem}
+            onCreated={(createdTask) => {
+              setDraftTaskIsOpen(false);
+              onSelectTaskItem(createdTask.id);
+            }}
+            projects={projects}
+            selectedProjectId={filters.projectId}
+            t={t}
+            templates={templates}
+          />
+        ) : null}
+
         {displayedTaskItems.map((taskItem) => {
           const isExpanded = selectedTaskId === taskItem.id;
           const isSelectedForEdit = selectedTaskIds.includes(taskItem.id);
+          const taskProject = taskItem.projectId
+            ? projectById.get(taskItem.projectId)
+            : taskItem.category
+              ? projectByName.get(taskItem.category.toLowerCase())
+              : null;
 
           return (
             <article
@@ -1506,7 +1635,12 @@ function TaskBoard({
                     <TaskMetaChip icon="status" label={t('status')} value={taskItem.status} />
                   ) : null}
                   {taskItem.category ? (
-                    <TaskMetaChip icon="tag" label={t('category')} value={taskItem.category} />
+                    <TaskMetaChip
+                      icon="tag"
+                      label={t('category')}
+                      style={getContextChipStyle(taskProject?.color ?? null)}
+                      value={taskItem.category}
+                    />
                   ) : null}
                   <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
                     <Icon name="clock" />
@@ -1523,7 +1657,7 @@ function TaskBoard({
                     </span>
                   ) : null}
                 </span>
-                <TaskBadges taskItem={taskItem} />
+                <TaskBadges taskItem={taskItem} t={t} />
                 <span
                   className="task-card-created"
                   title={`${t('created')}: ${formatFullDate(taskItem.createdAt)}`}
@@ -1571,23 +1705,22 @@ function TaskBoard({
           );
         })}
       </div>
-      {!isLoading && canCreateTask && !focusedTaskItem ? (
+      {!isLoading && canCreateTask && !focusModeIsEnabled ? (
         <FloatingBoardActions
           editModeIsEnabled={editModeIsEnabled}
+          taskCount={visibleTaskItems.length}
           colorOptions={colorOptions}
           onBatchUpdate={async (requestBody) => {
             await onUpdateTaskItems(selectedTaskIds, requestBody);
             setSelectedTaskIds([]);
           }}
-          onCreateTaskItem={onCreateTaskItem}
+          onOpenCreateTask={openCreateTask}
           onOpenBatchArchive={() => setBatchArchiveIsOpen(true)}
           onToggleEditMode={() =>
             editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
           selectedTaskCount={selectedTaskIds.length}
-          selectedProjectId={filters.projectId}
           projects={projects}
           statusOptions={statusOptions}
-          templates={templates}
           t={t}
         />
       ) : null}
@@ -1945,50 +2078,39 @@ function FloatingBoardActions({
   colorOptions,
   editModeIsEnabled,
   onBatchUpdate,
-  onCreateTaskItem,
+  onOpenCreateTask,
   onOpenBatchArchive,
   onToggleEditMode,
   projects,
-  selectedProjectId,
   selectedTaskCount,
   statusOptions,
-  templates,
+  taskCount,
   t,
 }: {
   colorOptions: string[];
   editModeIsEnabled: boolean;
   onBatchUpdate: (requestBody: UpdateTaskItemRequest) => Promise<void>;
-  onCreateTaskItem: (title: string, options?: Partial<CreateTaskItemRequest>) => Promise<void>;
+  onOpenCreateTask: () => void;
   onOpenBatchArchive: () => void;
   onToggleEditMode: () => void;
   projects: ProjectResponse[];
-  selectedProjectId: string;
   selectedTaskCount: number;
   statusOptions: string[];
-  templates: TaskTemplateDetailResponse[];
+  taskCount: number;
   t: Translate;
 }) {
-  const [title, setTitle] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [createIsOpen, setCreateIsOpen] = useState(false);
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setSelectedTemplateId((currentId) =>
-      currentId && templates.some((template) => template.id === currentId)
-        ? currentId
-        : templates[0]?.id ?? '',
-    );
-  }, [templates]);
+    const openActions = () => {
+      setIsOpen(true);
+    };
 
-  useEffect(() => {
-    if (createIsOpen) {
-      inputRef.current?.focus();
-    }
-  }, [createIsOpen]);
+    window.addEventListener('dumptether:open-actions', openActions);
+
+    return () => window.removeEventListener('dumptether:open-actions', openActions);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -1999,47 +2121,24 @@ function FloatingBoardActions({
       if (
         menuRef.current &&
         event.target instanceof Node &&
-        !menuRef.current.contains(event.target)
+        !menuRef.current.contains(event.target) &&
+        !editModeIsEnabled
       ) {
         setIsOpen(false);
-        setCreateIsOpen(false);
       }
     };
 
     window.addEventListener('pointerdown', handlePointerDown);
 
     return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [isOpen]);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    const selectedProject = projects.find((project) => project.id === selectedProjectId);
-    await onCreateTaskItem(trimmedTitle, {
-      projectId: selectedProject?.id ?? null,
-      category: selectedProject?.name ?? null,
-      taskTemplateId: selectedTemplateId || null,
-    });
-    setTitle('');
-    setIsSubmitting(false);
-    inputRef.current?.focus();
-  };
+  }, [editModeIsEnabled, isOpen]);
 
   return (
     <div className="floating-board-actions" ref={menuRef}>
       <button
         className="quick-create-fab"
         data-active={isOpen}
-        onClick={() => {
-          setIsOpen((open) => !open);
-          setCreateIsOpen(false);
-        }}
+        onClick={() => setIsOpen((open) => !open)}
         title={t('newTask')}
         type="button"
       >
@@ -2047,11 +2146,18 @@ function FloatingBoardActions({
         <span>{t('newTask')}</span>
       </button>
 
-      {isOpen && !createIsOpen ? (
+      {isOpen ? (
         <div className="quick-action-menu">
-          <button onClick={() => setCreateIsOpen(true)} type="button">
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              onOpenCreateTask();
+            }}
+            type="button"
+          >
             <Icon name="plus" />
             <span>{t('addTask')}</span>
+            <kbd>Alt+N</kbd>
           </button>
           {editModeIsEnabled ? (
             <>
@@ -2147,69 +2253,175 @@ function FloatingBoardActions({
               </button>
             </>
           ) : (
-            <button
-              onClick={() => {
-                onToggleEditMode();
-                setIsOpen(false);
-              }}
-              type="button"
-            >
-              <Icon name="check" />
-              <span>{t('selectTasksForAction')}</span>
-            </button>
+            taskCount > 0 ? (
+              <button
+                onClick={() => {
+                  onToggleEditMode();
+                  setIsOpen(true);
+                }}
+                type="button"
+              >
+                <Icon name="check" />
+                <span>{t('selectTasksForAction')}</span>
+                <kbd>Alt+X</kbd>
+              </button>
+            ) : null
           )}
         </div>
       ) : null}
-
-      {isOpen && createIsOpen ? (
-        <form className="quick-create-popover" onSubmit={handleSubmit}>
-          <input
-            aria-label="New task title"
-            ref={inputRef}
-            onChange={(event) => setTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && !title.trim()) {
-                setCreateIsOpen(false);
-              }
-            }}
-            placeholder={t('newTaskPlaceholder')}
-            type="text"
-            value={title}
-          />
-
-          {templates.length > 0 ? (
-            <select
-              aria-label={t('templates')}
-              onChange={(event) => setSelectedTemplateId(event.target.value)}
-              value={selectedTemplateId}
-            >
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
-          ) : null}
-
-          <button disabled={!title.trim() || isSubmitting} type="submit">
-            <Icon name="plus" />
-            <span className="sr-only">{t('addTask')}</span>
-          </button>
-          <button
-            className="ghost-button"
-            onClick={() => {
-              setTitle('');
-              setCreateIsOpen(false);
-            }}
-            title="Close"
-            type="button"
-          >
-            <Icon name="close" />
-            <span className="sr-only">Close</span>
-          </button>
-        </form>
-      ) : null}
     </div>
+  );
+}
+
+function DraftTaskCard({
+  onCancel,
+  onCreateTaskItem,
+  onCreated,
+  projects,
+  selectedProjectId,
+  t,
+  templates,
+}: {
+  onCancel: () => void;
+  onCreateTaskItem: (
+    title: string,
+    options?: Partial<CreateTaskItemRequest>,
+  ) => Promise<TaskItemDetailResponse | null>;
+  onCreated: (taskItem: TaskItemDetailResponse) => void;
+  projects: ProjectResponse[];
+  selectedProjectId: string;
+  t: Translate;
+  templates: TaskTemplateDetailResponse[];
+}) {
+  const [title, setTitle] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
+
+  useEffect(() => {
+    setSelectedTemplateId((currentId) =>
+      currentId && templates.some((template) => template.id === currentId)
+        ? currentId
+        : templates[0]?.id ?? '',
+    );
+  }, [templates]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      inputRef.current?.focus();
+      return;
+    }
+
+    setIsSubmitting(true);
+    const created = await onCreateTaskItem(trimmedTitle, {
+      projectId: selectedProject?.id ?? null,
+      category: selectedProject?.name ?? null,
+      taskTemplateId: selectedTemplateId || null,
+    });
+    setIsSubmitting(false);
+
+    if (created) {
+      onCreated(created);
+    }
+  };
+
+  return (
+    <article
+      className="task-card task-card-draft"
+      data-expanded="true"
+      data-state="active"
+      style={getTaskCardStyle('#FFF3A6')}
+    >
+      <div className="task-card-detail">
+        <section className="task-detail draft-task-detail" aria-label={t('newTask')}>
+          <form
+            className="detail-header task-detail-header draft-task-header"
+            onSubmit={(event) => void handleSubmit(event)}
+          >
+            <button
+              className="icon-button task-detail-back-button"
+              onClick={onCancel}
+              title={t('backToWall')}
+              type="button"
+            >
+              <Icon name="back" />
+              <span className="sr-only">{t('backToWall')}</span>
+            </button>
+            <div className="task-header-editor">
+              <p className="detail-kicker">{t('newTask')}</p>
+              <div className="task-title-row">
+                <input
+                  aria-label={t('taskTitleRequired')}
+                  className="task-title-input"
+                  onChange={(event) => setTitle(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape' && !title.trim()) {
+                      onCancel();
+                    }
+                  }}
+                  placeholder={t('newTaskTitlePlaceholder')}
+                  ref={inputRef}
+                  required
+                  type="text"
+                  value={title}
+                />
+              </div>
+              <div className="task-header-fields task-header-fields-edit">
+                {selectedProject ? (
+                  <span style={getContextChipStyle(selectedProject.color)}>
+                    <Icon name="tag" />
+                    {t('category')}: {selectedProject.name}
+                  </span>
+                ) : (
+                  <span>
+                    <Icon name="tag" />
+                    {t('category')}: {t('noCategory')}
+                  </span>
+                )}
+                {templates.length > 0 ? (
+                  <label>
+                    {t('templates')}
+                    <select
+                      aria-label={t('templates')}
+                      onChange={(event) => setSelectedTemplateId(event.target.value)}
+                      value={selectedTemplateId}
+                    >
+                      {templates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+            </div>
+            <div className="detail-actions">
+              <button
+                className="secondary-action"
+                disabled={!title.trim() || isSubmitting}
+                type="submit"
+              >
+                <Icon name="plus" />
+                <span>{t('addTask')}</span>
+              </button>
+            </div>
+          </form>
+          <section className="timeline-panel draft-notes-placeholder">
+            <h3>{t('notes')}</h3>
+            <p>{t('draftTaskHelp')}</p>
+          </section>
+        </section>
+      </div>
+    </article>
   );
 }
 
@@ -2512,6 +2724,7 @@ function TaskDetail({
               colorOptions={colorOptions}
               label={t('taskColor')}
               onChange={(color) => void onUpdateTaskItem({ color })}
+              placement="left"
               t={t}
             />
           ) : null}
@@ -2627,6 +2840,10 @@ function TaskHeaderEditor({
   const [editingField, setEditingField] = useState<
     'title' | 'status' | 'category' | 'followUp' | null
   >(null);
+  const displayedProject = projects.find((project) =>
+    project.id === (taskItem.projectId ?? categoryProjectId) ||
+    project.name === (taskItem.category ?? category),
+  ) ?? null;
 
   useEffect(() => {
     setTitle(taskItem.title);
@@ -2735,7 +2952,9 @@ function TaskHeaderEditor({
             {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
           </span>
           <span>{t('status')}: {taskItem.status ?? t('noStatus')}</span>
-          <span>{t('category')}: {taskItem.category ?? t('noCategory')}</span>
+          <span style={getContextChipStyle(displayedProject?.color ?? null)}>
+            {t('category')}: {taskItem.category ?? t('noCategory')}
+          </span>
           <span>{t('followUpDate')}: {taskItem.followUpAt ? formatFullDate(taskItem.followUpAt) : t('noFollowUp')}</span>
         </div>
       </div>
@@ -2835,6 +3054,7 @@ function TaskHeaderEditor({
           <button
             className="task-meta-chip"
             onClick={() => setEditingField('category')}
+            style={getContextChipStyle(displayedProject?.color ?? null)}
             type="button"
           >
             {t('category')}: {taskItem.category ?? t('noCategory')}
@@ -2882,12 +3102,14 @@ function ColorPickerPopover({
   colorOptions,
   label,
   onChange,
+  placement = 'below',
   t,
 }: {
   color: string;
   colorOptions?: string[];
   label: string;
   onChange: (color: string) => void;
+  placement?: 'below' | 'left';
   t: Translate;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -2927,7 +3149,7 @@ function ColorPickerPopover({
   };
 
   return (
-    <div className="color-popover" ref={popoverRef}>
+    <div className="color-popover" data-placement={placement} ref={popoverRef}>
       <button
         aria-expanded={isOpen}
         aria-label={label}
@@ -2961,6 +3183,8 @@ function ColorPickerPopover({
             <input
               aria-label="Custom color"
               onChange={(event) => setCustomColor(event.target.value.toUpperCase())}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
               type="color"
               value={customColor || selectedColor}
             />
@@ -3300,285 +3524,6 @@ function TemplateEditor({
   );
 }
 
-function ViewEditorPanel({
-  colorOptions,
-  onClose,
-  onDeleteView,
-  onSaveView,
-  projects,
-  savedView,
-  t,
-}: {
-  colorOptions: string[];
-  onClose: () => void;
-  onDeleteView: (id: string) => Promise<void>;
-  onSaveView: (
-    id: string | null,
-    requestBody: Parameters<typeof createSavedView>[0],
-  ) => Promise<void>;
-  projects: ProjectResponse[];
-  savedView: SavedViewResponse | null;
-  t: Translate;
-}) {
-  const [draft, setDraft] = useState<EditableViewDraft>(() =>
-    toEditableViewDraft(savedView),
-  );
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const canSubmit =
-    draft.name.trim().length > 0 &&
-    (draft.scope === 'Workspace' || draft.projectId.length > 0);
-
-  const updateDraft = (update: Partial<EditableViewDraft>) => {
-    setDraft((currentDraft) => ({ ...currentDraft, ...update }));
-  };
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!canSubmit) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    await onSaveView(savedView?.id ?? null, toSavedViewRequest(draft));
-    setIsSubmitting(false);
-  };
-
-  return (
-    <div className="dialog-backdrop" role="presentation">
-      <section
-        aria-labelledby="view-editor-title"
-        aria-modal="true"
-        className="view-editor-panel"
-        role="dialog"
-      >
-        <div className="dialog-header">
-          <div>
-            <p className="detail-kicker">{savedView ? 'Edit saved view' : 'New saved view'}</p>
-            <h2 id="view-editor-title">{savedView?.name ?? 'Saved view'}</h2>
-          </div>
-          <button className="icon-button" onClick={onClose} type="button">
-            <Icon name="close" />
-            <span className="sr-only">Close view editor</span>
-          </button>
-        </div>
-
-        <form className="view-editor-form" onSubmit={handleSubmit}>
-          <label>
-            Name
-            <input
-              onChange={(event) => updateDraft({ name: event.target.value })}
-              required
-              type="text"
-              value={draft.name}
-            />
-          </label>
-
-          <div className="editor-grid">
-            <label>
-              Scope
-              <select
-                onChange={(event) =>
-                  updateDraft({ scope: event.target.value as SavedViewScope })
-                }
-                value={draft.scope}
-              >
-                <option value="Workspace">Workspace</option>
-                <option value="Project">Project</option>
-              </select>
-            </label>
-
-            <label>
-              Project
-              <select
-                onChange={(event) => updateDraft({ projectId: event.target.value })}
-                value={draft.projectId}
-              >
-                <option value="">All projects</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Active or archive
-              <select
-                onChange={(event) =>
-                  updateDraft({ archive: event.target.value as SavedViewArchiveFilter })
-                }
-                value={draft.archive}
-              >
-                {archiveFilters.map((filter) => (
-                  <option key={filter} value={filter}>
-                    {filter}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Follow-up
-              <select
-                onChange={(event) =>
-                  updateDraft({
-                    followUp: event.target.value as '' | SavedViewFollowUpFilter,
-                  })
-                }
-                value={draft.followUp}
-              >
-                <option value="">Any follow-up state</option>
-                {followUpFilters.map((filter) => (
-                  <option key={filter} value={filter}>
-                    {formatFollowUpFilter(filter)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="editor-grid">
-            <label>
-              Status filter
-              <select
-                onChange={(event) =>
-                  updateDraft({ statusMode: event.target.value as StatusFilterMode })
-                }
-                value={draft.statusMode}
-              >
-                <option value="any">Any status</option>
-                <option value="empty">No status</option>
-                <option value="exact">Exact status</option>
-              </select>
-            </label>
-
-            <label>
-              Status text
-              <input
-                disabled={draft.statusMode !== 'exact'}
-                onChange={(event) => updateDraft({ statusValue: event.target.value })}
-                placeholder="Waiting"
-                type="text"
-                value={draft.statusValue}
-              />
-            </label>
-
-            <label>
-              Category
-              <input
-                onChange={(event) => updateDraft({ category: event.target.value })}
-                placeholder="Procurement"
-                type="text"
-                value={draft.category}
-              />
-            </label>
-
-            <div className="view-color-filter">
-              <span className="field-label">{t('color')}</span>
-              <ColorOptionPicker
-                emptyLabel={t('noTaskColors')}
-                label={t('color')}
-                onChange={(color) => updateDraft({ color })}
-                options={colorOptions}
-                value={draft.color}
-                zeroLabel={t('anyColor')}
-              />
-            </div>
-
-            <label>
-              Not viewed for days
-              <input
-                min={1}
-                onChange={(event) => updateDraft({ notViewedSinceDays: event.target.value })}
-                type="number"
-                value={draft.notViewedSinceDays}
-              />
-            </label>
-
-            <label>
-              Not touched for days
-              <input
-                min={1}
-                onChange={(event) => updateDraft({ notTouchedSinceDays: event.target.value })}
-                type="number"
-                value={draft.notTouchedSinceDays}
-              />
-            </label>
-          </div>
-
-          <label>
-            Text search
-            <input
-              onChange={(event) => updateDraft({ text: event.target.value })}
-              placeholder="Title, status, or timeline evidence"
-              type="search"
-              value={draft.text}
-            />
-          </label>
-
-          <div className="editor-grid">
-            <label>
-              Sort field
-              <select
-                onChange={(event) =>
-                  updateDraft({ sortField: event.target.value as SavedViewSortField })
-                }
-                value={draft.sortField}
-              >
-                {sortFields.map((field) => (
-                  <option key={field} value={field}>
-                    {formatSortField(field, t)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Sort direction
-              <select
-                onChange={(event) =>
-                  updateDraft({
-                    sortDirection: event.target.value as SavedViewSortDirection,
-                  })
-                }
-                value={draft.sortDirection}
-              >
-                {sortDirections.map((direction) => (
-                  <option key={direction} value={direction}>
-                    {direction === 'asc' ? t('sortAscending') : t('sortDescending')}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-          </div>
-
-          <div className="dialog-actions">
-            {savedView ? (
-              <button
-                className="ghost-button danger-button"
-                onClick={() => void onDeleteView(savedView.id)}
-                type="button"
-              >
-                Delete
-              </button>
-            ) : null}
-            <button className="ghost-button" onClick={onClose} type="button">
-              Cancel
-            </button>
-            <button disabled={!canSubmit || isSubmitting} type="submit">
-              Save view
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
-  );
-}
-
 function TimelinePanel({
   onAddTimelineEntry,
   onQueueDeleteTimelineEntry,
@@ -3903,6 +3848,389 @@ function ArchiveDialog({
   );
 }
 
+function AuthPanel({
+  authOptions,
+  currentUser,
+  isLoading,
+  onDevelopmentLogin,
+  onGuestLogin,
+  onLogin,
+  onLogout,
+  onRegister,
+  temporarySessionIsActive,
+  t,
+  variant,
+}: {
+  authOptions: AuthClientOptionsResponse;
+  currentUser: CurrentUserResponse | null;
+  isLoading: boolean;
+  onDevelopmentLogin: () => Promise<void>;
+  onGuestLogin: () => Promise<void>;
+  onLogin: (requestBody: LoginUserRequest) => Promise<void>;
+  onLogout?: () => Promise<void>;
+  onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
+  temporarySessionIsActive: boolean;
+  t: Translate;
+  variant: 'gate' | 'settings';
+}) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submitAuthForm = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFormError(null);
+    setStatusMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      if (mode === 'register') {
+        const registered = await onRegister({
+          email: email.trim(),
+          password,
+          displayName: displayName.trim() || null,
+        });
+        setStatusMessage(
+          registered.emailConfirmationRequired
+            ? t('emailConfirmationSent')
+            : t('authRegistered'),
+        );
+      } else {
+        await onLogin({
+          email: email.trim(),
+          password,
+          deviceName: 'web browser',
+        });
+        setStatusMessage(t('authLoggedIn'));
+      }
+
+      setPassword('');
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const submitDevelopmentLogin = async () => {
+    setFormError(null);
+    setStatusMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      await onDevelopmentLogin();
+      setStatusMessage(t('authLoggedIn'));
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const submitGuestLogin = async () => {
+    setFormError(null);
+    setStatusMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      await onGuestLogin();
+      setStatusMessage(t('guestModeToast'));
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const wrapperClassName = variant === 'gate'
+    ? 'auth-gate'
+    : 'settings-section auth-panel';
+  const canSubmit = email.trim().length > 0 && password.length >= 8;
+
+  if (currentUser) {
+    return (
+      <section className={wrapperClassName} aria-label={t('account')}>
+        <div className="auth-heading">
+          <p className="detail-kicker">{t('account')}</p>
+          <h2>{currentUser.user.displayName || currentUser.user.email}</h2>
+          <p>{t('signedInAs')}: {currentUser.user.email}</p>
+        </div>
+        {temporarySessionIsActive ? (
+          <p className="guest-warning">{t('guestModePersistent')}</p>
+        ) : null}
+        <div className="auth-workspace-list">
+          {currentUser.workspaces.map((workspaceItem) => (
+            <span className="auth-workspace-chip" key={workspaceItem.id}>
+              <span
+                className="workspace-color-dot"
+                style={{ backgroundColor: workspaceItem.color ?? '#184c48' }}
+              />
+              {workspaceItem.name}
+              <strong>{formatWorkspaceRole(workspaceItem.role, t)}</strong>
+            </span>
+          ))}
+        </div>
+        {onLogout ? (
+          <button
+            className="secondary-action logout-button"
+            disabled={isSubmitting}
+            onClick={async () => {
+              setIsSubmitting(true);
+              try {
+                await onLogout();
+              } catch (error) {
+                setFormError(getErrorMessage(error));
+              } finally {
+                setIsSubmitting(false);
+              }
+            }}
+            type="button"
+          >
+            <Icon name="logout" />
+            {t('logout')}
+          </button>
+        ) : null}
+        {formError ? <p className="form-error">{formError}</p> : null}
+      </section>
+    );
+  }
+
+  return (
+    <section className={wrapperClassName} aria-label={t('account')}>
+      <div className="auth-heading">
+        <p className="detail-kicker">{t('account')}</p>
+        <h2>{variant === 'gate' ? t('authRequiredTitle') : t('notSignedIn')}</h2>
+        <p>{variant === 'gate' ? t('authRequiredBody') : t('authSettingsHelp')}</p>
+      </div>
+
+      <div className="auth-mode-toggle" role="group" aria-label={t('account')}>
+        <button
+          aria-pressed={mode === 'login'}
+          onClick={() => setMode('login')}
+          type="button"
+        >
+          {t('login')}
+        </button>
+        <button
+          aria-pressed={mode === 'register'}
+          onClick={() => setMode('register')}
+          type="button"
+        >
+          {t('register')}
+        </button>
+      </div>
+
+      {authOptions.oAuthProviders.length > 0 ? (
+        <div className="oauth-login-list">
+          {authOptions.oAuthProviders.map((provider) => (
+            <button
+              className="secondary-action"
+              disabled={isSubmitting || isLoading}
+              key={provider}
+              onClick={() => beginOAuthLogin(provider)}
+              type="button"
+            >
+              {formatOAuthProvider(provider, t)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <form className="auth-form" onSubmit={(event) => void submitAuthForm(event)}>
+        {mode === 'register' ? (
+          <label>
+            {t('displayName')}
+            <input
+              autoComplete="name"
+              onChange={(event) => setDisplayName(event.target.value)}
+              type="text"
+              value={displayName}
+            />
+          </label>
+        ) : null}
+
+        <label>
+          {t('email')}
+          <input
+            autoComplete="email"
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            type="email"
+            value={email}
+          />
+        </label>
+
+        <label>
+          {t('password')}
+          <input
+            autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+            minLength={8}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            type="password"
+            value={password}
+          />
+          {mode === 'register' ? (
+            <small className="form-help">{t('passwordRequirement')}</small>
+          ) : null}
+        </label>
+
+        <button
+          className="auth-submit-button"
+          disabled={!canSubmit || isSubmitting || isLoading}
+          type="submit"
+        >
+          <Icon name={mode === 'register' ? 'user' : 'login'} />
+          {mode === 'register' ? t('registerButton') : t('loginButton')}
+        </button>
+      </form>
+
+      {authOptions.developmentLoginEnabled ? (
+        <div className="dev-login-panel">
+          <button
+            className="secondary-action"
+            disabled={isSubmitting || isLoading}
+            onClick={() => void submitDevelopmentLogin()}
+            type="button"
+          >
+            {t('useDevelopmentAccount')}
+          </button>
+          <p>{t('developmentAccountHelp')}</p>
+        </div>
+      ) : null}
+
+      {authOptions.guestSessionsEnabled ? (
+        <div className="dev-login-panel">
+          <button
+            className="ghost-button auth-secondary-button"
+            disabled={isSubmitting || isLoading}
+            onClick={() => void submitGuestLogin()}
+            type="button"
+          >
+            <Icon name="user" />
+            {t('continueWithoutAccount')}
+          </button>
+          <p>{t('continueWithoutAccountHelp')}</p>
+        </div>
+      ) : null}
+
+      {statusMessage ? <p className="form-success">{statusMessage}</p> : null}
+      {formError ? <p className="form-error">{formError}</p> : null}
+    </section>
+  );
+}
+
+function ToastStack({ toasts }: { toasts: ToastMessage[] }) {
+  if (toasts.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="toast-stack" role="status" aria-live="polite">
+      {toasts.map((toast) => (
+        <div className="toast" data-tone={toast.tone} key={toast.id}>
+          {toast.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AccountPanel({
+  authOptions,
+  currentUser,
+  isLoadingAuth,
+  onClose,
+  onDevelopmentLogin,
+  onGuestLogin,
+  onLogin,
+  onLogout,
+  onRegister,
+  temporarySessionIsActive,
+  t,
+}: {
+  authOptions: AuthClientOptionsResponse;
+  currentUser: CurrentUserResponse | null;
+  isLoadingAuth: boolean;
+  onClose: () => void;
+  onDevelopmentLogin: () => Promise<void>;
+  onGuestLogin: () => Promise<void>;
+  onLogin: (requestBody: LoginUserRequest) => Promise<void>;
+  onLogout: () => Promise<void>;
+  onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
+  temporarySessionIsActive: boolean;
+  t: Translate;
+}) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-labelledby="account-title"
+        aria-modal="true"
+        className="account-panel"
+        role="dialog"
+      >
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">DumpTether</p>
+            <h2 id="account-title">{t('account')}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">{t('close')}</span>
+          </button>
+        </div>
+
+        <AuthPanel
+          authOptions={authOptions}
+          currentUser={currentUser}
+          isLoading={isLoadingAuth}
+          onDevelopmentLogin={onDevelopmentLogin}
+          onGuestLogin={onGuestLogin}
+          onLogin={onLogin}
+          onLogout={onLogout}
+          onRegister={onRegister}
+          temporarySessionIsActive={temporarySessionIsActive}
+          t={t}
+          variant="settings"
+        />
+
+        <section className="settings-section">
+          <h3>{t('signInMethods')}</h3>
+          <div className="auth-method-list">
+            <div className="auth-method-card" data-state="ready">
+              <Icon name="mail" />
+              <div>
+                <strong>{t('emailPasswordLogin')}</strong>
+                <p>{t('emailPasswordLoginHelp')}</p>
+              </div>
+            </div>
+            <div className="auth-method-card">
+              <Icon name="cloud" />
+              <div>
+                <strong>{t('oauthLogin')}</strong>
+                <p>{t('oauthLoginHelp')}</p>
+              </div>
+              <span>{t('configRequired')}</span>
+            </div>
+            <div className="auth-method-card">
+              <Icon name="shield" />
+              <div>
+                <strong>{t('emailMfa')}</strong>
+                <p>{t('emailMfaHelp')}</p>
+              </div>
+              <span>{t('configRequired')}</span>
+            </div>
+          </div>
+        </section>
+      </section>
+    </div>
+  );
+}
+
 function SettingsPanel({
   archiveResolutions,
   configuredStatuses,
@@ -3929,9 +4257,16 @@ function SettingsPanel({
   ) => Promise<void>;
   t: Translate;
 }) {
+  const [activeSection, setActiveSection] = useState<SettingsSectionKey>('general');
   const [statusDraft, setStatusDraft] = useState('');
   const [archiveReasonName, setArchiveReasonName] = useState('');
   const [archiveReasonRequiresNote, setArchiveReasonRequiresNote] = useState(false);
+  const settingsSections: Array<{ key: SettingsSectionKey; label: string; icon: IconName }> = [
+    { key: 'general', label: t('settingsGeneral'), icon: 'settings' },
+    { key: 'statuses', label: t('statusOptions'), icon: 'status' },
+    { key: 'archive', label: t('archiveReasons'), icon: 'archive' },
+    { key: 'cleanup', label: t('cleanup'), icon: 'trash' },
+  ];
 
   const addStatus = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3976,99 +4311,128 @@ function SettingsPanel({
           </div>
           <button className="icon-button" onClick={onClose} type="button">
             <Icon name="close" />
-            <span className="sr-only">Close settings</span>
+            <span className="sr-only">{t('close')}</span>
           </button>
         </div>
 
-        <label>
-          {t('language')}
-          <select
-            onChange={(event) => onChangeLanguage(event.target.value as Language)}
-            value={language}
-          >
-            <option value="en">{t('english')}</option>
-            <option value="da">{t('danish')}</option>
-          </select>
-        </label>
-
-        <div className="settings-section">
-          <h3>{t('statusOptions')}</h3>
-          <form className="settings-inline-form" onSubmit={addStatus}>
-            <input
-              aria-label={t('addStatus')}
-              onChange={(event) => setStatusDraft(event.target.value)}
-              placeholder={t('addStatus')}
-              type="text"
-              value={statusDraft}
-            />
-            <button className="icon-button" disabled={!statusDraft.trim()} type="submit">
-              <Icon name="plus" />
-            </button>
-          </form>
-          <div className="settings-chip-list">
-            {configuredStatuses.map((status) => (
-              <span className="settings-chip" key={status}>
-                {status}
-                <button
-                  className="tiny-icon-button"
-                  onClick={() =>
-                    onSaveStatusOptions(
-                      configuredStatuses.filter((currentStatus) => currentStatus !== status),
-                    )}
-                  title={t('deleteNote')}
-                  type="button"
-                >
-                  <Icon name="trash" />
-                </button>
-              </span>
+        <div className="settings-layout">
+          <nav className="settings-menu" aria-label={t('settingsSections')}>
+            {settingsSections.map((section) => (
+              <button
+                aria-current={activeSection === section.key ? 'page' : undefined}
+                key={section.key}
+                onClick={() => setActiveSection(section.key)}
+                type="button"
+              >
+                <Icon name={section.icon} />
+                {section.label}
+              </button>
             ))}
-          </div>
-        </div>
+          </nav>
 
-        <div className="settings-section">
-          <h3>{t('archiveReasons')}</h3>
-          <form className="settings-inline-form" onSubmit={(event) => void addArchiveReason(event)}>
-            <input
-              aria-label={t('addArchiveReason')}
-              onChange={(event) => setArchiveReasonName(event.target.value)}
-              placeholder={t('addArchiveReason')}
-              type="text"
-              value={archiveReasonName}
-            />
-            <label className="settings-checkbox">
-              <input
-                checked={archiveReasonRequiresNote}
-                onChange={(event) => setArchiveReasonRequiresNote(event.target.checked)}
-                type="checkbox"
-              />
-              {t('requireArchiveNote')}
-            </label>
-            <button className="icon-button" disabled={!archiveReasonName.trim()} type="submit">
-              <Icon name="plus" />
-            </button>
-          </form>
-          <div className="settings-list">
-            {archiveResolutions.map((reason) => (
-              <ArchiveResolutionSettingsRow
-                key={reason.id}
-                onDeleteArchiveResolution={onDeleteArchiveResolution}
-                onUpdateArchiveResolution={onUpdateArchiveResolution}
-                reason={reason}
-                t={t}
-              />
-            ))}
-          </div>
-        </div>
+          <div className="settings-content">
+            {activeSection === 'general' ? (
+              <div className="settings-section settings-section-flat">
+                <h3>{t('settingsGeneral')}</h3>
+                <label>
+                  {t('language')}
+                  <select
+                    onChange={(event) => onChangeLanguage(event.target.value as Language)}
+                    value={language}
+                  >
+                    <option value="en">{t('english')}</option>
+                    <option value="da">{t('danish')}</option>
+                  </select>
+                </label>
+              </div>
+            ) : null}
 
-        <div className="settings-section">
-          <h3>{t('cleanup')}</h3>
-          <p>{t('cleanupFuture')}</p>
-          <div className="settings-action-grid">
-            <button disabled type="button">{t('clearArchive')}</button>
-            <button disabled type="button">{t('clearOldTasks')}</button>
-            <button disabled type="button">{t('clearWorkspaceTasks')}</button>
-            <button disabled type="button">{t('deleteProjectTag')}</button>
-            <button disabled type="button">{t('deleteBoard')}</button>
+            {activeSection === 'statuses' ? (
+              <div className="settings-section settings-section-flat">
+                <h3>{t('statusOptions')}</h3>
+                <form className="settings-inline-form" onSubmit={addStatus}>
+                  <input
+                    aria-label={t('addStatus')}
+                    onChange={(event) => setStatusDraft(event.target.value)}
+                    placeholder={t('addStatus')}
+                    type="text"
+                    value={statusDraft}
+                  />
+                  <button className="icon-button" disabled={!statusDraft.trim()} type="submit">
+                    <Icon name="plus" />
+                  </button>
+                </form>
+                <div className="settings-chip-list">
+                  {configuredStatuses.map((status) => (
+                    <span className="settings-chip" key={status}>
+                      {status}
+                      <button
+                        className="tiny-icon-button"
+                        onClick={() =>
+                          onSaveStatusOptions(
+                            configuredStatuses.filter((currentStatus) => currentStatus !== status),
+                          )}
+                        title={t('deleteNote')}
+                        type="button"
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {activeSection === 'archive' ? (
+              <div className="settings-section settings-section-flat">
+                <h3>{t('archiveReasons')}</h3>
+                <form className="settings-inline-form" onSubmit={(event) => void addArchiveReason(event)}>
+                  <input
+                    aria-label={t('addArchiveReason')}
+                    onChange={(event) => setArchiveReasonName(event.target.value)}
+                    placeholder={t('addArchiveReason')}
+                    type="text"
+                    value={archiveReasonName}
+                  />
+                  <label className="settings-checkbox">
+                    <input
+                      checked={archiveReasonRequiresNote}
+                      onChange={(event) => setArchiveReasonRequiresNote(event.target.checked)}
+                      type="checkbox"
+                    />
+                    {t('requireArchiveNote')}
+                  </label>
+                  <button className="icon-button" disabled={!archiveReasonName.trim()} type="submit">
+                    <Icon name="plus" />
+                  </button>
+                </form>
+                <div className="settings-list">
+                  {archiveResolutions.map((reason) => (
+                    <ArchiveResolutionSettingsRow
+                      key={reason.id}
+                      onDeleteArchiveResolution={onDeleteArchiveResolution}
+                      onUpdateArchiveResolution={onUpdateArchiveResolution}
+                      reason={reason}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {activeSection === 'cleanup' ? (
+              <div className="settings-section settings-section-flat">
+                <h3>{t('cleanup')}</h3>
+                <p>{t('cleanupFuture')}</p>
+                <div className="settings-action-grid">
+                  <button disabled type="button">{t('clearArchive')}</button>
+                  <button disabled type="button">{t('clearOldTasks')}</button>
+                  <button disabled type="button">{t('clearWorkspaceTasks')}</button>
+                  <button disabled type="button">{t('deleteProjectTag')}</button>
+                  <button disabled type="button">{t('deleteBoard')}</button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
@@ -4154,22 +4518,30 @@ function ArchiveResolutionSettingsRow({
 function TaskMetaChip({
   icon,
   label,
+  style,
   value,
 }: {
   icon: IconName;
   label: string;
+  style?: CSSProperties;
   value: string;
 }) {
   return (
-    <span title={`${label}: ${value}`}>
+    <span className="task-meta-chip" style={style} title={`${label}: ${value}`}>
       <Icon name={icon} />
       {label}: {value}
     </span>
   );
 }
 
-function TaskBadges({ taskItem }: { taskItem: TaskItemSummaryResponse }) {
-  const badges = getTaskBadges(taskItem);
+function TaskBadges({
+  taskItem,
+  t,
+}: {
+  taskItem: TaskItemSummaryResponse;
+  t: Translate;
+}) {
+  const badges = getTaskBadges(taskItem, t);
 
   if (badges.length === 0) {
     return null;
@@ -4186,6 +4558,26 @@ function TaskBadges({ taskItem }: { taskItem: TaskItemSummaryResponse }) {
   );
 }
 
+function formatWorkspaceRole(
+  role: CurrentUserResponse['workspaces'][number]['role'],
+  t: Translate,
+) {
+  return role === 1 || role === 'Owner' ? t('roleOwner') : t('roleMember');
+}
+
+function formatOAuthProvider(provider: string, t: Translate) {
+  const normalizedProvider = provider.toLowerCase();
+  const providerName = normalizedProvider === 'google'
+    ? 'Google'
+    : normalizedProvider === 'microsoft'
+      ? 'Microsoft'
+      : normalizedProvider === 'facebook'
+        ? 'Facebook'
+        : provider;
+
+  return `${t('continueWith')} ${providerName}`;
+}
+
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     archive: 'M4 7h16v13H4V7Zm2-4h12l2 4H4l2-4Zm5 8h2',
@@ -4194,12 +4586,16 @@ function Icon({ name }: { name: IconName }) {
     back: 'M15 6 9 12l6 6M10 12h10',
     calendarX: 'M7 3v4M17 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm6 8 4 4m0-4-4 4',
     check: 'm5 13 4 4L19 7',
+    cloud: 'M17 18H8a5 5 0 1 1 .9-9.9A6.5 6.5 0 0 1 21 11.5 3.5 3.5 0 0 1 17 18Z',
     clock: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 4v5l3 2',
     close: 'M6 6l12 12M18 6 6 18',
     edit: 'M4 20h4l10-10-4-4L4 16v4Zm12-16 4 4',
     filterOff: 'M4 5h16l-6 7v3l-4 2v-5L4 5Zm3 15 13-13',
     inbox: 'M4 5h16v10l-3 4H7l-3-4V5Zm0 10h5l1.5 2h3L15 15h5',
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+    login: 'M10 17l5-5-5-5M15 12H3M21 5v14a2 2 0 0 1-2 2h-5M14 3h5a2 2 0 0 1 2 2',
+    logout: 'M14 7l-5 5 5 5M9 12h12M3 5v14a2 2 0 0 0 2 2h5M10 3H5a2 2 0 0 0-2 2',
+    mail: 'M4 6h16v12H4V6Zm0 2 8 5 8-5',
     note: 'M5 4h11l3 3v13H5V4Zm11 0v4h4M8 12h8M8 16h6',
     palette: 'M12 4a8 8 0 0 0-1 15.94c.8.1 1.33-.55 1.14-1.33-.13-.55.28-1.04.85-1.04h1.36A5.65 5.65 0 0 0 20 11.92C20 7.55 16.42 4 12 4ZM8 11.5h.01M10 8h.01M14 8h.01M16 11h.01',
     panel: 'M4 5h16v14H4V5Zm5 0v14',
@@ -4207,10 +4603,12 @@ function Icon({ name }: { name: IconName }) {
     refresh: 'M20 7v5h-5M4 17v-5h5M18 10a6 6 0 0 0-10-4L4 10m2 4a6 6 0 0 0 10 4l4-4',
     search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm5 12 4 4',
     settings: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-2.1-.6a6.9 6.9 0 0 0-.7-1.7l1.1-1.9-2.1-2.1-1.9 1.1a6.9 6.9 0 0 0-1.7-.7L12 4H9l-.6 2.1a6.9 6.9 0 0 0-1.7.7L4.8 5.7 2.7 7.8l1.1 1.9a6.9 6.9 0 0 0-.7 1.7L1 12l.6 3 2.1.6c.2.6.4 1.2.7 1.7l-1.1 1.9 2.1 2.1 1.9-1.1c.5.3 1.1.5 1.7.7L9 23h3l.6-2.1c.6-.2 1.2-.4 1.7-.7l1.9 1.1 2.1-2.1-1.1-1.9c.3-.5.5-1.1.7-1.7L20 15l.6-3Z',
+    shield: 'M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3Zm-3 9 2 2 4-5',
     status: 'M5 7h14M5 12h14M5 17h9',
     tag: 'M20 10 14 4H5v9l6 6 9-9ZM8 8h.01',
     templates: 'M4 5h7v7H4V5Zm9 0h7v7h-7V5ZM4 14h7v5H4v-5Zm9 0h7v5h-7v-5Z',
     trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+    user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0',
     waiting: 'M6 4h12M8 4v5l4 3 4-3V4M8 20v-5l4-3 4 3v5M6 20h12',
   };
 
@@ -4285,8 +4683,35 @@ function readStoredStringList(key: string, fallback: string[]) {
   }
 }
 
-function translate(language: Language, key: TranslationKey) {
-  return translations[language][key] ?? translations.en[key];
+function buildWorkspaceCacheKey(workspaceId: string, viewId: string, userId: string) {
+  return `dumptether.cache.${userId}.${workspaceId}.${viewId}`;
+}
+
+function readCachedWorkspaceSnapshot(key: string): CachedWorkspaceSnapshot | null {
+  const storedValue = window.sessionStorage.getItem(key);
+
+  if (!storedValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(storedValue) as CachedWorkspaceSnapshot & {
+      cachedAt?: string;
+    };
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedWorkspaceSnapshot(key: string, snapshot: CachedWorkspaceSnapshot) {
+  window.sessionStorage.setItem(
+    key,
+    JSON.stringify({
+      ...snapshot,
+      cachedAt: new Date().toISOString(),
+    }),
+  );
 }
 
 function updateUrl(mode: WorkspaceMode, viewId: string | null) {
@@ -4536,23 +4961,19 @@ function getTaskState(taskItem: TaskItemSummaryResponse) {
   return 'active';
 }
 
-function getTaskBadges(taskItem: TaskItemSummaryResponse) {
+function getTaskBadges(taskItem: TaskItemSummaryResponse, t: Translate) {
   const badges: string[] = [];
 
   if (taskItem.archivedAt) {
-    badges.push('Archived');
-  }
-
-  if (isFollowUpOverdue(taskItem)) {
-    badges.push('Overdue');
+    badges.push(t('archive'));
   }
 
   if (isWaiting(taskItem)) {
-    badges.push('Waiting');
+    badges.push(t('waiting'));
   }
 
   if (isStale(taskItem)) {
-    badges.push('Stale');
+    badges.push(t('stale'));
   }
 
   return badges;
@@ -4626,58 +5047,6 @@ function isStale(taskItem: TaskItemSummaryResponse) {
   const touchedAt = new Date(taskItem.lastTouchedAt).getTime();
   const staleAt = Date.now() - staleAfterDays * 24 * 60 * 60 * 1000;
   return !taskItem.archivedAt && touchedAt < staleAt;
-}
-
-function toEditableViewDraft(savedView: SavedViewResponse | null): EditableViewDraft {
-  const status = savedView?.filter.status;
-
-  return {
-    name: savedView?.name ?? '',
-    scope: savedView?.scope ?? 'Workspace',
-    projectId: savedView?.filter.projectId ?? '',
-    statusMode: status === '' ? 'empty' : status ? 'exact' : 'any',
-    statusValue: status && status.length > 0 ? status : '',
-    category: savedView?.filter.category ?? '',
-    color: savedView?.filter.color ?? '',
-    archive: savedView?.filter.archive ?? 'Active',
-    followUp: savedView?.filter.followUp ?? '',
-    notViewedSinceDays: savedView?.filter.notViewedSinceDays?.toString() ?? '',
-    notTouchedSinceDays: savedView?.filter.notTouchedSinceDays?.toString() ?? '',
-    text: savedView?.filter.text ?? '',
-    sortField: savedView?.sort.field ?? 'lastTouchedAt',
-    sortDirection: savedView?.sort.direction ?? 'desc',
-    sortOrder: savedView?.sortOrder.toString() ?? '20',
-  };
-}
-
-function toSavedViewRequest(draft: EditableViewDraft) {
-  const status =
-    draft.statusMode === 'any'
-      ? null
-      : draft.statusMode === 'empty'
-        ? ''
-        : draft.statusValue.trim();
-
-  return {
-    name: draft.name.trim(),
-    scope: draft.scope,
-    filter: {
-      projectId: draft.projectId || null,
-      status,
-      category: draft.category.trim() || null,
-      color: draft.color || null,
-      archive: draft.archive,
-      followUp: draft.followUp || null,
-      notViewedSinceDays: numberOrNull(draft.notViewedSinceDays),
-      notTouchedSinceDays: numberOrNull(draft.notTouchedSinceDays),
-      text: draft.text.trim() || null,
-    },
-    sort: {
-      field: draft.sortField,
-      direction: draft.sortDirection,
-    },
-    sortOrder: numberOrNull(draft.sortOrder) ?? 20,
-  };
 }
 
 function numberOrNull(value: string) {

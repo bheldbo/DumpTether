@@ -14,8 +14,19 @@ apps/web/.vite/
 .env
 .env.*
 !.env.example
+!.env.local.example
+!.env.prod.example
+!**/.env.example
+!**/.env.local.example
+!**/.env.prod.example
+deploy/docker/.env.prod
+deploy/docker/.env.production
+deploy/docker/docker-compose.prod.yml
+deploy/docker/Caddyfile
 
 appsettings.Development.json
+appsettings.Production.json
+appsettings.Staging.json
 *.user
 *.suo
 *.userosscache
@@ -25,4 +36,6 @@ appsettings.Development.json
 
 src/**/appsettings.Development.json
 src/**/appsettings.Local.json
+src/**/appsettings.Production.json
+src/**/appsettings.Staging.json
 appsettings.Local.json

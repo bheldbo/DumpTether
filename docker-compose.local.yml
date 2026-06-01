@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dumptether-postgres-local
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dumptether}
+      POSTGRES_USER: ${POSTGRES_USER:-dumptether}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dumptether_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - dumptether-postgres-local-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dumptether} -d ${POSTGRES_DB:-dumptether}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: src/DumpTether.Api/Dockerfile
+    image: ${DUMPTETHER_API_IMAGE:-dumptether-api:local}
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      Database__ApplyMigrationsOnStartup: "true"
+      Auth__RequireAuthentication: ${DUMPTETHER_REQUIRE_AUTHENTICATION:-true}
+      Auth__AllowGuestSessions: ${DUMPTETHER_ALLOW_GUEST_SESSIONS:-true}
+      Auth__EnableDevelopmentLogin: ${DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN:-true}
+      Auth__DevelopmentEmail: ${DUMPTETHER_DEVELOPMENT_EMAIL:-dev@dumptether.local}
+      Auth__DevelopmentPassword: ${DUMPTETHER_DEVELOPMENT_PASSWORD:-dumptether-dev-password}
+      Auth__DevelopmentDisplayName: ${DUMPTETHER_DEVELOPMENT_DISPLAY_NAME:-Dev User}
+      EmailConfirmation__Enabled: ${DUMPTETHER_EMAIL_CONFIRMATION_ENABLED:-false}
+      EmailConfirmation__PublicBaseUrl: ${DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL:-http://localhost:55868}
+      Email__FromEmail: ${DUMPTETHER_EMAIL_FROM:-noreply@localhost}
+      Email__FromName: ${DUMPTETHER_EMAIL_FROM_NAME:-DumpTether}
+      Email__Smtp__Enabled: ${DUMPTETHER_EMAIL_SMTP_ENABLED:-false}
+      Email__Smtp__Host: ${DUMPTETHER_EMAIL_SMTP_HOST:-smtp-relay.brevo.com}
+      Email__Smtp__Port: ${DUMPTETHER_EMAIL_SMTP_PORT:-587}
+      Email__Smtp__Username: ${DUMPTETHER_EMAIL_SMTP_USERNAME:-}
+      Email__Smtp__Password: ${DUMPTETHER_EMAIL_SMTP_PASSWORD:-}
+      Email__BrevoApi__Enabled: ${DUMPTETHER_EMAIL_BREVO_API_ENABLED:-false}
+      Email__BrevoApi__ApiKey: ${DUMPTETHER_EMAIL_BREVO_API_KEY:-}
+      Mfa__Email__Enabled: ${DUMPTETHER_EMAIL_MFA_ENABLED:-false}
+      OAuth__Google__Enabled: ${DUMPTETHER_OAUTH_GOOGLE_ENABLED:-false}
+      OAuth__Google__ClientId: ${DUMPTETHER_OAUTH_GOOGLE_CLIENT_ID:-}
+      OAuth__Google__ClientSecret: ${DUMPTETHER_OAUTH_GOOGLE_CLIENT_SECRET:-}
+      OAuth__Google__Authority: https://accounts.google.com
+      OAuth__Microsoft__Enabled: ${DUMPTETHER_OAUTH_MICROSOFT_ENABLED:-false}
+      OAuth__Microsoft__ClientId: ${DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID:-}
+      OAuth__Microsoft__ClientSecret: ${DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET:-}
+      OAuth__Microsoft__Authority: https://login.microsoftonline.com/common/v2.0
+      OAuth__Facebook__Enabled: ${DUMPTETHER_OAUTH_FACEBOOK_ENABLED:-false}
+      OAuth__Facebook__ClientId: ${DUMPTETHER_OAUTH_FACEBOOK_CLIENT_ID:-}
+      OAuth__Facebook__ClientSecret: ${DUMPTETHER_OAUTH_FACEBOOK_CLIENT_SECRET:-}
+      OAuth__Facebook__Authority: https://www.facebook.com
+      Usage__MaxActiveTasksPerWorkspace: ${DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE:-1000}
+      Usage__MaxTotalTasksPerWorkspace: ${DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE:-5000}
+      ConnectionStrings__DumpTether: Host=postgres;Port=5432;Database=${POSTGRES_DB:-dumptether};Username=${POSTGRES_USER:-dumptether};Password=${POSTGRES_PASSWORD:-dumptether_dev_password}
+    ports:
+      - "${DUMPTETHER_API_PORT:-55868}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  dumptether-postgres-local-data:
