@@ -32,6 +32,8 @@ cp docker-compose.prod.example.yml docker-compose.prod.yml
 
 Edit `.env.prod` on the server and replace all placeholders.
 
+If you enable email confirmation, SMTP, Brevo API email, OAuth, or email MFA, the API validates the matching `.env.prod` values at startup and fails with a clear missing-key error. Keep real SMTP passwords, Brevo API keys, and OAuth client secrets only in the server `.env.prod` or a secret store.
+
 Run:
 
 ```bash

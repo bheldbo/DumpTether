@@ -88,6 +88,7 @@ import type {
 
 type WorkspaceMode = 'tasks' | 'templates';
 type StatusFilterMode = 'any' | 'empty' | 'exact';
+type SettingsSectionKey = 'general' | 'statuses' | 'archive' | 'cleanup';
 
 type IconName =
   | 'archive'
@@ -96,12 +97,14 @@ type IconName =
   | 'back'
   | 'check'
   | 'calendarX'
+  | 'cloud'
   | 'clock'
   | 'close'
   | 'edit'
   | 'filterOff'
   | 'inbox'
   | 'list'
+  | 'mail'
   | 'note'
   | 'palette'
   | 'panel'
@@ -109,10 +112,12 @@ type IconName =
   | 'refresh'
   | 'search'
   | 'settings'
+  | 'shield'
   | 'status'
   | 'tag'
   | 'templates'
   | 'trash'
+  | 'user'
   | 'waiting';
 
 interface EditableTemplateField {
@@ -242,6 +247,7 @@ function App() {
   const [archiveDialogIsOpen, setArchiveDialogIsOpen] = useState(false);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
   const [settingsIsOpen, setSettingsIsOpen] = useState(false);
+  const [accountIsOpen, setAccountIsOpen] = useState(false);
   const [authOptions, setAuthOptions] =
     useState<AuthClientOptionsResponse>(defaultAuthOptions);
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
@@ -990,6 +996,7 @@ function App() {
         language={language}
         mode={mode}
         onCreateWorkspace={handleCreateWorkspace}
+        onOpenAccount={() => setAccountIsOpen(true)}
         onOpenSettings={() => setSettingsIsOpen(true)}
         onOpenTemplates={handleOpenTemplates}
         onRefresh={() => void loadWorkspace(currentViewId, selectedWorkspaceId, { force: true })}
@@ -1101,22 +1108,28 @@ function App() {
       {settingsIsOpen ? (
         <SettingsPanel
           archiveResolutions={archiveResolutions}
-          authOptions={authOptions}
           configuredStatuses={configuredStatuses}
-          currentUser={currentUser}
-          isLoadingAuth={isLoadingAuth}
           language={language}
           onChangeLanguage={setLanguage}
           onCreateArchiveResolution={handleCreateArchiveResolution}
-          onDevelopmentLogin={handleDevelopmentLogin}
-          onGuestLogin={handleGuestLogin}
           onDeleteArchiveResolution={handleDeleteArchiveResolution}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
-          onRegister={handleRegister}
           onSaveStatusOptions={handleSaveStatusOptions}
           onUpdateArchiveResolution={handleUpdateArchiveResolution}
           onClose={() => setSettingsIsOpen(false)}
+          t={t}
+        />
+      ) : null}
+      {accountIsOpen ? (
+        <AccountPanel
+          authOptions={authOptions}
+          currentUser={currentUser}
+          isLoadingAuth={isLoadingAuth}
+          onClose={() => setAccountIsOpen(false)}
+          onDevelopmentLogin={handleDevelopmentLogin}
+          onGuestLogin={handleGuestLogin}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          onRegister={handleRegister}
           temporarySessionIsActive={temporarySessionIsActive}
           t={t}
         />
@@ -1133,6 +1146,7 @@ function Sidebar({
   language,
   mode,
   onCreateWorkspace,
+  onOpenAccount,
   onOpenSettings,
   onOpenTemplates,
   onRefresh,
@@ -1153,6 +1167,7 @@ function Sidebar({
   language: Language;
   mode: WorkspaceMode;
   onCreateWorkspace: (name: string) => Promise<void>;
+  onOpenAccount: () => void;
   onOpenSettings: () => void;
   onOpenTemplates: () => void;
   onRefresh: () => void;
@@ -1308,12 +1323,19 @@ function Sidebar({
           <span className="nav-label">{t('settings')}</span>
           <span className="nav-count">{language.toUpperCase()}</span>
         </button>
+        <button className="nav-item" onClick={onOpenAccount} type="button">
+          <Icon name="user" />
+          <span className="nav-label">{t('account')}</span>
+          {temporarySessionIsActive ? (
+            <span className="nav-count">{t('guestModeShort')}</span>
+          ) : null}
+        </button>
         <button className="refresh-button" onClick={onRefresh} type="button">
           <Icon name="refresh" />
           <span className="nav-label">{t('refresh')}</span>
         </button>
         {temporarySessionIsActive ? (
-          <button className="nav-item guest-warning-link" onClick={onOpenSettings} type="button">
+          <button className="nav-item guest-warning-link" onClick={onOpenAccount} type="button">
             <Icon name="waiting" />
             <span className="nav-label">{t('guestModeShort')}</span>
           </button>
@@ -4334,53 +4356,133 @@ function ToastStack({ toasts }: { toasts: ToastMessage[] }) {
   );
 }
 
-function SettingsPanel({
-  archiveResolutions,
+function AccountPanel({
   authOptions,
-  configuredStatuses,
   currentUser,
   isLoadingAuth,
+  onClose,
+  onDevelopmentLogin,
+  onGuestLogin,
+  onLogin,
+  onLogout,
+  onRegister,
+  temporarySessionIsActive,
+  t,
+}: {
+  authOptions: AuthClientOptionsResponse;
+  currentUser: CurrentUserResponse | null;
+  isLoadingAuth: boolean;
+  onClose: () => void;
+  onDevelopmentLogin: () => Promise<void>;
+  onGuestLogin: () => Promise<void>;
+  onLogin: (requestBody: LoginUserRequest) => Promise<void>;
+  onLogout: () => Promise<void>;
+  onRegister: (requestBody: RegisterUserRequest) => Promise<void>;
+  temporarySessionIsActive: boolean;
+  t: Translate;
+}) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-labelledby="account-title"
+        aria-modal="true"
+        className="account-panel"
+        role="dialog"
+      >
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">DumpTether</p>
+            <h2 id="account-title">{t('account')}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">{t('close')}</span>
+          </button>
+        </div>
+
+        <AuthPanel
+          authOptions={authOptions}
+          currentUser={currentUser}
+          isLoading={isLoadingAuth}
+          onDevelopmentLogin={onDevelopmentLogin}
+          onGuestLogin={onGuestLogin}
+          onLogin={onLogin}
+          onLogout={onLogout}
+          onRegister={onRegister}
+          temporarySessionIsActive={temporarySessionIsActive}
+          t={t}
+          variant="settings"
+        />
+
+        <section className="settings-section">
+          <h3>{t('signInMethods')}</h3>
+          <div className="auth-method-list">
+            <div className="auth-method-card" data-state="ready">
+              <Icon name="mail" />
+              <div>
+                <strong>{t('emailPasswordLogin')}</strong>
+                <p>{t('emailPasswordLoginHelp')}</p>
+              </div>
+            </div>
+            <div className="auth-method-card">
+              <Icon name="cloud" />
+              <div>
+                <strong>{t('oauthLogin')}</strong>
+                <p>{t('oauthLoginHelp')}</p>
+              </div>
+              <span>{t('configRequired')}</span>
+            </div>
+            <div className="auth-method-card">
+              <Icon name="shield" />
+              <div>
+                <strong>{t('emailMfa')}</strong>
+                <p>{t('emailMfaHelp')}</p>
+              </div>
+              <span>{t('configRequired')}</span>
+            </div>
+          </div>
+        </section>
+      </section>
+    </div>
+  );
+}
+
+function SettingsPanel({
+  archiveResolutions,
+  configuredStatuses,
   language,
   onChangeLanguage,
   onClose,
   onCreateArchiveResolution,
-  onDevelopmentLogin,
-  onGuestLogin,
   onDeleteArchiveResolution,
-  onLogin,
-  onLogout,
-  onRegister,
   onSaveStatusOptions,
   onUpdateArchiveResolution,
-  temporarySessionIsActive,
   t,
 }: {
   archiveResolutions: ArchiveResolutionResponse[];
-  authOptions: AuthClientOptionsResponse;
   configuredStatuses: string[];
-  currentUser: CurrentUserResponse | null;
-  isLoadingAuth: boolean;
   language: Language;
   onChangeLanguage: (language: Language) => void;
   onClose: () => void;
   onCreateArchiveResolution: (requestBody: CreateArchiveResolutionRequest) => Promise<void>;
-  onDevelopmentLogin: () => Promise<void>;
-  onGuestLogin: () => Promise<void>;
   onDeleteArchiveResolution: (id: string) => Promise<void>;
-  onLogin: (requestBody: LoginUserRequest) => Promise<void>;
-  onLogout: () => Promise<void>;
-  onRegister: (requestBody: RegisterUserRequest) => Promise<void>;
   onSaveStatusOptions: (statuses: string[]) => void;
   onUpdateArchiveResolution: (
     id: string,
     requestBody: UpdateArchiveResolutionRequest,
   ) => Promise<void>;
-  temporarySessionIsActive: boolean;
   t: Translate;
 }) {
+  const [activeSection, setActiveSection] = useState<SettingsSectionKey>('general');
   const [statusDraft, setStatusDraft] = useState('');
   const [archiveReasonName, setArchiveReasonName] = useState('');
   const [archiveReasonRequiresNote, setArchiveReasonRequiresNote] = useState(false);
+  const settingsSections: Array<{ key: SettingsSectionKey; label: string; icon: IconName }> = [
+    { key: 'general', label: t('settingsGeneral'), icon: 'settings' },
+    { key: 'statuses', label: t('statusOptions'), icon: 'status' },
+    { key: 'archive', label: t('archiveReasons'), icon: 'archive' },
+    { key: 'cleanup', label: t('cleanup'), icon: 'trash' },
+  ];
 
   const addStatus = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -4425,113 +4527,128 @@ function SettingsPanel({
           </div>
           <button className="icon-button" onClick={onClose} type="button">
             <Icon name="close" />
-            <span className="sr-only">Close settings</span>
+            <span className="sr-only">{t('close')}</span>
           </button>
         </div>
 
-        <label>
-          {t('language')}
-          <select
-            onChange={(event) => onChangeLanguage(event.target.value as Language)}
-            value={language}
-          >
-            <option value="en">{t('english')}</option>
-            <option value="da">{t('danish')}</option>
-          </select>
-        </label>
-
-        <AuthPanel
-          authOptions={authOptions}
-          currentUser={currentUser}
-          isLoading={isLoadingAuth}
-          onDevelopmentLogin={onDevelopmentLogin}
-          onGuestLogin={onGuestLogin}
-          onLogin={onLogin}
-          onLogout={onLogout}
-          onRegister={onRegister}
-          temporarySessionIsActive={temporarySessionIsActive}
-          t={t}
-          variant="settings"
-        />
-
-        <div className="settings-section">
-          <h3>{t('statusOptions')}</h3>
-          <form className="settings-inline-form" onSubmit={addStatus}>
-            <input
-              aria-label={t('addStatus')}
-              onChange={(event) => setStatusDraft(event.target.value)}
-              placeholder={t('addStatus')}
-              type="text"
-              value={statusDraft}
-            />
-            <button className="icon-button" disabled={!statusDraft.trim()} type="submit">
-              <Icon name="plus" />
-            </button>
-          </form>
-          <div className="settings-chip-list">
-            {configuredStatuses.map((status) => (
-              <span className="settings-chip" key={status}>
-                {status}
-                <button
-                  className="tiny-icon-button"
-                  onClick={() =>
-                    onSaveStatusOptions(
-                      configuredStatuses.filter((currentStatus) => currentStatus !== status),
-                    )}
-                  title={t('deleteNote')}
-                  type="button"
-                >
-                  <Icon name="trash" />
-                </button>
-              </span>
+        <div className="settings-layout">
+          <nav className="settings-menu" aria-label={t('settingsSections')}>
+            {settingsSections.map((section) => (
+              <button
+                aria-current={activeSection === section.key ? 'page' : undefined}
+                key={section.key}
+                onClick={() => setActiveSection(section.key)}
+                type="button"
+              >
+                <Icon name={section.icon} />
+                {section.label}
+              </button>
             ))}
-          </div>
-        </div>
+          </nav>
 
-        <div className="settings-section">
-          <h3>{t('archiveReasons')}</h3>
-          <form className="settings-inline-form" onSubmit={(event) => void addArchiveReason(event)}>
-            <input
-              aria-label={t('addArchiveReason')}
-              onChange={(event) => setArchiveReasonName(event.target.value)}
-              placeholder={t('addArchiveReason')}
-              type="text"
-              value={archiveReasonName}
-            />
-            <label className="settings-checkbox">
-              <input
-                checked={archiveReasonRequiresNote}
-                onChange={(event) => setArchiveReasonRequiresNote(event.target.checked)}
-                type="checkbox"
-              />
-              {t('requireArchiveNote')}
-            </label>
-            <button className="icon-button" disabled={!archiveReasonName.trim()} type="submit">
-              <Icon name="plus" />
-            </button>
-          </form>
-          <div className="settings-list">
-            {archiveResolutions.map((reason) => (
-              <ArchiveResolutionSettingsRow
-                key={reason.id}
-                onDeleteArchiveResolution={onDeleteArchiveResolution}
-                onUpdateArchiveResolution={onUpdateArchiveResolution}
-                reason={reason}
-                t={t}
-              />
-            ))}
-          </div>
-        </div>
+          <div className="settings-content">
+            {activeSection === 'general' ? (
+              <div className="settings-section settings-section-flat">
+                <h3>{t('settingsGeneral')}</h3>
+                <label>
+                  {t('language')}
+                  <select
+                    onChange={(event) => onChangeLanguage(event.target.value as Language)}
+                    value={language}
+                  >
+                    <option value="en">{t('english')}</option>
+                    <option value="da">{t('danish')}</option>
+                  </select>
+                </label>
+              </div>
+            ) : null}
 
-        <div className="settings-section">
-          <h3>{t('cleanup')}</h3>
-          <p>{t('cleanupFuture')}</p>
-          <div className="settings-action-grid">
-            <button disabled type="button">{t('clearArchive')}</button>
-            <button disabled type="button">{t('clearOldTasks')}</button>
-            <button disabled type="button">{t('clearWorkspaceTasks')}</button>
-            <button disabled type="button">{t('deleteProjectTag')}</button>
-            <button disabled type="button">{t('deleteBoard')}</button>
+            {activeSection === 'statuses' ? (
+              <div className="settings-section settings-section-flat">
+                <h3>{t('statusOptions')}</h3>
+                <form className="settings-inline-form" onSubmit={addStatus}>
+                  <input
+                    aria-label={t('addStatus')}
+                    onChange={(event) => setStatusDraft(event.target.value)}
+                    placeholder={t('addStatus')}
+                    type="text"
+                    value={statusDraft}
+                  />
+                  <button className="icon-button" disabled={!statusDraft.trim()} type="submit">
+                    <Icon name="plus" />
+                  </button>
+                </form>
+                <div className="settings-chip-list">
+                  {configuredStatuses.map((status) => (
+                    <span className="settings-chip" key={status}>
+                      {status}
+                      <button
+                        className="tiny-icon-button"
+                        onClick={() =>
+                          onSaveStatusOptions(
+                            configuredStatuses.filter((currentStatus) => currentStatus !== status),
+                          )}
+                        title={t('deleteNote')}
+                        type="button"
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {activeSection === 'archive' ? (
+              <div className="settings-section settings-section-flat">
+                <h3>{t('archiveReasons')}</h3>
+                <form className="settings-inline-form" onSubmit={(event) => void addArchiveReason(event)}>
+                  <input
+                    aria-label={t('addArchiveReason')}
+                    onChange={(event) => setArchiveReasonName(event.target.value)}
+                    placeholder={t('addArchiveReason')}
+                    type="text"
+                    value={archiveReasonName}
+                  />
+                  <label className="settings-checkbox">
+                    <input
+                      checked={archiveReasonRequiresNote}
+                      onChange={(event) => setArchiveReasonRequiresNote(event.target.checked)}
+                      type="checkbox"
+                    />
+                    {t('requireArchiveNote')}
+                  </label>
+                  <button className="icon-button" disabled={!archiveReasonName.trim()} type="submit">
+                    <Icon name="plus" />
+                  </button>
+                </form>
+                <div className="settings-list">
+                  {archiveResolutions.map((reason) => (
+                    <ArchiveResolutionSettingsRow
+                      key={reason.id}
+                      onDeleteArchiveResolution={onDeleteArchiveResolution}
+                      onUpdateArchiveResolution={onUpdateArchiveResolution}
+                      reason={reason}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {activeSection === 'cleanup' ? (
+              <div className="settings-section settings-section-flat">
+                <h3>{t('cleanup')}</h3>
+                <p>{t('cleanupFuture')}</p>
+                <div className="settings-action-grid">
+                  <button disabled type="button">{t('clearArchive')}</button>
+                  <button disabled type="button">{t('clearOldTasks')}</button>
+                  <button disabled type="button">{t('clearWorkspaceTasks')}</button>
+                  <button disabled type="button">{t('deleteProjectTag')}</button>
+                  <button disabled type="button">{t('deleteBoard')}</button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
@@ -4670,12 +4787,14 @@ function Icon({ name }: { name: IconName }) {
     back: 'M15 6 9 12l6 6M10 12h10',
     calendarX: 'M7 3v4M17 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm6 8 4 4m0-4-4 4',
     check: 'm5 13 4 4L19 7',
+    cloud: 'M17 18H8a5 5 0 1 1 .9-9.9A6.5 6.5 0 0 1 21 11.5 3.5 3.5 0 0 1 17 18Z',
     clock: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 4v5l3 2',
     close: 'M6 6l12 12M18 6 6 18',
     edit: 'M4 20h4l10-10-4-4L4 16v4Zm12-16 4 4',
     filterOff: 'M4 5h16l-6 7v3l-4 2v-5L4 5Zm3 15 13-13',
     inbox: 'M4 5h16v10l-3 4H7l-3-4V5Zm0 10h5l1.5 2h3L15 15h5',
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+    mail: 'M4 6h16v12H4V6Zm0 2 8 5 8-5',
     note: 'M5 4h11l3 3v13H5V4Zm11 0v4h4M8 12h8M8 16h6',
     palette: 'M12 4a8 8 0 0 0-1 15.94c.8.1 1.33-.55 1.14-1.33-.13-.55.28-1.04.85-1.04h1.36A5.65 5.65 0 0 0 20 11.92C20 7.55 16.42 4 12 4ZM8 11.5h.01M10 8h.01M14 8h.01M16 11h.01',
     panel: 'M4 5h16v14H4V5Zm5 0v14',
@@ -4683,10 +4802,12 @@ function Icon({ name }: { name: IconName }) {
     refresh: 'M20 7v5h-5M4 17v-5h5M18 10a6 6 0 0 0-10-4L4 10m2 4a6 6 0 0 0 10 4l4-4',
     search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm5 12 4 4',
     settings: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-2.1-.6a6.9 6.9 0 0 0-.7-1.7l1.1-1.9-2.1-2.1-1.9 1.1a6.9 6.9 0 0 0-1.7-.7L12 4H9l-.6 2.1a6.9 6.9 0 0 0-1.7.7L4.8 5.7 2.7 7.8l1.1 1.9a6.9 6.9 0 0 0-.7 1.7L1 12l.6 3 2.1.6c.2.6.4 1.2.7 1.7l-1.1 1.9 2.1 2.1 1.9-1.1c.5.3 1.1.5 1.7.7L9 23h3l.6-2.1c.6-.2 1.2-.4 1.7-.7l1.9 1.1 2.1-2.1-1.1-1.9c.3-.5.5-1.1.7-1.7L20 15l.6-3Z',
+    shield: 'M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3Zm-3 9 2 2 4-5',
     status: 'M5 7h14M5 12h14M5 17h9',
     tag: 'M20 10 14 4H5v9l6 6 9-9ZM8 8h.01',
     templates: 'M4 5h7v7H4V5Zm9 0h7v7h-7V5ZM4 14h7v5H4v-5Zm9 0h7v5h-7v-5Z',
     trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+    user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0',
     waiting: 'M6 4h12M8 4v5l4 3 4-3V4M8 20v-5l4-3 4 3v5M6 20h12',
   };
 

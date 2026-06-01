@@ -1,10 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using DumpTether.Api;
 using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -203,6 +205,42 @@ public sealed class AuthApiTests
         Assert.EndsWith("@guest.dumptether.local", login!.User.Email);
         Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
         Assert.Contains(login.Workspaces, workspace => workspace.Name == "All Tasks");
+    }
+
+    [Fact]
+    public void Startup_WhenEmailConfirmationEnabledWithoutSmtpConfig_ThrowsHelpfulError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["EmailConfirmation:Enabled"] = "true"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
+
+        Assert.Contains("DumpTether configuration is incomplete", exception.Message);
+        Assert.Contains("Email:Smtp:Password", exception.Message);
+        Assert.Contains("Email:FromEmail", exception.Message);
+    }
+
+    [Fact]
+    public void Startup_WhenOAuthEnabledWithoutProviderConfig_ThrowsHelpfulError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OAuth:Google:Enabled"] = "true"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
+
+        Assert.Contains("DumpTether configuration is incomplete", exception.Message);
+        Assert.Contains("OAuth:Google:ClientId", exception.Message);
+        Assert.Contains("OAuth:Google:ClientSecret", exception.Message);
     }
 
     [Fact]

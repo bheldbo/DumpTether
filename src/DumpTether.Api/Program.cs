@@ -20,6 +20,9 @@ builder.Services.PostConfigure<AuthOptions>(options =>
         options.EnableDevelopmentLogin = false;
     }
 });
+RuntimeConfigurationValidator.Validate(
+    builder.Configuration,
+    builder.Environment.IsDevelopment());
 builder.Services.AddDumpTetherApplication();
 builder.Services.AddDumpTetherData(builder.Configuration);
 builder.Services.AddHttpContextAccessor();

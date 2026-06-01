@@ -150,6 +150,10 @@ Deployment/runtime config:
 
 - connection strings
 - auth signing keys or session settings
+- email confirmation settings
+- SMTP/API email provider credentials
+- OAuth provider client IDs and secrets
+- email MFA settings
 - cookie settings
 - allowed origins/hosts
 - reverse proxy settings
@@ -169,3 +173,18 @@ Integration config:
 - future email/calendar/AI/MCP provider settings
 - non-secret provider metadata in the database
 - credentials in environment variables or a secret store
+
+## Config Validation
+
+The API validates feature config at startup. If email confirmation, SMTP email, Brevo API email, OAuth, or email MFA is enabled without its required settings, startup fails with `DumpTether configuration is incomplete` and lists the missing keys.
+
+Brevo SMTP values belong in the real server `.env.prod` only:
+
+- `DUMPTETHER_EMAIL_SMTP_ENABLED=true`
+- `DUMPTETHER_EMAIL_SMTP_HOST=smtp-relay.brevo.com`
+- `DUMPTETHER_EMAIL_SMTP_PORT=587`
+- `DUMPTETHER_EMAIL_SMTP_USERNAME=...`
+- `DUMPTETHER_EMAIL_SMTP_PASSWORD=...`
+- `DUMPTETHER_EMAIL_FROM=noreply@your-domain.example`
+
+Never commit the real SMTP username, SMTP password, Brevo API key, or OAuth client secrets.
