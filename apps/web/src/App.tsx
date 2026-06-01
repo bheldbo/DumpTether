@@ -17,12 +17,10 @@ import {
   beginOAuthLogin,
   createArchiveResolution,
   createProject,
-  createSavedView,
   createTaskItem,
   createTaskTemplate,
   createWorkspace,
   deleteArchiveResolution,
-  deleteSavedView,
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
   developmentLogin,
@@ -46,7 +44,6 @@ import {
   setCurrentWorkspaceId,
   isTemporarySession,
   updateArchiveResolution,
-  updateSavedView,
   updateProject,
   updateTaskItem,
   updateTaskTimelineEntry,
@@ -71,11 +68,8 @@ import type {
   ProjectResponse,
   RegisterUserRequest,
   RegisterUserResponse,
-  SavedViewArchiveFilter,
   SavedViewFollowUpFilter,
   SavedViewResponse,
-  SavedViewScope,
-  SavedViewSortDirection,
   SavedViewSortField,
   TaskItemDetailResponse,
   TaskItemSummaryResponse,
@@ -89,7 +83,6 @@ import type {
 } from './types';
 
 type WorkspaceMode = 'tasks' | 'templates';
-type StatusFilterMode = 'any' | 'empty' | 'exact';
 type SettingsSectionKey = 'general' | 'statuses' | 'archive' | 'cleanup';
 
 type IconName =
@@ -106,6 +99,8 @@ type IconName =
   | 'filterOff'
   | 'inbox'
   | 'list'
+  | 'login'
+  | 'logout'
   | 'mail'
   | 'note'
   | 'palette'
@@ -132,24 +127,6 @@ interface EditableTemplateField {
   optionsText: string;
 }
 
-interface EditableViewDraft {
-  name: string;
-  scope: SavedViewScope;
-  projectId: string;
-  statusMode: StatusFilterMode;
-  statusValue: string;
-  category: string;
-  color: string;
-  archive: SavedViewArchiveFilter;
-  followUp: '' | SavedViewFollowUpFilter;
-  notViewedSinceDays: string;
-  notTouchedSinceDays: string;
-  text: string;
-  sortField: SavedViewSortField;
-  sortDirection: SavedViewSortDirection;
-  sortOrder: string;
-}
-
 interface TaskWallFilters {
   text: string;
   status: string;
@@ -168,21 +145,12 @@ const fieldTypes: FieldDefinitionType[] = [
   'Select',
 ];
 
-const archiveFilters: SavedViewArchiveFilter[] = ['Active', 'Archived', 'All'];
 const followUpFilters: SavedViewFollowUpFilter[] = [
   'Any',
   'Overdue',
   'Today',
   'ThisWeek',
 ];
-const sortFields: SavedViewSortField[] = [
-  'lastTouchedAt',
-  'createdAt',
-  'followUpAt',
-  'title',
-  'status',
-];
-const sortDirections: SavedViewSortDirection[] = ['desc', 'asc'];
 const staleAfterDays = 14;
 const colorChoices = [
   '#FDE68A',
@@ -246,8 +214,6 @@ function App() {
   const [currentViewId, setCurrentViewId] = useState<string | null>(getInitialViewId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskItemDetailResponse | null>(null);
-  const [editingView, setEditingView] = useState<SavedViewResponse | null>(null);
-  const [viewEditorIsOpen, setViewEditorIsOpen] = useState(false);
   const [archiveDialogIsOpen, setArchiveDialogIsOpen] = useState(false);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
   const [settingsIsOpen, setSettingsIsOpen] = useState(false);
@@ -948,36 +914,6 @@ function App() {
     );
   };
 
-  const handleSaveView = async (
-    id: string | null,
-    requestBody: Parameters<typeof createSavedView>[0],
-  ) => {
-    try {
-      const savedView = id
-        ? await updateSavedView(id, requestBody)
-        : await createSavedView(requestBody);
-      setMode('tasks');
-      setCurrentViewId(savedView.id);
-      setEditingView(null);
-      setViewEditorIsOpen(false);
-      updateUrl('tasks', savedView.id);
-      await loadWorkspace(savedView.id);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    }
-  };
-
-  const handleDeleteView = async (id: string) => {
-    try {
-      await deleteSavedView(id);
-      setEditingView(null);
-      setViewEditorIsOpen(false);
-      await loadWorkspace(null);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    }
-  };
-
   const handleUpdateWorkspace = async (requestBody: UpdateWorkspaceRequest) => {
     try {
       const updated = await updateWorkspace(requestBody);
@@ -1109,21 +1045,6 @@ function App() {
           />
         )}
       </section>
-
-      {viewEditorIsOpen ? (
-        <ViewEditorPanel
-          onClose={() => {
-            setViewEditorIsOpen(false);
-            setEditingView(null);
-          }}
-          onDeleteView={handleDeleteView}
-          onSaveView={handleSaveView}
-          colorOptions={taskColorOptions}
-          projects={projects}
-          savedView={editingView}
-          t={t}
-        />
-      ) : null}
 
       {settingsIsOpen ? (
         <SettingsPanel
@@ -1479,6 +1400,10 @@ function TaskBoard({
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
   );
+  const projectByName = useMemo(
+    () => new Map(projects.map((project) => [project.name.toLowerCase(), project])),
+    [projects],
+  );
   const filterOptions = useMemo(
     () => buildTaskFilterOptions(taskItems, colorOptions),
     [colorOptions, taskItems],
@@ -1641,7 +1566,11 @@ function TaskBoard({
         {displayedTaskItems.map((taskItem) => {
           const isExpanded = selectedTaskId === taskItem.id;
           const isSelectedForEdit = selectedTaskIds.includes(taskItem.id);
-          const taskProject = taskItem.projectId ? projectById.get(taskItem.projectId) : null;
+          const taskProject = taskItem.projectId
+            ? projectById.get(taskItem.projectId)
+            : taskItem.category
+              ? projectByName.get(taskItem.category.toLowerCase())
+              : null;
 
           return (
             <article
@@ -3595,285 +3524,6 @@ function TemplateEditor({
   );
 }
 
-function ViewEditorPanel({
-  colorOptions,
-  onClose,
-  onDeleteView,
-  onSaveView,
-  projects,
-  savedView,
-  t,
-}: {
-  colorOptions: string[];
-  onClose: () => void;
-  onDeleteView: (id: string) => Promise<void>;
-  onSaveView: (
-    id: string | null,
-    requestBody: Parameters<typeof createSavedView>[0],
-  ) => Promise<void>;
-  projects: ProjectResponse[];
-  savedView: SavedViewResponse | null;
-  t: Translate;
-}) {
-  const [draft, setDraft] = useState<EditableViewDraft>(() =>
-    toEditableViewDraft(savedView),
-  );
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const canSubmit =
-    draft.name.trim().length > 0 &&
-    (draft.scope === 'Workspace' || draft.projectId.length > 0);
-
-  const updateDraft = (update: Partial<EditableViewDraft>) => {
-    setDraft((currentDraft) => ({ ...currentDraft, ...update }));
-  };
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!canSubmit) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    await onSaveView(savedView?.id ?? null, toSavedViewRequest(draft));
-    setIsSubmitting(false);
-  };
-
-  return (
-    <div className="dialog-backdrop" role="presentation">
-      <section
-        aria-labelledby="view-editor-title"
-        aria-modal="true"
-        className="view-editor-panel"
-        role="dialog"
-      >
-        <div className="dialog-header">
-          <div>
-            <p className="detail-kicker">{savedView ? 'Edit saved view' : 'New saved view'}</p>
-            <h2 id="view-editor-title">{savedView?.name ?? 'Saved view'}</h2>
-          </div>
-          <button className="icon-button" onClick={onClose} type="button">
-            <Icon name="close" />
-            <span className="sr-only">Close view editor</span>
-          </button>
-        </div>
-
-        <form className="view-editor-form" onSubmit={handleSubmit}>
-          <label>
-            Name
-            <input
-              onChange={(event) => updateDraft({ name: event.target.value })}
-              required
-              type="text"
-              value={draft.name}
-            />
-          </label>
-
-          <div className="editor-grid">
-            <label>
-              Scope
-              <select
-                onChange={(event) =>
-                  updateDraft({ scope: event.target.value as SavedViewScope })
-                }
-                value={draft.scope}
-              >
-                <option value="Workspace">Workspace</option>
-                <option value="Project">Project</option>
-              </select>
-            </label>
-
-            <label>
-              Project
-              <select
-                onChange={(event) => updateDraft({ projectId: event.target.value })}
-                value={draft.projectId}
-              >
-                <option value="">All projects</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Active or archive
-              <select
-                onChange={(event) =>
-                  updateDraft({ archive: event.target.value as SavedViewArchiveFilter })
-                }
-                value={draft.archive}
-              >
-                {archiveFilters.map((filter) => (
-                  <option key={filter} value={filter}>
-                    {filter}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Follow-up
-              <select
-                onChange={(event) =>
-                  updateDraft({
-                    followUp: event.target.value as '' | SavedViewFollowUpFilter,
-                  })
-                }
-                value={draft.followUp}
-              >
-                <option value="">Any follow-up state</option>
-                {followUpFilters.map((filter) => (
-                  <option key={filter} value={filter}>
-                    {formatFollowUpFilter(filter)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="editor-grid">
-            <label>
-              Status filter
-              <select
-                onChange={(event) =>
-                  updateDraft({ statusMode: event.target.value as StatusFilterMode })
-                }
-                value={draft.statusMode}
-              >
-                <option value="any">Any status</option>
-                <option value="empty">No status</option>
-                <option value="exact">Exact status</option>
-              </select>
-            </label>
-
-            <label>
-              Status text
-              <input
-                disabled={draft.statusMode !== 'exact'}
-                onChange={(event) => updateDraft({ statusValue: event.target.value })}
-                placeholder="Waiting"
-                type="text"
-                value={draft.statusValue}
-              />
-            </label>
-
-            <label>
-              Category
-              <input
-                onChange={(event) => updateDraft({ category: event.target.value })}
-                placeholder="Procurement"
-                type="text"
-                value={draft.category}
-              />
-            </label>
-
-            <div className="view-color-filter">
-              <span className="field-label">{t('color')}</span>
-              <ColorOptionPicker
-                emptyLabel={t('noTaskColors')}
-                label={t('color')}
-                onChange={(color) => updateDraft({ color })}
-                options={colorOptions}
-                value={draft.color}
-                zeroLabel={t('anyColor')}
-              />
-            </div>
-
-            <label>
-              Not viewed for days
-              <input
-                min={1}
-                onChange={(event) => updateDraft({ notViewedSinceDays: event.target.value })}
-                type="number"
-                value={draft.notViewedSinceDays}
-              />
-            </label>
-
-            <label>
-              Not touched for days
-              <input
-                min={1}
-                onChange={(event) => updateDraft({ notTouchedSinceDays: event.target.value })}
-                type="number"
-                value={draft.notTouchedSinceDays}
-              />
-            </label>
-          </div>
-
-          <label>
-            Text search
-            <input
-              onChange={(event) => updateDraft({ text: event.target.value })}
-              placeholder="Title, status, or timeline evidence"
-              type="search"
-              value={draft.text}
-            />
-          </label>
-
-          <div className="editor-grid">
-            <label>
-              Sort field
-              <select
-                onChange={(event) =>
-                  updateDraft({ sortField: event.target.value as SavedViewSortField })
-                }
-                value={draft.sortField}
-              >
-                {sortFields.map((field) => (
-                  <option key={field} value={field}>
-                    {formatSortField(field, t)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Sort direction
-              <select
-                onChange={(event) =>
-                  updateDraft({
-                    sortDirection: event.target.value as SavedViewSortDirection,
-                  })
-                }
-                value={draft.sortDirection}
-              >
-                {sortDirections.map((direction) => (
-                  <option key={direction} value={direction}>
-                    {direction === 'asc' ? t('sortAscending') : t('sortDescending')}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-          </div>
-
-          <div className="dialog-actions">
-            {savedView ? (
-              <button
-                className="ghost-button danger-button"
-                onClick={() => void onDeleteView(savedView.id)}
-                type="button"
-              >
-                Delete
-              </button>
-            ) : null}
-            <button className="ghost-button" onClick={onClose} type="button">
-              Cancel
-            </button>
-            <button disabled={!canSubmit || isSubmitting} type="submit">
-              Save view
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
-  );
-}
-
 function TimelinePanel({
   onAddTimelineEntry,
   onQueueDeleteTimelineEntry,
@@ -4326,7 +3976,7 @@ function AuthPanel({
         </div>
         {onLogout ? (
           <button
-            className="secondary-action"
+            className="secondary-action logout-button"
             disabled={isSubmitting}
             onClick={async () => {
               setIsSubmitting(true);
@@ -4340,6 +3990,7 @@ function AuthPanel({
             }}
             type="button"
           >
+            <Icon name="logout" />
             {t('logout')}
           </button>
         ) : null}
@@ -4433,6 +4084,7 @@ function AuthPanel({
           disabled={!canSubmit || isSubmitting || isLoading}
           type="submit"
         >
+          <Icon name={mode === 'register' ? 'user' : 'login'} />
           {mode === 'register' ? t('registerButton') : t('loginButton')}
         </button>
       </form>
@@ -4454,11 +4106,12 @@ function AuthPanel({
       {authOptions.guestSessionsEnabled ? (
         <div className="dev-login-panel">
           <button
-            className="ghost-button"
+            className="ghost-button auth-secondary-button"
             disabled={isSubmitting || isLoading}
             onClick={() => void submitGuestLogin()}
             type="button"
           >
+            <Icon name="user" />
             {t('continueWithoutAccount')}
           </button>
           <p>{t('continueWithoutAccountHelp')}</p>
@@ -4940,6 +4593,8 @@ function Icon({ name }: { name: IconName }) {
     filterOff: 'M4 5h16l-6 7v3l-4 2v-5L4 5Zm3 15 13-13',
     inbox: 'M4 5h16v10l-3 4H7l-3-4V5Zm0 10h5l1.5 2h3L15 15h5',
     list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+    login: 'M10 17l5-5-5-5M15 12H3M21 5v14a2 2 0 0 1-2 2h-5M14 3h5a2 2 0 0 1 2 2',
+    logout: 'M14 7l-5 5 5 5M9 12h12M3 5v14a2 2 0 0 0 2 2h5M10 3H5a2 2 0 0 0-2 2',
     mail: 'M4 6h16v12H4V6Zm0 2 8 5 8-5',
     note: 'M5 4h11l3 3v13H5V4Zm11 0v4h4M8 12h8M8 16h6',
     palette: 'M12 4a8 8 0 0 0-1 15.94c.8.1 1.33-.55 1.14-1.33-.13-.55.28-1.04.85-1.04h1.36A5.65 5.65 0 0 0 20 11.92C20 7.55 16.42 4 12 4ZM8 11.5h.01M10 8h.01M14 8h.01M16 11h.01',
@@ -5392,58 +5047,6 @@ function isStale(taskItem: TaskItemSummaryResponse) {
   const touchedAt = new Date(taskItem.lastTouchedAt).getTime();
   const staleAt = Date.now() - staleAfterDays * 24 * 60 * 60 * 1000;
   return !taskItem.archivedAt && touchedAt < staleAt;
-}
-
-function toEditableViewDraft(savedView: SavedViewResponse | null): EditableViewDraft {
-  const status = savedView?.filter.status;
-
-  return {
-    name: savedView?.name ?? '',
-    scope: savedView?.scope ?? 'Workspace',
-    projectId: savedView?.filter.projectId ?? '',
-    statusMode: status === '' ? 'empty' : status ? 'exact' : 'any',
-    statusValue: status && status.length > 0 ? status : '',
-    category: savedView?.filter.category ?? '',
-    color: savedView?.filter.color ?? '',
-    archive: savedView?.filter.archive ?? 'Active',
-    followUp: savedView?.filter.followUp ?? '',
-    notViewedSinceDays: savedView?.filter.notViewedSinceDays?.toString() ?? '',
-    notTouchedSinceDays: savedView?.filter.notTouchedSinceDays?.toString() ?? '',
-    text: savedView?.filter.text ?? '',
-    sortField: savedView?.sort.field ?? 'lastTouchedAt',
-    sortDirection: savedView?.sort.direction ?? 'desc',
-    sortOrder: savedView?.sortOrder.toString() ?? '20',
-  };
-}
-
-function toSavedViewRequest(draft: EditableViewDraft) {
-  const status =
-    draft.statusMode === 'any'
-      ? null
-      : draft.statusMode === 'empty'
-        ? ''
-        : draft.statusValue.trim();
-
-  return {
-    name: draft.name.trim(),
-    scope: draft.scope,
-    filter: {
-      projectId: draft.projectId || null,
-      status,
-      category: draft.category.trim() || null,
-      color: draft.color || null,
-      archive: draft.archive,
-      followUp: draft.followUp || null,
-      notViewedSinceDays: numberOrNull(draft.notViewedSinceDays),
-      notTouchedSinceDays: numberOrNull(draft.notTouchedSinceDays),
-      text: draft.text.trim() || null,
-    },
-    sort: {
-      field: draft.sortField,
-      direction: draft.sortDirection,
-    },
-    sortOrder: numberOrNull(draft.sortOrder) ?? 20,
-  };
 }
 
 function numberOrNull(value: string) {
