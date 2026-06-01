@@ -27,18 +27,24 @@ builder.Services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();
 builder.Services.AddScoped<ICurrentWorkspaceSelection, CurrentWorkspaceSelection>();
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddFixedWindowLimiter("auth", limiterOptions =>
-    {
-        limiterOptions.PermitLimit = 20;
-        limiterOptions.Window = TimeSpan.FromMinutes(1);
-        limiterOptions.QueueLimit = 0;
-    });
-    options.AddFixedWindowLimiter("task-writes", limiterOptions =>
-    {
-        limiterOptions.PermitLimit = 120;
-        limiterOptions.Window = TimeSpan.FromMinutes(1);
-        limiterOptions.QueueLimit = 0;
-    });
+    options.AddPolicy("auth", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetRateLimitKey(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+    options.AddPolicy("task-writes", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetRateLimitKey(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
 });
 builder.Services.AddControllers();
 
@@ -74,5 +80,17 @@ app.UseRateLimiter();
 app.MapControllers();
 
 app.Run();
+
+static string GetRateLimitKey(HttpContext context)
+{
+    var authorization = context.Request.Headers.Authorization.FirstOrDefault();
+
+    if (!string.IsNullOrWhiteSpace(authorization))
+    {
+        return authorization;
+    }
+
+    return context.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
+}
 
 public partial class Program;
