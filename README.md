@@ -397,7 +397,7 @@ Useful local/runtime environment variables:
 - `Auth__RequireAuthentication`: requires a session for the app.
 - `Auth__AllowGuestSessions`: allows temporary browser-tab sessions.
 - `Auth__EnableDevelopmentLogin`: local-only dev login button.
-- `EmailConfirmation__Enabled`: future email confirmation gate.
+- `EmailConfirmation__Enabled`: requires newly registered email/password users to confirm their email before login.
 - `EmailConfirmation__PublicBaseUrl`: public API base URL used to build confirmation links.
 - `Email__FromEmail`: sender address for transactional email.
 - `Email__Smtp__Enabled`: enables SMTP config validation.
@@ -424,15 +424,23 @@ DUMPTETHER_EMAIL_BREVO_API_ENABLED=true
 DUMPTETHER_EMAIL_BREVO_API_KEY=your-rotated-brevo-api-key
 ```
 
+`DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true` means DumpTether will require confirmation before email/password login. `DUMPTETHER_EMAIL_BREVO_API_ENABLED=true` means the email sender is Brevo's transactional API. They are separate on purpose so the same sender can later be used for password reset or email MFA without forcing every environment to require email confirmation.
+
+The sender address in `DUMPTETHER_EMAIL_FROM` must be verified/allowed in Brevo. The confirmation link is built from `DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL`, so local development usually points at the API, for example `http://localhost:55868`.
+
 Restart the API, then test the provider directly in local development:
 
 ```powershell
-curl.exe -X POST http://localhost:55868/api/auth/test-email `
-  -H "Content-Type: application/json" `
-  -d "{\"email\":\"you@example.com\"}"
+curl.exe -X POST "http://localhost:55868/api/auth/test-email" -H "Content-Type: application/json" --data-raw '{ "email": "you@example.com" }'
 ```
 
+The test email subject is `DumpTether email test` and the body says the Brevo API configuration can send email. The real registration email subject is `Confirm your DumpTether email`; it contains a confirmation link and a note that the link expires.
+
 Then test the real confirmation flow by registering a new account. The email link opens `/api/auth/confirm-email?token=...`, marks the user confirmed, and invalidates the token.
+
+Root `.env` files are read by Docker Compose through `env_file`. Visual Studio launch profiles do not automatically import the root `.env`; for local F5 testing, use environment variables, user secrets, or an ignored `appsettings.Local.json`. Keep real API keys and SMTP passwords out of committed `appsettings*.json` files.
+
+Forgot password is not implemented yet. It should use the same Brevo sender with a separate password-reset token table and one-time, expiring links.
 
 ### OAuth Setup
 

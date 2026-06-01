@@ -257,6 +257,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
   const [temporarySessionIsActive, setTemporarySessionIsActive] = useState(isTemporarySession);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
+  const [lastPingedAt, setLastPingedAt] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [language, setLanguage] = useState<Language>(getInitialLanguage);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
@@ -291,11 +292,15 @@ function App() {
   }, []);
 
   const pingBackend = useCallback(async (showOfflineToast = false) => {
+    const pingedAt = new Date().toISOString();
+
     try {
       await checkHealth();
       setConnectionStatus('online');
+      setLastPingedAt(pingedAt);
     } catch {
       setConnectionStatus('offline');
+      setLastPingedAt(pingedAt);
       if (showOfflineToast) {
         showToast(t('connectionLostToast'), 'error');
       }
@@ -694,8 +699,10 @@ function App() {
           [currentViewId]: (counts[currentViewId] ?? 0) + 1,
         }));
       }
+      return created;
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+      return null;
     }
   };
 
@@ -1016,6 +1023,7 @@ function App() {
         onSelectView={handleSelectSavedView}
         onToggleSidebar={() => setSidebarIsCollapsed((isCollapsed) => !isCollapsed)}
         connectionStatus={connectionStatus}
+        lastPingedAt={lastPingedAt}
         savedViews={savedViews}
         sidebarIsCollapsed={sidebarIsCollapsed}
         templateCount={templates.length}
@@ -1155,6 +1163,7 @@ function Sidebar({
   connectionStatus,
   counts,
   currentViewId,
+  lastPingedAt,
   language,
   mode,
   onCreateWorkspace,
@@ -1176,6 +1185,7 @@ function Sidebar({
   connectionStatus: ConnectionStatus;
   counts: Record<string, number>;
   currentViewId: string | null;
+  lastPingedAt: string | null;
   language: Language;
   mode: WorkspaceMode;
   onCreateWorkspace: (name: string) => Promise<void>;
@@ -1356,10 +1366,15 @@ function Sidebar({
           <span
             className="connection-indicator"
             data-state={connectionStatus}
-            title={connectionStatus === 'online' ? t('backendOnline') : t('backendOffline')}
+            title={`${connectionStatus === 'online' ? t('backendOnline') : t('backendOffline')}${
+              lastPingedAt ? ` · ${t('lastPinged')}: ${formatDateTime(lastPingedAt)}` : ''
+            }`}
           >
             <span />
-            {connectionStatus === 'online' ? t('online') : t('offline')}
+            <strong>{connectionStatus === 'online' ? t('online') : t('offline')}</strong>
+            {lastPingedAt ? (
+              <small>{formatRelativeDate(lastPingedAt)}</small>
+            ) : null}
           </span>
           <a href="https://github.com/bheldbo/DumpTether" rel="noreferrer" target="_blank">
             GitHub
@@ -1420,7 +1435,7 @@ function TaskBoard({
   onCreateTaskItem: (
     title: string,
     options?: Partial<CreateTaskItemRequest>,
-  ) => Promise<void>;
+  ) => Promise<TaskItemDetailResponse | null>;
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
@@ -1452,10 +1467,18 @@ function TaskBoard({
     () => applyTaskWallFilters(taskItems, filters),
     [filters, taskItems],
   );
+  const [draftTaskIsOpen, setDraftTaskIsOpen] = useState(false);
   const focusedTaskItem = selectedTaskId
     ? visibleTaskItems.find((taskItem) => taskItem.id === selectedTaskId) ?? null
     : null;
-  const displayedTaskItems = focusedTaskItem ? [focusedTaskItem] : visibleTaskItems;
+  const focusModeIsEnabled = Boolean(focusedTaskItem) || draftTaskIsOpen;
+  const displayedTaskItems = focusedTaskItem || draftTaskIsOpen
+    ? focusedTaskItem ? [focusedTaskItem] : []
+    : visibleTaskItems;
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects],
+  );
   const filterOptions = useMemo(
     () => buildTaskFilterOptions(taskItems, colorOptions),
     [colorOptions, taskItems],
@@ -1499,12 +1522,12 @@ function TaskBoard({
   }, [onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
 
   const openCreateTask = useCallback(() => {
-    if (focusedTaskItem || !canCreateTask) {
+    if (focusedTaskItem || draftTaskIsOpen || !canCreateTask) {
       return;
     }
 
-    window.dispatchEvent(new CustomEvent('dumptether:new-task'));
-  }, [canCreateTask, focusedTaskItem]);
+    setDraftTaskIsOpen(true);
+  }, [canCreateTask, draftTaskIsOpen, focusedTaskItem]);
 
   useEffect(() => {
     if (!selectedTaskId || archiveDialogIsOpen) {
@@ -1530,15 +1553,16 @@ function TaskBoard({
         return;
       }
 
-      if (event.ctrlKey && event.key.toLowerCase() === 'n') {
+      if (event.altKey && event.key.toLowerCase() === 'n') {
         event.preventDefault();
         openCreateTask();
       }
 
-      if (event.ctrlKey && event.key.toLowerCase() === 'x') {
+      if (event.altKey && event.key.toLowerCase() === 'x') {
         event.preventDefault();
         if (visibleTaskItems.length > 0) {
           setEditModeIsEnabled((isEnabled) => !isEnabled);
+          window.dispatchEvent(new CustomEvent('dumptether:open-actions'));
         }
       }
     };
@@ -1552,9 +1576,9 @@ function TaskBoard({
     <section
       className="task-board"
       aria-labelledby="task-board-title"
-      data-focus-mode={Boolean(focusedTaskItem)}
+      data-focus-mode={focusModeIsEnabled}
     >
-      {!focusedTaskItem ? (
+      {!focusModeIsEnabled ? (
         <WorkspaceHeader
           currentView={currentView}
           onCreateProject={onCreateProject}
@@ -1574,7 +1598,7 @@ function TaskBoard({
         />
       ) : null}
 
-      {!focusedTaskItem ? (
+      {!focusModeIsEnabled ? (
         <TaskFilterBar
           filters={filters}
           filtersAreActive={filtersAreActive}
@@ -1599,9 +1623,25 @@ function TaskBoard({
           </p>
         ) : null}
 
+        {draftTaskIsOpen ? (
+          <DraftTaskCard
+            onCancel={() => setDraftTaskIsOpen(false)}
+            onCreateTaskItem={onCreateTaskItem}
+            onCreated={(createdTask) => {
+              setDraftTaskIsOpen(false);
+              onSelectTaskItem(createdTask.id);
+            }}
+            projects={projects}
+            selectedProjectId={filters.projectId}
+            t={t}
+            templates={templates}
+          />
+        ) : null}
+
         {displayedTaskItems.map((taskItem) => {
           const isExpanded = selectedTaskId === taskItem.id;
           const isSelectedForEdit = selectedTaskIds.includes(taskItem.id);
+          const taskProject = taskItem.projectId ? projectById.get(taskItem.projectId) : null;
 
           return (
             <article
@@ -1666,7 +1706,12 @@ function TaskBoard({
                     <TaskMetaChip icon="status" label={t('status')} value={taskItem.status} />
                   ) : null}
                   {taskItem.category ? (
-                    <TaskMetaChip icon="tag" label={t('category')} value={taskItem.category} />
+                    <TaskMetaChip
+                      icon="tag"
+                      label={t('category')}
+                      style={getContextChipStyle(taskProject?.color ?? null)}
+                      value={taskItem.category}
+                    />
                   ) : null}
                   <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
                     <Icon name="clock" />
@@ -1731,7 +1776,7 @@ function TaskBoard({
           );
         })}
       </div>
-      {!isLoading && canCreateTask && !focusedTaskItem ? (
+      {!isLoading && canCreateTask && !focusModeIsEnabled ? (
         <FloatingBoardActions
           editModeIsEnabled={editModeIsEnabled}
           taskCount={visibleTaskItems.length}
@@ -1740,15 +1785,13 @@ function TaskBoard({
             await onUpdateTaskItems(selectedTaskIds, requestBody);
             setSelectedTaskIds([]);
           }}
-          onCreateTaskItem={onCreateTaskItem}
+          onOpenCreateTask={openCreateTask}
           onOpenBatchArchive={() => setBatchArchiveIsOpen(true)}
           onToggleEditMode={() =>
             editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
           selectedTaskCount={selectedTaskIds.length}
-          selectedProjectId={filters.projectId}
           projects={projects}
           statusOptions={statusOptions}
-          templates={templates}
           t={t}
         />
       ) : null}
@@ -2106,63 +2149,39 @@ function FloatingBoardActions({
   colorOptions,
   editModeIsEnabled,
   onBatchUpdate,
-  onCreateTaskItem,
+  onOpenCreateTask,
   onOpenBatchArchive,
   onToggleEditMode,
   projects,
-  selectedProjectId,
   selectedTaskCount,
   statusOptions,
   taskCount,
-  templates,
   t,
 }: {
   colorOptions: string[];
   editModeIsEnabled: boolean;
   onBatchUpdate: (requestBody: UpdateTaskItemRequest) => Promise<void>;
-  onCreateTaskItem: (title: string, options?: Partial<CreateTaskItemRequest>) => Promise<void>;
+  onOpenCreateTask: () => void;
   onOpenBatchArchive: () => void;
   onToggleEditMode: () => void;
   projects: ProjectResponse[];
-  selectedProjectId: string;
   selectedTaskCount: number;
   statusOptions: string[];
   taskCount: number;
-  templates: TaskTemplateDetailResponse[];
   t: Translate;
 }) {
-  const [title, setTitle] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [createIsOpen, setCreateIsOpen] = useState(false);
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setSelectedTemplateId((currentId) =>
-      currentId && templates.some((template) => template.id === currentId)
-        ? currentId
-        : templates[0]?.id ?? '',
-    );
-  }, [templates]);
-
-  useEffect(() => {
-    const openCreate = () => {
+    const openActions = () => {
       setIsOpen(true);
-      setCreateIsOpen(true);
     };
 
-    window.addEventListener('dumptether:new-task', openCreate);
+    window.addEventListener('dumptether:open-actions', openActions);
 
-    return () => window.removeEventListener('dumptether:new-task', openCreate);
+    return () => window.removeEventListener('dumptether:open-actions', openActions);
   }, []);
-
-  useEffect(() => {
-    if (createIsOpen) {
-      inputRef.current?.focus();
-    }
-  }, [createIsOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -2173,47 +2192,24 @@ function FloatingBoardActions({
       if (
         menuRef.current &&
         event.target instanceof Node &&
-        !menuRef.current.contains(event.target)
+        !menuRef.current.contains(event.target) &&
+        !editModeIsEnabled
       ) {
         setIsOpen(false);
-        setCreateIsOpen(false);
       }
     };
 
     window.addEventListener('pointerdown', handlePointerDown);
 
     return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [isOpen]);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    const selectedProject = projects.find((project) => project.id === selectedProjectId);
-    await onCreateTaskItem(trimmedTitle, {
-      projectId: selectedProject?.id ?? null,
-      category: selectedProject?.name ?? null,
-      taskTemplateId: selectedTemplateId || null,
-    });
-    setTitle('');
-    setIsSubmitting(false);
-    inputRef.current?.focus();
-  };
+  }, [editModeIsEnabled, isOpen]);
 
   return (
     <div className="floating-board-actions" ref={menuRef}>
       <button
         className="quick-create-fab"
         data-active={isOpen}
-        onClick={() => {
-          setIsOpen((open) => !open);
-          setCreateIsOpen(false);
-        }}
+        onClick={() => setIsOpen((open) => !open)}
         title={t('newTask')}
         type="button"
       >
@@ -2221,12 +2217,18 @@ function FloatingBoardActions({
         <span>{t('newTask')}</span>
       </button>
 
-      {isOpen && !createIsOpen ? (
+      {isOpen ? (
         <div className="quick-action-menu">
-          <button onClick={() => setCreateIsOpen(true)} type="button">
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              onOpenCreateTask();
+            }}
+            type="button"
+          >
             <Icon name="plus" />
             <span>{t('addTask')}</span>
-            <kbd>Ctrl+N</kbd>
+            <kbd>Alt+N</kbd>
           </button>
           {editModeIsEnabled ? (
             <>
@@ -2326,80 +2328,171 @@ function FloatingBoardActions({
               <button
                 onClick={() => {
                   onToggleEditMode();
-                  setIsOpen(false);
+                  setIsOpen(true);
                 }}
                 type="button"
               >
                 <Icon name="check" />
                 <span>{t('selectTasksForAction')}</span>
-                <kbd>Ctrl+X</kbd>
+                <kbd>Alt+X</kbd>
               </button>
             ) : null
           )}
         </div>
       ) : null}
-
-      {isOpen && createIsOpen ? (
-        <form className="quick-create-popover task-create-modal" onSubmit={handleSubmit}>
-          <div className="task-create-modal-heading">
-            <p className="detail-kicker">{t('newTask')}</p>
-            <h2>{t('addTask')}</h2>
-          </div>
-          <label>
-            {t('taskTitleRequired')}
-          <input
-            aria-label="New task title"
-            ref={inputRef}
-            onChange={(event) => setTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && !title.trim()) {
-                setCreateIsOpen(false);
-              }
-            }}
-            placeholder={t('newTaskPlaceholder')}
-            type="text"
-            value={title}
-          />
-          </label>
-
-          {templates.length > 0 ? (
-            <label>
-              {t('templates')}
-            <select
-              aria-label={t('templates')}
-              onChange={(event) => setSelectedTemplateId(event.target.value)}
-              value={selectedTemplateId}
-            >
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
-            </label>
-          ) : null}
-
-          <div className="dialog-actions">
-          <button disabled={!title.trim() || isSubmitting} type="submit">
-            <Icon name="plus" />
-            <span>{t('addTask')}</span>
-          </button>
-          <button
-            className="ghost-button"
-            onClick={() => {
-              setTitle('');
-              setCreateIsOpen(false);
-            }}
-            title="Close"
-            type="button"
-          >
-            <Icon name="close" />
-            <span>{t('cancel')}</span>
-          </button>
-          </div>
-        </form>
-      ) : null}
     </div>
+  );
+}
+
+function DraftTaskCard({
+  onCancel,
+  onCreateTaskItem,
+  onCreated,
+  projects,
+  selectedProjectId,
+  t,
+  templates,
+}: {
+  onCancel: () => void;
+  onCreateTaskItem: (
+    title: string,
+    options?: Partial<CreateTaskItemRequest>,
+  ) => Promise<TaskItemDetailResponse | null>;
+  onCreated: (taskItem: TaskItemDetailResponse) => void;
+  projects: ProjectResponse[];
+  selectedProjectId: string;
+  t: Translate;
+  templates: TaskTemplateDetailResponse[];
+}) {
+  const [title, setTitle] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
+
+  useEffect(() => {
+    setSelectedTemplateId((currentId) =>
+      currentId && templates.some((template) => template.id === currentId)
+        ? currentId
+        : templates[0]?.id ?? '',
+    );
+  }, [templates]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      inputRef.current?.focus();
+      return;
+    }
+
+    setIsSubmitting(true);
+    const created = await onCreateTaskItem(trimmedTitle, {
+      projectId: selectedProject?.id ?? null,
+      category: selectedProject?.name ?? null,
+      taskTemplateId: selectedTemplateId || null,
+    });
+    setIsSubmitting(false);
+
+    if (created) {
+      onCreated(created);
+    }
+  };
+
+  return (
+    <article
+      className="task-card task-card-draft"
+      data-expanded="true"
+      data-state="active"
+      style={getTaskCardStyle('#FFF3A6')}
+    >
+      <div className="task-card-detail">
+        <section className="task-detail draft-task-detail" aria-label={t('newTask')}>
+          <form
+            className="detail-header task-detail-header draft-task-header"
+            onSubmit={(event) => void handleSubmit(event)}
+          >
+            <button
+              className="icon-button task-detail-back-button"
+              onClick={onCancel}
+              title={t('backToWall')}
+              type="button"
+            >
+              <Icon name="back" />
+              <span className="sr-only">{t('backToWall')}</span>
+            </button>
+            <div className="task-header-editor">
+              <p className="detail-kicker">{t('newTask')}</p>
+              <div className="task-title-row">
+                <input
+                  aria-label={t('taskTitleRequired')}
+                  className="task-title-input"
+                  onChange={(event) => setTitle(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape' && !title.trim()) {
+                      onCancel();
+                    }
+                  }}
+                  placeholder={t('newTaskTitlePlaceholder')}
+                  ref={inputRef}
+                  required
+                  type="text"
+                  value={title}
+                />
+              </div>
+              <div className="task-header-fields task-header-fields-edit">
+                {selectedProject ? (
+                  <span style={getContextChipStyle(selectedProject.color)}>
+                    <Icon name="tag" />
+                    {t('category')}: {selectedProject.name}
+                  </span>
+                ) : (
+                  <span>
+                    <Icon name="tag" />
+                    {t('category')}: {t('noCategory')}
+                  </span>
+                )}
+                {templates.length > 0 ? (
+                  <label>
+                    {t('templates')}
+                    <select
+                      aria-label={t('templates')}
+                      onChange={(event) => setSelectedTemplateId(event.target.value)}
+                      value={selectedTemplateId}
+                    >
+                      {templates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+            </div>
+            <div className="detail-actions">
+              <button
+                className="secondary-action"
+                disabled={!title.trim() || isSubmitting}
+                type="submit"
+              >
+                <Icon name="plus" />
+                <span>{t('addTask')}</span>
+              </button>
+            </div>
+          </form>
+          <section className="timeline-panel draft-notes-placeholder">
+            <h3>{t('notes')}</h3>
+            <p>{t('draftTaskHelp')}</p>
+          </section>
+        </section>
+      </div>
+    </article>
   );
 }
 
@@ -2702,6 +2795,7 @@ function TaskDetail({
               colorOptions={colorOptions}
               label={t('taskColor')}
               onChange={(color) => void onUpdateTaskItem({ color })}
+              placement="left"
               t={t}
             />
           ) : null}
@@ -2817,6 +2911,10 @@ function TaskHeaderEditor({
   const [editingField, setEditingField] = useState<
     'title' | 'status' | 'category' | 'followUp' | null
   >(null);
+  const displayedProject = projects.find((project) =>
+    project.id === (taskItem.projectId ?? categoryProjectId) ||
+    project.name === (taskItem.category ?? category),
+  ) ?? null;
 
   useEffect(() => {
     setTitle(taskItem.title);
@@ -2925,7 +3023,9 @@ function TaskHeaderEditor({
             {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
           </span>
           <span>{t('status')}: {taskItem.status ?? t('noStatus')}</span>
-          <span>{t('category')}: {taskItem.category ?? t('noCategory')}</span>
+          <span style={getContextChipStyle(displayedProject?.color ?? null)}>
+            {t('category')}: {taskItem.category ?? t('noCategory')}
+          </span>
           <span>{t('followUpDate')}: {taskItem.followUpAt ? formatFullDate(taskItem.followUpAt) : t('noFollowUp')}</span>
         </div>
       </div>
@@ -3025,6 +3125,7 @@ function TaskHeaderEditor({
           <button
             className="task-meta-chip"
             onClick={() => setEditingField('category')}
+            style={getContextChipStyle(displayedProject?.color ?? null)}
             type="button"
           >
             {t('category')}: {taskItem.category ?? t('noCategory')}
@@ -3072,12 +3173,14 @@ function ColorPickerPopover({
   colorOptions,
   label,
   onChange,
+  placement = 'below',
   t,
 }: {
   color: string;
   colorOptions?: string[];
   label: string;
   onChange: (color: string) => void;
+  placement?: 'below' | 'left';
   t: Translate;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -3117,7 +3220,7 @@ function ColorPickerPopover({
   };
 
   return (
-    <div className="color-popover" ref={popoverRef}>
+    <div className="color-popover" data-placement={placement} ref={popoverRef}>
       <button
         aria-expanded={isOpen}
         aria-label={label}
@@ -3151,6 +3254,8 @@ function ColorPickerPopover({
             <input
               aria-label="Custom color"
               onChange={(event) => setCustomColor(event.target.value.toUpperCase())}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
               type="color"
               value={customColor || selectedColor}
             />
@@ -4122,7 +4227,6 @@ function AuthPanel({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [deviceName, setDeviceName] = useState('web browser');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -4149,7 +4253,7 @@ function AuthPanel({
         await onLogin({
           email: email.trim(),
           password,
-          deviceName: deviceName.trim() || 'web browser',
+          deviceName: 'web browser',
         });
         setStatusMessage(t('authLoggedIn'));
       }
@@ -4319,21 +4423,16 @@ function AuthPanel({
             type="password"
             value={password}
           />
+          {mode === 'register' ? (
+            <small className="form-help">{t('passwordRequirement')}</small>
+          ) : null}
         </label>
 
-        {mode === 'login' ? (
-          <label>
-            {t('deviceName')}
-            <input
-              autoComplete="off"
-              onChange={(event) => setDeviceName(event.target.value)}
-              type="text"
-              value={deviceName}
-            />
-          </label>
-        ) : null}
-
-        <button disabled={!canSubmit || isSubmitting || isLoading} type="submit">
+        <button
+          className="auth-submit-button"
+          disabled={!canSubmit || isSubmitting || isLoading}
+          type="submit"
+        >
           {mode === 'register' ? t('registerButton') : t('loginButton')}
         </button>
       </form>
@@ -4766,14 +4865,16 @@ function ArchiveResolutionSettingsRow({
 function TaskMetaChip({
   icon,
   label,
+  style,
   value,
 }: {
   icon: IconName;
   label: string;
+  style?: CSSProperties;
   value: string;
 }) {
   return (
-    <span title={`${label}: ${value}`}>
+    <span className="task-meta-chip" style={style} title={`${label}: ${value}`}>
       <Icon name={icon} />
       {label}: {value}
     </span>
