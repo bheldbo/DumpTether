@@ -45,6 +45,7 @@ public sealed record CurrentUserResponse(
 
 public sealed record AuthClientOptionsResponse(
     bool RequiresAuthentication,
+    bool GuestSessionsEnabled,
     bool DevelopmentLoginEnabled);
 
 public sealed record CurrentUserSession(

@@ -80,6 +80,23 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         return await query.ToListAsync(cancellationToken);
     }
 
+    public async Task<int> CountAsync(
+        Guid workspaceId,
+        bool includeArchived,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.TaskItems
+            .AsNoTracking()
+            .Where(taskItem => taskItem.WorkspaceId == workspaceId);
+
+        if (!includeArchived)
+        {
+            query = query.Where(taskItem => taskItem.ArchivedAt == null);
+        }
+
+        return await query.CountAsync(cancellationToken);
+    }
+
     public async Task<TaskItem?> GetByIdAsync(
         Guid id,
         Guid workspaceId,

@@ -2,8 +2,10 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using DumpTether.App.Projects;
 using DumpTether.App.Templates;
+using DumpTether.App.Usage;
 using DumpTether.App.Views;
 using DumpTether.Domain;
+using Microsoft.Extensions.Options;
 
 namespace DumpTether.App.Tasks;
 
@@ -14,19 +16,22 @@ internal sealed class TaskItemService : ITaskItemService
     private readonly IProjectRepository _projectRepository;
     private readonly ISavedViewRepository _savedViewRepository;
     private readonly ITaskItemRepository _taskItemRepository;
+    private readonly IOptions<UsageOptions> _usageOptions;
 
     public TaskItemService(
         IClock clock,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
         IProjectRepository projectRepository,
         ISavedViewRepository savedViewRepository,
-        ITaskItemRepository taskItemRepository)
+        ITaskItemRepository taskItemRepository,
+        IOptions<UsageOptions> usageOptions)
     {
         _clock = clock;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _projectRepository = projectRepository;
         _savedViewRepository = savedViewRepository;
         _taskItemRepository = taskItemRepository;
+        _usageOptions = usageOptions;
     }
 
     public async Task<TaskItemDetailResponse> CreateAsync(
@@ -36,6 +41,7 @@ internal sealed class TaskItemService : ITaskItemService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        await EnsureTaskQuotaAsync(context.WorkspaceId, cancellationToken);
         var now = _clock.UtcNow;
         var taskTemplate = await ResolveTaskTemplateForCreateAsync(
             context.WorkspaceId,
@@ -67,6 +73,31 @@ internal sealed class TaskItemService : ITaskItemService
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
         return MapDetail(taskItem, taskTemplate);
+    }
+
+    private async Task EnsureTaskQuotaAsync(Guid workspaceId, CancellationToken cancellationToken)
+    {
+        var usageOptions = _usageOptions.Value;
+        var activeTaskCount = await _taskItemRepository.CountAsync(
+            workspaceId,
+            includeArchived: false,
+            cancellationToken);
+        var totalTaskCount = await _taskItemRepository.CountAsync(
+            workspaceId,
+            includeArchived: true,
+            cancellationToken);
+
+        if (activeTaskCount >= usageOptions.MaxActiveTasksPerWorkspace)
+        {
+            throw new ValidationException(
+                $"This workspace has reached the active task limit of {usageOptions.MaxActiveTasksPerWorkspace}.");
+        }
+
+        if (totalTaskCount >= usageOptions.MaxTotalTasksPerWorkspace)
+        {
+            throw new ValidationException(
+                $"This workspace has reached the total task limit of {usageOptions.MaxTotalTasksPerWorkspace}.");
+        }
     }
 
     public async Task<IReadOnlyList<TaskItemSummaryResponse>> ListAsync(

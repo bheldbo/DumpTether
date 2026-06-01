@@ -2,12 +2,16 @@ using DumpTether.App;
 using DumpTether.App.Auth;
 using DumpTether.Api;
 using DumpTether.Data;
+using DumpTether.App.Usage;
 using DumpTether.App.Workspaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+builder.Services.Configure<UsageOptions>(builder.Configuration.GetSection("Usage"));
 builder.Services.PostConfigure<AuthOptions>(options =>
 {
     if (!builder.Environment.IsDevelopment())
@@ -21,6 +25,21 @@ builder.Services.AddDumpTetherData(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();
 builder.Services.AddScoped<ICurrentWorkspaceSelection, CurrentWorkspaceSelection>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("auth", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 20;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("task-writes", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 120;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueLimit = 0;
+    });
+});
 builder.Services.AddControllers();
 
 var app = builder.Build();
@@ -51,6 +70,7 @@ app.MapGet("/health", () => Results.Ok(new
     service = "DumpTether.Api"
 }));
 
+app.UseRateLimiter();
 app.MapControllers();
 
 app.Run();

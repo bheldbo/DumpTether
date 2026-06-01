@@ -90,6 +90,16 @@ For UI testing, start the API and web app, open `http://localhost:5173`, and use
 
 That dev account is a normal `AppUser` with a normal `UserSession` and workspace membership. Production config disables the dev login endpoint.
 
+Temporary guest sessions are also available for trying the wall without registering. They use the same backend session/workspace boundary, but the browser keeps the token in tab-scoped storage and the UI warns the user to sign up or log in to keep the work.
+
+Basic abuse guardrails are in place for the MVP:
+
+- Auth endpoints are rate limited.
+- Task write endpoints are rate limited.
+- A workspace is capped at 1,000 active tasks and 5,000 total tasks by default.
+
+These are safety defaults, not a billing model. Real paid/free plans can later move these limits into persisted workspace/account configuration.
+
 Register a user and default workspace:
 
 ```powershell

@@ -25,8 +25,10 @@ import {
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
   developmentLogin,
+  checkHealth,
   getAuthOptions,
   getCurrentUser,
+  guestLogin,
   getTaskItem,
   getTaskTemplate,
   getWorkspace,
@@ -41,6 +43,7 @@ import {
   reopenTaskItem,
   registerUser,
   setCurrentWorkspaceId,
+  isTemporarySession,
   updateArchiveResolution,
   updateSavedView,
   updateProject,
@@ -188,8 +191,31 @@ const workspaceStorageKey = 'dumptether.workspace';
 const statusOptionsStorageKey = 'dumptether.statusOptions';
 const defaultAuthOptions: AuthClientOptionsResponse = {
   requiresAuthentication: true,
+  guestSessionsEnabled: true,
   developmentLoginEnabled: false,
 };
+
+type ConnectionStatus = 'checking' | 'online' | 'offline';
+
+interface ToastMessage {
+  id: number;
+  tone: 'info' | 'warning' | 'error';
+  message: string;
+}
+
+interface CachedWorkspaceSnapshot {
+  archiveResolutions: ArchiveResolutionResponse[];
+  currentViewId: string | null;
+  knownStatuses: string[];
+  projects: ProjectResponse[];
+  savedViews: SavedViewResponse[];
+  taskColorOptions: string[];
+  taskItems: TaskItemSummaryResponse[];
+  templates: TaskTemplateDetailResponse[];
+  viewCounts: Record<string, number>;
+  workspace: WorkspaceResponse | null;
+  workspaces: WorkspaceResponse[];
+}
 
 function App() {
   const [savedViews, setSavedViews] = useState<SavedViewResponse[]>([]);
@@ -219,6 +245,9 @@ function App() {
   const [authOptions, setAuthOptions] =
     useState<AuthClientOptionsResponse>(defaultAuthOptions);
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
+  const [temporarySessionIsActive, setTemporarySessionIsActive] = useState(isTemporarySession);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [language, setLanguage] = useState<Language>(getInitialLanguage);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     getInitialWorkspaceId,
@@ -240,24 +269,51 @@ function App() {
     [currentViewId, savedViews],
   );
 
+  const showToast = useCallback((message: string, tone: ToastMessage['tone'] = 'info') => {
+    const id = Date.now();
+    setToasts((currentToasts) => [
+      ...currentToasts.slice(-2),
+      { id, message, tone },
+    ]);
+    window.setTimeout(() => {
+      setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== id));
+    }, 5200);
+  }, []);
+
+  const pingBackend = useCallback(async (showOfflineToast = false) => {
+    try {
+      await checkHealth();
+      setConnectionStatus('online');
+    } catch {
+      setConnectionStatus('offline');
+      if (showOfflineToast) {
+        showToast(t('connectionLostToast'), 'error');
+      }
+    }
+  }, [showToast, t]);
+
   const loadAuth = useCallback(async () => {
     setIsLoadingAuth(true);
 
     try {
       const options = await getAuthOptions();
       setAuthOptions(options);
+      setConnectionStatus('online');
 
       try {
         const user = await getCurrentUser();
         setCurrentUser(user);
+        setTemporarySessionIsActive(isTemporarySession());
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           setCurrentUser(null);
+          setTemporarySessionIsActive(false);
         } else {
           throw error;
         }
       }
     } catch (error) {
+      setConnectionStatus('offline');
       setErrorMessage(getErrorMessage(error));
     } finally {
       setIsLoadingAuth(false);
@@ -268,10 +324,39 @@ function App() {
     async (
       preferredViewId: string | null = currentViewId,
       preferredWorkspaceId: string | null = selectedWorkspaceId,
+      options: { force?: boolean } = {},
     ) => {
       setIsLoadingWorkspace(true);
 
       try {
+        const cacheIdentity = currentUser?.user.id ?? 'anonymous';
+        const cacheWorkspaceId = preferredWorkspaceId ?? 'default';
+        const cacheViewId = preferredViewId ?? 'default';
+        const workspaceCacheKey = buildWorkspaceCacheKey(
+          cacheWorkspaceId,
+          cacheViewId,
+          cacheIdentity,
+        );
+
+        if (!options.force) {
+          const cachedSnapshot = readCachedWorkspaceSnapshot(workspaceCacheKey);
+          if (cachedSnapshot) {
+            setWorkspaces(cachedSnapshot.workspaces);
+            setWorkspace(cachedSnapshot.workspace);
+            setSelectedWorkspaceId(cachedSnapshot.workspace?.id ?? preferredWorkspaceId);
+            setSavedViews(cachedSnapshot.savedViews);
+            setProjects(cachedSnapshot.projects);
+            setArchiveResolutions(cachedSnapshot.archiveResolutions);
+            setTemplates(cachedSnapshot.templates);
+            setTaskColorOptions(cachedSnapshot.taskColorOptions);
+            setKnownStatuses(cachedSnapshot.knownStatuses);
+            setCurrentViewId(cachedSnapshot.currentViewId);
+            setTaskItems(cachedSnapshot.taskItems);
+            setViewCounts(cachedSnapshot.viewCounts);
+            setIsLoadingWorkspace(false);
+          }
+        }
+
         setCurrentWorkspaceId(null);
         const workspaceList = await listWorkspaces();
         const effectiveWorkspaceId =
@@ -290,6 +375,11 @@ function App() {
           listTaskTemplates(),
         ]);
         const selectedViewId = pickSavedViewId(views, preferredViewId);
+        const resolvedWorkspaceCacheKey = buildWorkspaceCacheKey(
+          workspaceInfo.id,
+          selectedViewId ?? 'default',
+          cacheIdentity,
+        );
         const [templateDetails, selectedTasks, countEntries, allTasksForColors] = await Promise.all([
           Promise.all(templateSummaries.map((template) => getTaskTemplate(template.id))),
           selectedViewId ? listTaskItems({ viewId: selectedViewId }) : Promise.resolve([]),
@@ -314,6 +404,21 @@ function App() {
         setCurrentViewId(selectedViewId);
         setTaskItems(selectedTasks);
         setViewCounts(Object.fromEntries(countEntries));
+        const snapshot = {
+          archiveResolutions: resolutions,
+          currentViewId: selectedViewId,
+          knownStatuses: uniqueSorted(allTasksForColors.map((taskItem) => taskItem.status)),
+          projects: projectList,
+          savedViews: views,
+          taskColorOptions: mergeColorOptions(getTaskColors(allTasksForColors)),
+          taskItems: selectedTasks,
+          templates: templateDetails,
+          viewCounts: Object.fromEntries(countEntries),
+          workspace: workspaceInfo,
+          workspaces: workspaceList,
+        };
+        writeCachedWorkspaceSnapshot(workspaceCacheKey, snapshot);
+        writeCachedWorkspaceSnapshot(resolvedWorkspaceCacheKey, snapshot);
         setErrorMessage(null);
 
         if (selectedTaskId && !selectedTasks.some((taskItem) => taskItem.id === selectedTaskId)) {
@@ -326,7 +431,7 @@ function App() {
         setIsLoadingWorkspace(false);
       }
     },
-    [currentViewId, selectedTaskId, selectedWorkspaceId],
+    [currentUser, currentViewId, selectedTaskId, selectedWorkspaceId],
   );
 
   useEffect(() => {
@@ -357,6 +462,13 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(languageStorageKey, language);
   }, [language]);
+
+  useEffect(() => {
+    void pingBackend(false);
+    const intervalId = window.setInterval(() => void pingBackend(true), 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [pingBackend]);
 
   useEffect(() => {
     if (mode !== 'tasks' || !selectedTaskId) {
@@ -434,6 +546,7 @@ function App() {
 
   const handleAuthenticated = async (userState: CurrentUserResponse) => {
     setCurrentUser(userState);
+    setTemporarySessionIsActive(isTemporarySession());
     const workspaceId = userState.workspaces[0]?.id ?? null;
     setSelectedWorkspaceId(workspaceId);
     setSelectedTaskId(null);
@@ -446,6 +559,7 @@ function App() {
     try {
       const loggedIn = await loginUser(requestBody);
       await handleAuthenticated(loggedIn);
+      showToast(t('authLoggedIn'), 'info');
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -462,6 +576,7 @@ function App() {
         deviceName: 'web browser',
       });
       await handleAuthenticated(loggedIn);
+      showToast(t('authRegistered'), 'info');
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -473,6 +588,20 @@ function App() {
     try {
       const loggedIn = await developmentLogin();
       await handleAuthenticated(loggedIn);
+      showToast(t('authLoggedIn'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      const loggedIn = await guestLogin();
+      await handleAuthenticated(loggedIn);
+      setTemporarySessionIsActive(true);
+      showToast(t('guestModeToast'), 'warning');
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -484,6 +613,7 @@ function App() {
     try {
       await logoutUser();
       setCurrentUser(null);
+      setTemporarySessionIsActive(false);
       setCurrentWorkspaceId(null);
       setSelectedWorkspaceId(null);
       setWorkspace(null);
@@ -862,13 +992,15 @@ function App() {
         onCreateWorkspace={handleCreateWorkspace}
         onOpenSettings={() => setSettingsIsOpen(true)}
         onOpenTemplates={handleOpenTemplates}
-        onRefresh={() => void loadWorkspace(currentViewId)}
+        onRefresh={() => void loadWorkspace(currentViewId, selectedWorkspaceId, { force: true })}
         onSelectWorkspace={handleSelectWorkspace}
         onSelectView={handleSelectSavedView}
         onToggleSidebar={() => setSidebarIsCollapsed((isCollapsed) => !isCollapsed)}
+        connectionStatus={connectionStatus}
         savedViews={savedViews}
         sidebarIsCollapsed={sidebarIsCollapsed}
         templateCount={templates.length}
+        temporarySessionIsActive={temporarySessionIsActive}
         t={t}
         workspace={workspace}
         workspaces={workspaces}
@@ -893,8 +1025,10 @@ function App() {
             currentUser={currentUser}
             isLoading={isLoadingAuth}
             onDevelopmentLogin={handleDevelopmentLogin}
+            onGuestLogin={handleGuestLogin}
             onLogin={handleLogin}
             onRegister={handleRegister}
+            temporarySessionIsActive={temporarySessionIsActive}
             t={t}
             variant="gate"
           />
@@ -975,6 +1109,7 @@ function App() {
           onChangeLanguage={setLanguage}
           onCreateArchiveResolution={handleCreateArchiveResolution}
           onDevelopmentLogin={handleDevelopmentLogin}
+          onGuestLogin={handleGuestLogin}
           onDeleteArchiveResolution={handleDeleteArchiveResolution}
           onLogin={handleLogin}
           onLogout={handleLogout}
@@ -982,14 +1117,17 @@ function App() {
           onSaveStatusOptions={handleSaveStatusOptions}
           onUpdateArchiveResolution={handleUpdateArchiveResolution}
           onClose={() => setSettingsIsOpen(false)}
+          temporarySessionIsActive={temporarySessionIsActive}
           t={t}
         />
       ) : null}
+      <ToastStack toasts={toasts} />
     </main>
   );
 }
 
 function Sidebar({
+  connectionStatus,
   counts,
   currentViewId,
   language,
@@ -1004,10 +1142,12 @@ function Sidebar({
   savedViews,
   sidebarIsCollapsed,
   t,
+  temporarySessionIsActive,
   templateCount,
   workspace,
   workspaces,
 }: {
+  connectionStatus: ConnectionStatus;
   counts: Record<string, number>;
   currentViewId: string | null;
   language: Language;
@@ -1022,6 +1162,7 @@ function Sidebar({
   savedViews: SavedViewResponse[];
   sidebarIsCollapsed: boolean;
   t: Translate;
+  temporarySessionIsActive: boolean;
   templateCount: number;
   workspace: WorkspaceResponse | null;
   workspaces: WorkspaceResponse[];
@@ -1171,6 +1312,26 @@ function Sidebar({
           <Icon name="refresh" />
           <span className="nav-label">{t('refresh')}</span>
         </button>
+        {temporarySessionIsActive ? (
+          <button className="nav-item guest-warning-link" onClick={onOpenSettings} type="button">
+            <Icon name="waiting" />
+            <span className="nav-label">{t('guestModeShort')}</span>
+          </button>
+        ) : null}
+        <div className="sidebar-footer">
+          <span
+            className="connection-indicator"
+            data-state={connectionStatus}
+            title={connectionStatus === 'online' ? t('backendOnline') : t('backendOffline')}
+          >
+            <span />
+            {connectionStatus === 'online' ? t('online') : t('offline')}
+          </span>
+          <a href="https://github.com/bheldbo/DumpTether" rel="noreferrer" target="_blank">
+            GitHub
+          </a>
+          <span>© 2026</span>
+        </div>
       </div>
     </aside>
   );
@@ -1303,6 +1464,14 @@ function TaskBoard({
     onCloseTaskItem();
   }, [onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
 
+  const openCreateTask = useCallback(() => {
+    if (focusedTaskItem || !canCreateTask) {
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent('dumptether:new-task'));
+  }, [canCreateTask, focusedTaskItem]);
+
   useEffect(() => {
     if (!selectedTaskId || archiveDialogIsOpen) {
       return undefined;
@@ -1320,6 +1489,30 @@ function TaskBoard({
 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [archiveDialogIsOpen, closeFocusedTask, selectedTaskId]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (isTextEditingTarget(event.target)) {
+        return;
+      }
+
+      if (event.ctrlKey && event.key.toLowerCase() === 'n') {
+        event.preventDefault();
+        openCreateTask();
+      }
+
+      if (event.ctrlKey && event.key.toLowerCase() === 'x') {
+        event.preventDefault();
+        if (visibleTaskItems.length > 0) {
+          setEditModeIsEnabled((isEnabled) => !isEnabled);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [openCreateTask, visibleTaskItems.length]);
 
   return (
     <section
@@ -1507,6 +1700,7 @@ function TaskBoard({
       {!isLoading && canCreateTask && !focusedTaskItem ? (
         <FloatingBoardActions
           editModeIsEnabled={editModeIsEnabled}
+          taskCount={visibleTaskItems.length}
           colorOptions={colorOptions}
           onBatchUpdate={async (requestBody) => {
             await onUpdateTaskItems(selectedTaskIds, requestBody);
@@ -1885,6 +2079,7 @@ function FloatingBoardActions({
   selectedProjectId,
   selectedTaskCount,
   statusOptions,
+  taskCount,
   templates,
   t,
 }: {
@@ -1898,6 +2093,7 @@ function FloatingBoardActions({
   selectedProjectId: string;
   selectedTaskCount: number;
   statusOptions: string[];
+  taskCount: number;
   templates: TaskTemplateDetailResponse[];
   t: Translate;
 }) {
@@ -1916,6 +2112,17 @@ function FloatingBoardActions({
         : templates[0]?.id ?? '',
     );
   }, [templates]);
+
+  useEffect(() => {
+    const openCreate = () => {
+      setIsOpen(true);
+      setCreateIsOpen(true);
+    };
+
+    window.addEventListener('dumptether:new-task', openCreate);
+
+    return () => window.removeEventListener('dumptether:new-task', openCreate);
+  }, []);
 
   useEffect(() => {
     if (createIsOpen) {
@@ -1985,6 +2192,7 @@ function FloatingBoardActions({
           <button onClick={() => setCreateIsOpen(true)} type="button">
             <Icon name="plus" />
             <span>{t('addTask')}</span>
+            <kbd>Ctrl+N</kbd>
           </button>
           {editModeIsEnabled ? (
             <>
@@ -2080,22 +2288,31 @@ function FloatingBoardActions({
               </button>
             </>
           ) : (
-            <button
-              onClick={() => {
-                onToggleEditMode();
-                setIsOpen(false);
-              }}
-              type="button"
-            >
-              <Icon name="check" />
-              <span>{t('selectTasksForAction')}</span>
-            </button>
+            taskCount > 0 ? (
+              <button
+                onClick={() => {
+                  onToggleEditMode();
+                  setIsOpen(false);
+                }}
+                type="button"
+              >
+                <Icon name="check" />
+                <span>{t('selectTasksForAction')}</span>
+                <kbd>Ctrl+X</kbd>
+              </button>
+            ) : null
           )}
         </div>
       ) : null}
 
       {isOpen && createIsOpen ? (
-        <form className="quick-create-popover" onSubmit={handleSubmit}>
+        <form className="quick-create-popover task-create-modal" onSubmit={handleSubmit}>
+          <div className="task-create-modal-heading">
+            <p className="detail-kicker">{t('newTask')}</p>
+            <h2>{t('addTask')}</h2>
+          </div>
+          <label>
+            {t('taskTitleRequired')}
           <input
             aria-label="New task title"
             ref={inputRef}
@@ -2109,8 +2326,11 @@ function FloatingBoardActions({
             type="text"
             value={title}
           />
+          </label>
 
           {templates.length > 0 ? (
+            <label>
+              {t('templates')}
             <select
               aria-label={t('templates')}
               onChange={(event) => setSelectedTemplateId(event.target.value)}
@@ -2122,11 +2342,13 @@ function FloatingBoardActions({
                 </option>
               ))}
             </select>
+            </label>
           ) : null}
 
+          <div className="dialog-actions">
           <button disabled={!title.trim() || isSubmitting} type="submit">
             <Icon name="plus" />
-            <span className="sr-only">{t('addTask')}</span>
+            <span>{t('addTask')}</span>
           </button>
           <button
             className="ghost-button"
@@ -2138,8 +2360,9 @@ function FloatingBoardActions({
             type="button"
           >
             <Icon name="close" />
-            <span className="sr-only">Close</span>
+            <span>{t('cancel')}</span>
           </button>
+          </div>
         </form>
       ) : null}
     </div>
@@ -3841,9 +4064,11 @@ function AuthPanel({
   currentUser,
   isLoading,
   onDevelopmentLogin,
+  onGuestLogin,
   onLogin,
   onLogout,
   onRegister,
+  temporarySessionIsActive,
   t,
   variant,
 }: {
@@ -3851,9 +4076,11 @@ function AuthPanel({
   currentUser: CurrentUserResponse | null;
   isLoading: boolean;
   onDevelopmentLogin: () => Promise<void>;
+  onGuestLogin: () => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout?: () => Promise<void>;
   onRegister: (requestBody: RegisterUserRequest) => Promise<void>;
+  temporarySessionIsActive: boolean;
   t: Translate;
   variant: 'gate' | 'settings';
 }) {
@@ -3912,6 +4139,21 @@ function AuthPanel({
     }
   };
 
+  const submitGuestLogin = async () => {
+    setFormError(null);
+    setStatusMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      await onGuestLogin();
+      setStatusMessage(t('guestModeToast'));
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const wrapperClassName = variant === 'gate'
     ? 'auth-gate'
     : 'settings-section auth-panel';
@@ -3925,6 +4167,9 @@ function AuthPanel({
           <h2>{currentUser.user.displayName || currentUser.user.email}</h2>
           <p>{t('signedInAs')}: {currentUser.user.email}</p>
         </div>
+        {temporarySessionIsActive ? (
+          <p className="guest-warning">{t('guestModePersistent')}</p>
+        ) : null}
         <div className="auth-workspace-list">
           {currentUser.workspaces.map((workspaceItem) => (
             <span className="auth-workspace-chip" key={workspaceItem.id}>
@@ -4053,9 +4298,39 @@ function AuthPanel({
         </div>
       ) : null}
 
+      {authOptions.guestSessionsEnabled ? (
+        <div className="dev-login-panel">
+          <button
+            className="ghost-button"
+            disabled={isSubmitting || isLoading}
+            onClick={() => void submitGuestLogin()}
+            type="button"
+          >
+            {t('continueWithoutAccount')}
+          </button>
+          <p>{t('continueWithoutAccountHelp')}</p>
+        </div>
+      ) : null}
+
       {statusMessage ? <p className="form-success">{statusMessage}</p> : null}
       {formError ? <p className="form-error">{formError}</p> : null}
     </section>
+  );
+}
+
+function ToastStack({ toasts }: { toasts: ToastMessage[] }) {
+  if (toasts.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="toast-stack" role="status" aria-live="polite">
+      {toasts.map((toast) => (
+        <div className="toast" data-tone={toast.tone} key={toast.id}>
+          {toast.message}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -4070,12 +4345,14 @@ function SettingsPanel({
   onClose,
   onCreateArchiveResolution,
   onDevelopmentLogin,
+  onGuestLogin,
   onDeleteArchiveResolution,
   onLogin,
   onLogout,
   onRegister,
   onSaveStatusOptions,
   onUpdateArchiveResolution,
+  temporarySessionIsActive,
   t,
 }: {
   archiveResolutions: ArchiveResolutionResponse[];
@@ -4088,6 +4365,7 @@ function SettingsPanel({
   onClose: () => void;
   onCreateArchiveResolution: (requestBody: CreateArchiveResolutionRequest) => Promise<void>;
   onDevelopmentLogin: () => Promise<void>;
+  onGuestLogin: () => Promise<void>;
   onDeleteArchiveResolution: (id: string) => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout: () => Promise<void>;
@@ -4097,6 +4375,7 @@ function SettingsPanel({
     id: string,
     requestBody: UpdateArchiveResolutionRequest,
   ) => Promise<void>;
+  temporarySessionIsActive: boolean;
   t: Translate;
 }) {
   const [statusDraft, setStatusDraft] = useState('');
@@ -4166,9 +4445,11 @@ function SettingsPanel({
           currentUser={currentUser}
           isLoading={isLoadingAuth}
           onDevelopmentLogin={onDevelopmentLogin}
+          onGuestLogin={onGuestLogin}
           onLogin={onLogin}
           onLogout={onLogout}
           onRegister={onRegister}
+          temporarySessionIsActive={temporarySessionIsActive}
           t={t}
           variant="settings"
         />
@@ -4478,6 +4759,37 @@ function readStoredStringList(key: string, fallback: string[]) {
   } catch {
     return fallback;
   }
+}
+
+function buildWorkspaceCacheKey(workspaceId: string, viewId: string, userId: string) {
+  return `dumptether.cache.${userId}.${workspaceId}.${viewId}`;
+}
+
+function readCachedWorkspaceSnapshot(key: string): CachedWorkspaceSnapshot | null {
+  const storedValue = window.sessionStorage.getItem(key);
+
+  if (!storedValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(storedValue) as CachedWorkspaceSnapshot & {
+      cachedAt?: string;
+    };
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedWorkspaceSnapshot(key: string, snapshot: CachedWorkspaceSnapshot) {
+  window.sessionStorage.setItem(
+    key,
+    JSON.stringify({
+      ...snapshot,
+      cachedAt: new Date().toISOString(),
+    }),
+  );
 }
 
 function updateUrl(mode: WorkspaceMode, viewId: string | null) {

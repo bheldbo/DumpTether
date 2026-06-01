@@ -129,6 +129,7 @@ export interface CurrentUserResponse {
 
 export interface AuthClientOptionsResponse {
   requiresAuthentication: boolean;
+  guestSessionsEnabled: boolean;
   developmentLoginEnabled: boolean;
 }
 

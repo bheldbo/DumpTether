@@ -189,6 +189,23 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task PostGuestLogin_WhenEnabled_CreatesTemporaryUserSession()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/guest", content: null);
+
+        response.EnsureSuccessStatusCode();
+        var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>();
+
+        Assert.NotNull(login);
+        Assert.EndsWith("@guest.dumptether.local", login!.User.Email);
+        Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
+        Assert.Contains(login.Workspaces, workspace => workspace.Name == "All Tasks");
+    }
+
+    [Fact]
     public async Task AuthenticatedTaskQueries_AreScopedToUserWorkspaceMembership()
     {
         using var factory = new DumpTetherApiFactory();

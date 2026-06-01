@@ -4,6 +4,8 @@ public sealed class AuthOptions
 {
     public bool RequireAuthentication { get; set; } = true;
 
+    public bool AllowGuestSessions { get; set; } = true;
+
     public bool EnableDevelopmentLogin { get; set; }
 
     public string DevelopmentEmail { get; set; } = "dev@dumptether.local";

@@ -37,8 +37,10 @@ import type {
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
 const apiBaseUrl = configuredBaseUrl ?? '';
 const sessionTokenStorageKey = 'dumptether.sessionToken';
+const guestSessionTokenStorageKey = 'dumptether.guestSessionToken';
 let currentWorkspaceId: string | null = null;
 let currentSessionToken: string | null = readStoredSessionToken();
+let sessionIsTemporary = readStoredTemporarySessionFlag();
 
 export function setCurrentWorkspaceId(workspaceId: string | null) {
   currentWorkspaceId = workspaceId;
@@ -48,13 +50,23 @@ export function getStoredSessionToken() {
   return currentSessionToken;
 }
 
-export function setSessionToken(sessionToken: string | null) {
-  currentSessionToken = sessionToken;
+export function isTemporarySession() {
+  return sessionIsTemporary;
+}
 
-  if (sessionToken) {
+export function setSessionToken(sessionToken: string | null, options: { temporary?: boolean } = {}) {
+  currentSessionToken = sessionToken;
+  sessionIsTemporary = Boolean(sessionToken && options.temporary);
+
+  if (sessionToken && options.temporary) {
+    window.sessionStorage.setItem(guestSessionTokenStorageKey, sessionToken);
+    window.localStorage.removeItem(sessionTokenStorageKey);
+  } else if (sessionToken) {
     window.localStorage.setItem(sessionTokenStorageKey, sessionToken);
+    window.sessionStorage.removeItem(guestSessionTokenStorageKey);
   } else {
     window.localStorage.removeItem(sessionTokenStorageKey);
+    window.sessionStorage.removeItem(guestSessionTokenStorageKey);
   }
 }
 
@@ -102,7 +114,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function readStoredSessionToken() {
-  return window.localStorage.getItem(sessionTokenStorageKey);
+  return window.localStorage.getItem(sessionTokenStorageKey) ??
+    window.sessionStorage.getItem(guestSessionTokenStorageKey);
+}
+
+function readStoredTemporarySessionFlag() {
+  return !window.localStorage.getItem(sessionTokenStorageKey) &&
+    Boolean(window.sessionStorage.getItem(guestSessionTokenStorageKey));
 }
 
 export function registerUser(
@@ -155,6 +173,19 @@ export async function developmentLogin(): Promise<LoginUserResponse> {
 
   setSessionToken(response.sessionToken);
   return response;
+}
+
+export async function guestLogin(): Promise<LoginUserResponse> {
+  const response = await request<LoginUserResponse>('/api/auth/guest', {
+    method: 'POST',
+  });
+
+  setSessionToken(response.sessionToken, { temporary: true });
+  return response;
+}
+
+export function checkHealth(): Promise<{ status: string; service: string }> {
+  return request<{ status: string; service: string }>('/health');
 }
 
 export function listTaskItems(

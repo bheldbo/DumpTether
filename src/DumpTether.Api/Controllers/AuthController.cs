@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Auth;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 
 namespace DumpTether.Api.Controllers;
@@ -29,9 +30,11 @@ public sealed class AuthController : ControllerBase
         var options = _authOptions.Value;
         return Ok(new AuthClientOptionsResponse(
             options.RequireAuthentication,
+            options.AllowGuestSessions,
             _environment.IsDevelopment() && options.EnableDevelopmentLogin));
     }
 
+    [EnableRateLimiting("auth")]
     [HttpPost("register")]
     public async Task<ActionResult<RegisterUserResponse>> Register(
         RegisterUserRequest request,
@@ -52,6 +55,7 @@ public sealed class AuthController : ControllerBase
         }
     }
 
+    [EnableRateLimiting("auth")]
     [HttpPost("login")]
     public async Task<ActionResult<LoginUserResponse>> Login(
         LoginUserRequest request,
@@ -80,6 +84,7 @@ public sealed class AuthController : ControllerBase
         }
     }
 
+    [EnableRateLimiting("auth")]
     [HttpPost("development-login")]
     public async Task<ActionResult<LoginUserResponse>> DevelopmentLogin(CancellationToken cancellationToken)
     {
@@ -91,6 +96,28 @@ public sealed class AuthController : ControllerBase
         try
         {
             var response = await _authService.DevelopmentLoginAsync(
+                new AuthRequestMetadata(
+                    Request.Headers.UserAgent.FirstOrDefault(),
+                    HttpContext.Connection.RemoteIpAddress?.ToString()),
+                cancellationToken);
+
+            AppendSessionCookie(response);
+
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return NotFound();
+        }
+    }
+
+    [EnableRateLimiting("auth")]
+    [HttpPost("guest")]
+    public async Task<ActionResult<LoginUserResponse>> GuestLogin(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _authService.GuestLoginAsync(
                 new AuthRequestMetadata(
                     Request.Headers.UserAgent.FirstOrDefault(),
                     HttpContext.Connection.RemoteIpAddress?.ToString()),

@@ -21,7 +21,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       Database__ApplyMigrationsOnStartup: ${DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP:-false}
       Auth__RequireAuthentication: ${DUMPTETHER_REQUIRE_AUTHENTICATION:-true}
+      Auth__AllowGuestSessions: ${DUMPTETHER_ALLOW_GUEST_SESSIONS:-true}
       Auth__EnableDevelopmentLogin: ${DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN:-false}
+      Usage__MaxActiveTasksPerWorkspace: ${DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE:-1000}
+      Usage__MaxTotalTasksPerWorkspace: ${DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE:-5000}
       ConnectionStrings__DumpTether: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
     expose:
       - "8080"

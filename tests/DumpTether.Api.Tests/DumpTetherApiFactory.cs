@@ -20,13 +20,19 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
     private readonly string? _previousConnectionString;
     private readonly bool _requireAuthentication;
     private readonly bool _enableDevelopmentLogin;
+    private readonly int _maxActiveTasksPerWorkspace;
+    private readonly int _maxTotalTasksPerWorkspace;
 
     public DumpTetherApiFactory(
         bool requireAuthentication = false,
-        bool enableDevelopmentLogin = false)
+        bool enableDevelopmentLogin = false,
+        int maxActiveTasksPerWorkspace = 1000,
+        int maxTotalTasksPerWorkspace = 5000)
     {
         _requireAuthentication = requireAuthentication;
         _enableDevelopmentLogin = enableDevelopmentLogin;
+        _maxActiveTasksPerWorkspace = maxActiveTasksPerWorkspace;
+        _maxTotalTasksPerWorkspace = maxTotalTasksPerWorkspace;
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
         Environment.SetEnvironmentVariable(ConnectionStringKey, TestConnectionString);
     }
@@ -45,7 +51,9 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
                 ["ConnectionStrings:DumpTether"] =
                     "Host=localhost;Database=dumptether_tests;Username=dumptether;Password=dumptether",
                 ["Auth:RequireAuthentication"] = _requireAuthentication.ToString(),
-                ["Auth:EnableDevelopmentLogin"] = _enableDevelopmentLogin.ToString()
+                ["Auth:EnableDevelopmentLogin"] = _enableDevelopmentLogin.ToString(),
+                ["Usage:MaxActiveTasksPerWorkspace"] = _maxActiveTasksPerWorkspace.ToString(),
+                ["Usage:MaxTotalTasksPerWorkspace"] = _maxTotalTasksPerWorkspace.ToString()
             });
         });
 
