@@ -11,5 +11,7 @@ public enum TaskTimelineEntryKind
     FieldValueChanged = 7,
     Reopened = 8,
     CategoryChanged = 9,
-    ColorChanged = 10
+    ColorChanged = 10,
+    Shared = 11,
+    ShareRevoked = 12
 }

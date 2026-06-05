@@ -16,6 +16,7 @@ export interface TaskItemSummaryResponse {
   archivedAt: string | null;
   archiveResolutionId: string | null;
   noteCount: number;
+  shares: TaskItemShareResponse[];
   latestTimelineEntry: TaskTimelineEntryResponse | null;
 }
 
@@ -79,9 +80,14 @@ export interface WorkspaceResponse {
   name: string;
   color: string | null;
   createdAt: string;
+  accessKind?: WorkspaceAccessKind;
+  sharedTaskCount?: number;
+  memberCount?: number;
+  pendingInvitationCount?: number;
 }
 
 export type WorkspaceMembershipRole = 'Owner' | 'Member' | 1 | 2;
+export type WorkspaceAccessKind = 'Membership' | 'TaskShare';
 
 export interface AuthUserResponse {
   id: string;
@@ -97,6 +103,8 @@ export interface AuthWorkspaceResponse {
   name: string;
   color: string | null;
   role: WorkspaceMembershipRole;
+  accessKind?: WorkspaceAccessKind;
+  sharedTaskCount?: number;
 }
 
 export interface RegisterUserRequest {
@@ -145,6 +153,48 @@ export interface UpdateWorkspaceRequest {
 export interface CreateWorkspaceRequest {
   name: string;
   color?: string | null;
+}
+
+export interface WorkspaceMemberResponse {
+  userId: string;
+  email: string;
+  displayName: string;
+  role: WorkspaceMembershipRole;
+  createdAt: string;
+}
+
+export interface WorkspaceInvitationResponse {
+  id: string;
+  workspaceId: string;
+  email: string;
+  role: WorkspaceMembershipRole;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+  token: string | null;
+}
+
+export interface CreateWorkspaceInvitationRequest {
+  email: string;
+  role?: WorkspaceMembershipRole;
+}
+
+export interface AcceptWorkspaceInvitationRequest {
+  token?: string | null;
+  invitationId?: string | null;
+}
+
+export interface WorkspaceInvitationInboxResponse {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspaceColor: string | null;
+  invitedByEmail: string;
+  invitedByDisplayName: string;
+  role: WorkspaceMembershipRole;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface UpdateProjectRequest {
@@ -196,6 +246,67 @@ export interface SavedViewResponse {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TaskItemShareRole = 'Viewer' | 'Editor' | 1 | 2;
+
+export interface TaskItemShareResponse {
+  id: string;
+  email: string;
+  sharedWithUserId: string | null;
+  sharedByUserId: string;
+  role: TaskItemShareRole;
+  createdAt: string;
+  expiresAt: string | null;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface TaskShareInboxResponse {
+  shareId: string;
+  taskItemId: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspaceColor: string | null;
+  taskTitle: string;
+  sharedByEmail: string;
+  sharedByDisplayName: string;
+  role: TaskItemShareRole;
+  createdAt: string;
+  expiresAt: string | null;
+  acceptedAt: string | null;
+}
+
+export interface TaskShareLinkResponse {
+  shares: TaskItemShareResponse[];
+  token: string;
+  expiresAt: string;
+}
+
+export interface CreateTaskShareLinkRequest {
+  email: string;
+  taskItemIds?: string[] | null;
+  role?: TaskItemShareRole;
+}
+
+export interface AcceptShareLinkRequest {
+  token: string;
+}
+
+export interface ShareLinkAcceptResponse {
+  kind: 'Workspace' | 'Task' | string;
+  workspaceId: string;
+  taskItemIds: string[];
+}
+
+export interface CopyTaskItemsRequest {
+  taskItemIds: string[];
+  destinationWorkspaceId: string;
+  includeTimeline?: boolean;
+}
+
+export interface CopyTaskItemsResponse {
+  tasks: TaskItemDetailResponse[];
 }
 
 export interface CreateSavedViewRequest {
@@ -305,6 +416,11 @@ export interface ReopenTaskItemRequest {
   note?: string | null;
 }
 
+export interface CreateTaskShareRequest {
+  email: string;
+  role?: TaskItemShareRole;
+}
+
 export interface TaskItemListQuery {
   viewId?: string | null;
   scope?: TaskItemListScope;
@@ -317,6 +433,8 @@ export interface TaskItemListQuery {
   notViewedSinceDays?: number | null;
   notTouchedSinceDays?: number | null;
   text?: string | null;
+  sharedWith?: string | null;
+  sharedWithMe?: boolean | null;
   sort?: SavedViewSortField | null;
   direction?: SavedViewSortDirection | null;
 }

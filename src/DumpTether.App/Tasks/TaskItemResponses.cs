@@ -1,4 +1,5 @@
 using DumpTether.App.Templates;
+using DumpTether.Domain;
 
 namespace DumpTether.App.Tasks;
 
@@ -18,6 +19,7 @@ public sealed record TaskItemSummaryResponse(
     DateTimeOffset? ArchivedAt,
     Guid? ArchiveResolutionId,
     int NoteCount,
+    IReadOnlyList<TaskItemShareResponse> Shares,
     TaskTimelineEntryResponse? LatestTimelineEntry);
 
 public sealed record TaskItemDetailResponse(
@@ -36,9 +38,54 @@ public sealed record TaskItemDetailResponse(
     DateTimeOffset? ArchivedAt,
     Guid? ArchiveResolutionId,
     int NoteCount,
+    IReadOnlyList<TaskItemShareResponse> Shares,
     TaskTemplateDetailResponse? Template,
     IReadOnlyList<FieldValueResponse> FieldValues,
     IReadOnlyList<TaskTimelineEntryResponse> TimelineEntries);
+
+public sealed record TaskItemShareResponse(
+    Guid Id,
+    string Email,
+    Guid? SharedWithUserId,
+    Guid SharedByUserId,
+    TaskItemShareRole Role,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ExpiresAt,
+    DateTimeOffset? AcceptedAt,
+    DateTimeOffset? RevokedAt);
+
+public sealed record TaskShareInboxResponse(
+    Guid ShareId,
+    Guid TaskItemId,
+    Guid WorkspaceId,
+    string WorkspaceName,
+    string? WorkspaceColor,
+    string TaskTitle,
+    string SharedByEmail,
+    string SharedByDisplayName,
+    TaskItemShareRole Role,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ExpiresAt,
+    DateTimeOffset? AcceptedAt);
+
+public sealed record TaskShareLinkResponse(
+    IReadOnlyList<TaskItemShareResponse> Shares,
+    string Token,
+    DateTimeOffset ExpiresAt);
+
+public sealed record ShareLinkAcceptResponse(
+    string Kind,
+    Guid WorkspaceId,
+    IReadOnlyList<Guid> TaskItemIds);
+
+public sealed record CopyTaskItemsResponse(
+    IReadOnlyList<TaskItemDetailResponse> Tasks);
+
+public sealed record TaskShareInboxItem(
+    TaskItemShare Share,
+    TaskItem TaskItem,
+    Workspace Workspace,
+    AppUser SharedByUser);
 
 public sealed record FieldValueResponse(
     Guid Id,

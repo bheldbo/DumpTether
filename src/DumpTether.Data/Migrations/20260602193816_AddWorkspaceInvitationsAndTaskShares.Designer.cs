@@ -3,6 +3,7 @@ using System;
 using DumpTether.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DumpTether.Data.Migrations
 {
     [DbContext(typeof(DumpTetherDbContext))]
-    partial class DumpTetherDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260602193816_AddWorkspaceInvitationsAndTaskShares")]
+    partial class AddWorkspaceInvitationsAndTaskShares
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -495,10 +498,6 @@ namespace DumpTether.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<DateTimeOffset?>("AcceptedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("accepted_at");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -508,10 +507,6 @@ namespace DumpTether.Data.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)")
                         .HasColumnName("email");
-
-                    b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
@@ -541,11 +536,6 @@ namespace DumpTether.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("task_item_id");
 
-                    b.Property<string>("TokenHash")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
-                        .HasColumnName("token_hash");
-
                     b.Property<Guid>("WorkspaceId")
                         .HasColumnType("uuid")
                         .HasColumnName("workspace_id");
@@ -555,8 +545,6 @@ namespace DumpTether.Data.Migrations
                     b.HasIndex("SharedByUserId");
 
                     b.HasIndex("SharedWithUserId");
-
-                    b.HasIndex("TokenHash");
 
                     b.HasIndex("TaskItemId", "NormalizedEmail", "RevokedAt");
 

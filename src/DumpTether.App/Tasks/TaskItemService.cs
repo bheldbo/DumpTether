@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using DumpTether.App.Auth;
 using DumpTether.App.Projects;
 using DumpTether.App.Templates;
 using DumpTether.App.Usage;
@@ -11,25 +12,36 @@ namespace DumpTether.App.Tasks;
 
 internal sealed class TaskItemService : ITaskItemService
 {
+    private static readonly TimeSpan ShareLinkLifetime = TimeSpan.FromDays(1);
+
     private readonly IClock _clock;
+    private readonly IAuthRepository _authRepository;
+    private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
     private readonly IProjectRepository _projectRepository;
     private readonly ISavedViewRepository _savedViewRepository;
+    private readonly ISessionTokenService _sessionTokenService;
     private readonly ITaskItemRepository _taskItemRepository;
     private readonly IOptions<UsageOptions> _usageOptions;
 
     public TaskItemService(
         IClock clock,
+        IAuthRepository authRepository,
+        ICurrentUserSessionProvider currentUserSessionProvider,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
         IProjectRepository projectRepository,
         ISavedViewRepository savedViewRepository,
+        ISessionTokenService sessionTokenService,
         ITaskItemRepository taskItemRepository,
         IOptions<UsageOptions> usageOptions)
     {
         _clock = clock;
+        _authRepository = authRepository;
+        _currentUserSessionProvider = currentUserSessionProvider;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _projectRepository = projectRepository;
         _savedViewRepository = savedViewRepository;
+        _sessionTokenService = sessionTokenService;
         _taskItemRepository = taskItemRepository;
         _usageOptions = usageOptions;
     }
@@ -41,6 +53,11 @@ internal sealed class TaskItemService : ITaskItemService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        if (context.IsSharedOnly)
+        {
+            throw new ValidationException("Task-share access cannot create tasks in this board.");
+        }
+
         await EnsureTaskQuotaAsync(context.WorkspaceId, cancellationToken);
         var now = _clock.UtcNow;
         var taskTemplate = await ResolveTaskTemplateForCreateAsync(
@@ -114,7 +131,11 @@ internal sealed class TaskItemService : ITaskItemService
         CancellationToken cancellationToken)
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
-        var query = await BuildQueryAsync(context.WorkspaceId, request, cancellationToken);
+        var query = await BuildQueryAsync(
+            context.WorkspaceId,
+            context.IsSharedOnly,
+            request,
+            cancellationToken);
         var taskItems = await _taskItemRepository.ListAsync(
             query,
             cancellationToken);
@@ -127,6 +148,7 @@ internal sealed class TaskItemService : ITaskItemService
         CancellationToken cancellationToken)
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
         var taskItem = await _taskItemRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -135,6 +157,11 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
 
         if (taskItem is null)
+        {
+            return null;
+        }
+
+        if (!CanReadTask(context, currentSession, taskItem))
         {
             return null;
         }
@@ -158,6 +185,7 @@ internal sealed class TaskItemService : ITaskItemService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
         var taskItem = await _taskItemRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -166,6 +194,11 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
 
         if (taskItem is null)
+        {
+            return null;
+        }
+
+        if (!CanEditTask(context, currentSession, taskItem))
         {
             return null;
         }
@@ -227,6 +260,124 @@ internal sealed class TaskItemService : ITaskItemService
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
         return MapDetail(taskItem, taskTemplate);
+    }
+
+    public async Task<CopyTaskItemsResponse> CopyAsync(
+        CopyTaskItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var requestedTaskIds = request.TaskItemIds
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (requestedTaskIds.Length == 0)
+        {
+            throw new ValidationException("At least one task is required.");
+        }
+
+        if (request.DestinationWorkspaceId == Guid.Empty)
+        {
+            throw new ValidationException("Destination workspace is required.");
+        }
+
+        var sourceContext = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        var destinationWorkspace = (await _authRepository.ListWorkspacesForUserAsync(
+                currentSession.UserId,
+                cancellationToken))
+            .SingleOrDefault(workspace =>
+                workspace.Workspace.Id == request.DestinationWorkspaceId);
+
+        if (destinationWorkspace is null ||
+            destinationWorkspace.AccessKind != WorkspaceAccessKinds.Membership)
+        {
+            throw new ValidationException("Destination board was not found.");
+        }
+
+        var sourceTasks = await _taskItemRepository.ListByIdsAsync(
+            sourceContext.WorkspaceId,
+            requestedTaskIds,
+            trackChanges: false,
+            cancellationToken);
+
+        if (sourceTasks.Count != requestedTaskIds.Length)
+        {
+            throw new ValidationException("One or more selected tasks were not found.");
+        }
+
+        var inaccessibleTask = sourceTasks.FirstOrDefault(taskItem =>
+            !CanReadTask(sourceContext, currentSession, taskItem));
+
+        if (inaccessibleTask is not null)
+        {
+            throw new ValidationException("One or more selected tasks were not found.");
+        }
+
+        var now = _clock.UtcNow;
+        var copiedTasks = new List<TaskItemDetailResponse>();
+
+        foreach (var sourceTask in sourceTasks.OrderBy(task =>
+                     Array.IndexOf(requestedTaskIds, task.Id)))
+        {
+            await EnsureTaskQuotaAsync(request.DestinationWorkspaceId, cancellationToken);
+
+            var copyWithinSameWorkspace = sourceTask.WorkspaceId == request.DestinationWorkspaceId;
+            var sourceTemplate = copyWithinSameWorkspace
+                ? await ResolveTaskTemplateForDetailAsync(
+                    sourceTask,
+                    includeDeleted: false,
+                    cancellationToken)
+                : null;
+            var destinationProjectId = copyWithinSameWorkspace ? sourceTask.ProjectId : null;
+            var copiedTask = TaskItem.Create(
+                request.DestinationWorkspaceId,
+                destinationProjectId,
+                sourceTask.Title,
+                now,
+                sourceTemplate?.Id);
+
+            if (!string.IsNullOrWhiteSpace(sourceTask.Category))
+            {
+                copiedTask.ChangeCategory(sourceTask.Category, now);
+            }
+
+            if (!string.IsNullOrWhiteSpace(sourceTask.Status))
+            {
+                copiedTask.ChangeStatus(sourceTask.Status, now);
+            }
+
+            if (!string.IsNullOrWhiteSpace(sourceTask.Color))
+            {
+                copiedTask.ChangeColor(sourceTask.Color, now);
+            }
+
+            if (sourceTask.FollowUpAt.HasValue)
+            {
+                copiedTask.SetFollowUp(sourceTask.FollowUpAt.Value, now);
+            }
+
+            if (sourceTemplate is not null)
+            {
+                CopyFieldValues(sourceTask, copiedTask, sourceTemplate, now);
+            }
+
+            copiedTask.AddNote($"Copied from \"{sourceTask.Title}\".", now);
+
+            if (request.IncludeTimeline)
+            {
+                CopyTimelineNotes(sourceTask, copiedTask, now);
+            }
+
+            await _taskItemRepository.AddAsync(copiedTask, cancellationToken);
+            copiedTasks.Add(MapDetail(copiedTask, sourceTemplate));
+        }
+
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        return new CopyTaskItemsResponse(copiedTasks);
     }
 
     public async Task<TaskItemDetailResponse?> UpdateTimelineEntryAsync(
@@ -317,6 +468,7 @@ internal sealed class TaskItemService : ITaskItemService
         }
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
         var taskItem = await _taskItemRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -325,6 +477,11 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
 
         if (taskItem is null)
+        {
+            return null;
+        }
+
+        if (!CanEditTask(context, currentSession, taskItem))
         {
             return null;
         }
@@ -375,11 +532,315 @@ internal sealed class TaskItemService : ITaskItemService
         return MapDetail(taskItem, taskTemplate);
     }
 
+    public async Task<IReadOnlyList<TaskItemShareResponse>?> ListSharesAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var taskItem = await GetTaskItemForReadAsync(id, cancellationToken);
+        return taskItem is null ? null : MapShares(taskItem);
+    }
+
+    public async Task<IReadOnlyList<TaskShareInboxResponse>> ListIncomingSharesAsync(
+        CancellationToken cancellationToken)
+    {
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        var shares = await _taskItemRepository.ListIncomingSharesAsync(
+            currentSession.UserId,
+            AppUser.NormalizeEmail(currentSession.Email),
+            cancellationToken);
+
+        var now = _clock.UtcNow;
+
+        return shares
+            .Where(item => item.Share.ExpiresAt is null || item.Share.ExpiresAt > now)
+            .Select(MapIncomingShare)
+            .ToList();
+    }
+
+    public async Task<TaskItemDetailResponse?> ShareAsync(
+        Guid id,
+        CreateTaskShareRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        var taskItem = await GetTaskItemForWorkspaceMemberWriteAsync(id, cancellationToken);
+
+        if (taskItem is null)
+        {
+            return null;
+        }
+
+        var targetUser = await _authRepository.GetUserByNormalizedEmailAsync(
+            AppUser.NormalizeEmail(request.Email),
+            trackChanges: false,
+            cancellationToken);
+
+        if (targetUser is not null && !targetUser.IsActive)
+        {
+            throw new ValidationException("User cannot be shared with.");
+        }
+
+        taskItem.AddShare(
+            request.Email,
+            targetUser?.Id,
+            currentSession.UserId,
+            request.Role,
+            tokenHash: null,
+            expiresAt: null,
+            _clock.UtcNow);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+
+        return MapDetail(taskItem, taskTemplate);
+    }
+
+    public async Task<TaskShareLinkResponse?> CreateShareLinkAsync(
+        Guid id,
+        CreateTaskShareRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var response = await CreateShareLinkAsync(
+            new CreateTaskShareLinkRequest(
+                request.Email,
+                [id],
+                request.Role),
+            cancellationToken);
+
+        return response;
+    }
+
+    public async Task<TaskShareLinkResponse> CreateShareLinkAsync(
+        CreateTaskShareLinkRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        if (context.IsSharedOnly)
+        {
+            throw new ValidationException("Task-share access cannot share tasks in this board.");
+        }
+
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        var requestedTaskIds = (request.TaskItemIds ?? [])
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (requestedTaskIds.Length == 0)
+        {
+            throw new ValidationException("At least one task is required.");
+        }
+
+        var taskItems = await _taskItemRepository.ListByIdsAsync(
+            context.WorkspaceId,
+            requestedTaskIds,
+            trackChanges: true,
+            cancellationToken);
+
+        if (taskItems.Count != requestedTaskIds.Length)
+        {
+            throw new ValidationException("One or more selected tasks were not found.");
+        }
+
+        var normalizedEmail = AppUser.NormalizeEmail(request.Email);
+        var targetUser = await _authRepository.GetUserByNormalizedEmailAsync(
+            normalizedEmail,
+            trackChanges: false,
+            cancellationToken);
+
+        if (targetUser is not null && !targetUser.IsActive)
+        {
+            throw new ValidationException("User cannot be shared with.");
+        }
+
+        if (taskItems.Any(taskItem => taskItem.Shares.Any(share =>
+                share.RevokedAt is null &&
+                string.Equals(share.NormalizedEmail, normalizedEmail, StringComparison.Ordinal))))
+        {
+            throw new ValidationException("A pending or active task share already exists for this email.");
+        }
+
+        var now = _clock.UtcNow;
+        var token = _sessionTokenService.CreateSessionToken();
+        var tokenHash = _sessionTokenService.HashToken(token);
+        var expiresAt = now.Add(ShareLinkLifetime);
+        var shares = new List<TaskItemShareResponse>();
+
+        foreach (var taskItem in taskItems)
+        {
+            var share = taskItem.AddShare(
+                request.Email,
+                targetUser?.Id,
+                currentSession.UserId,
+                request.Role,
+                tokenHash,
+                expiresAt,
+                now);
+            shares.Add(MapShare(share));
+        }
+
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        return new TaskShareLinkResponse(
+            shares.OrderBy(share => share.Email).ToList(),
+            token,
+            expiresAt);
+    }
+
+    public async Task<ShareLinkAcceptResponse> AcceptShareLinkAsync(
+        AcceptShareLinkRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        var tokenHash = _sessionTokenService.HashToken(request.Token);
+        var taskItems = await _taskItemRepository.ListByShareTokenHashAsync(
+            tokenHash,
+            trackChanges: true,
+            cancellationToken);
+        var now = _clock.UtcNow;
+        var normalizedEmail = AppUser.NormalizeEmail(currentSession.Email);
+        var acceptedTaskIds = new List<Guid>();
+        Guid? workspaceId = null;
+
+        foreach (var taskItem in taskItems)
+        {
+            var share = taskItem.Shares.FirstOrDefault(candidate =>
+                string.Equals(candidate.TokenHash, tokenHash, StringComparison.Ordinal));
+
+            if (share is null)
+            {
+                continue;
+            }
+
+            if (!share.IsUsable(now) ||
+                !string.Equals(share.NormalizedEmail, normalizedEmail, StringComparison.Ordinal))
+            {
+                throw new ValidationException("Share link is invalid or expired.");
+            }
+
+            share.Accept(currentSession.UserId, now);
+            acceptedTaskIds.Add(taskItem.Id);
+            workspaceId ??= taskItem.WorkspaceId;
+        }
+
+        if (acceptedTaskIds.Count == 0 || !workspaceId.HasValue)
+        {
+            throw new ValidationException("Share link is invalid or expired.");
+        }
+
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        return new ShareLinkAcceptResponse(
+            "Task",
+            workspaceId.Value,
+            acceptedTaskIds);
+    }
+
+    public async Task<TaskItemDetailResponse?> RevokeShareAsync(
+        Guid id,
+        Guid shareId,
+        CancellationToken cancellationToken)
+    {
+        var taskItem = await GetTaskItemForWorkspaceMemberWriteAsync(id, cancellationToken);
+
+        if (taskItem is null)
+        {
+            return null;
+        }
+
+        taskItem.RevokeShare(shareId, _clock.UtcNow);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+
+        return MapDetail(taskItem, taskTemplate);
+    }
+
+    public async Task<bool> LeaveShareAsync(
+        Guid shareId,
+        CancellationToken cancellationToken)
+    {
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        var taskItem = await _taskItemRepository.GetByShareIdAsync(
+            shareId,
+            currentSession.UserId,
+            AppUser.NormalizeEmail(currentSession.Email),
+            trackChanges: true,
+            cancellationToken);
+
+        if (taskItem is null)
+        {
+            return false;
+        }
+
+        taskItem.RevokeShare(shareId, _clock.UtcNow);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
+
+    private async Task<TaskItem?> GetTaskItemForReadAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var taskItem = await _taskItemRepository.GetByIdAsync(
+            id,
+            context.WorkspaceId,
+            projectId: null,
+            trackChanges: true,
+            cancellationToken);
+
+        return taskItem is not null && CanReadTask(context, currentSession, taskItem)
+            ? taskItem
+            : null;
+    }
+
     private async Task<TaskItem?> GetTaskItemForUpdateAsync(
         Guid id,
         CancellationToken cancellationToken)
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var taskItem = await _taskItemRepository.GetByIdAsync(
+            id,
+            context.WorkspaceId,
+            projectId: null,
+            trackChanges: true,
+            cancellationToken);
+
+        return taskItem is not null && CanEditTask(context, currentSession, taskItem)
+            ? taskItem
+            : null;
+    }
+
+    private async Task<TaskItem?> GetTaskItemForWorkspaceMemberWriteAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+
+        if (context.IsSharedOnly)
+        {
+            return null;
+        }
+
+        await RequireCurrentSessionAsync(cancellationToken);
 
         return await _taskItemRepository.GetByIdAsync(
             id,
@@ -389,8 +850,58 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
     }
 
+    private async Task<CurrentUserSession> RequireCurrentSessionAsync(
+        CancellationToken cancellationToken)
+    {
+        return await _currentUserSessionProvider.GetCurrentAsync(cancellationToken) ??
+            throw new UnauthorizedAccessException("Authentication is required.");
+    }
+
+    private static bool CanReadTask(
+        DevelopmentWorkspaceContext context,
+        CurrentUserSession? currentSession,
+        TaskItem taskItem)
+    {
+        if (!context.IsSharedOnly)
+        {
+            return true;
+        }
+
+        if (currentSession is null)
+        {
+            return false;
+        }
+
+        return taskItem.Shares.Any(share =>
+            share.MatchesUser(
+                currentSession.UserId,
+                AppUser.NormalizeEmail(currentSession.Email)));
+    }
+
+    private static bool CanEditTask(
+        DevelopmentWorkspaceContext context,
+        CurrentUserSession? currentSession,
+        TaskItem taskItem)
+    {
+        if (!context.IsSharedOnly)
+        {
+            return true;
+        }
+
+        if (currentSession is null)
+        {
+            return false;
+        }
+
+        var normalizedEmail = AppUser.NormalizeEmail(currentSession.Email);
+        return taskItem.Shares.Any(share =>
+            share.Role == TaskItemShareRole.Editor &&
+            share.MatchesUser(currentSession.UserId, normalizedEmail));
+    }
+
     private async Task<TaskItemQuery> BuildQueryAsync(
         Guid workspaceId,
+        bool limitToSharedAccess,
         TaskItemListRequest request,
         CancellationToken cancellationToken)
     {
@@ -418,6 +929,8 @@ internal sealed class TaskItemService : ITaskItemService
             : SavedViewPayloads.NormalizeSort(
                 new SavedViewSortRequest(request.Sort, request.Direction));
 
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
         return new TaskItemQuery(
             workspaceId,
             filter.ProjectId == Guid.Empty ? null : filter.ProjectId,
@@ -429,6 +942,11 @@ internal sealed class TaskItemService : ITaskItemService
             filter.NotViewedSinceDays,
             filter.NotTouchedSinceDays,
             filter.Text,
+            request.SharedWith,
+            currentSession?.UserId,
+            currentSession is null ? null : AppUser.NormalizeEmail(currentSession.Email),
+            limitToSharedAccess,
+            request.SharedWithMe,
             ParseSortField(sort.Field),
             string.Equals(sort.Direction, "desc", StringComparison.OrdinalIgnoreCase),
             _clock.UtcNow);
@@ -652,6 +1170,41 @@ internal sealed class TaskItemService : ITaskItemService
         }
     }
 
+    private static void CopyFieldValues(
+        TaskItem sourceTask,
+        TaskItem copiedTask,
+        TaskTemplate taskTemplate,
+        DateTimeOffset occurredAt)
+    {
+        var definitions = taskTemplate.FieldDefinitions
+            .Where(field => field.IsActive)
+            .ToDictionary(field => field.Id);
+
+        foreach (var fieldValue in sourceTask.FieldValues)
+        {
+            if (definitions.TryGetValue(fieldValue.FieldDefinitionId, out var definition))
+            {
+                copiedTask.SetFieldValue(definition, fieldValue.ValueJson, occurredAt);
+            }
+        }
+    }
+
+    private static void CopyTimelineNotes(
+        TaskItem sourceTask,
+        TaskItem copiedTask,
+        DateTimeOffset occurredAt)
+    {
+        foreach (var entry in sourceTask.TimelineEntries
+                     .Where(entry =>
+                         entry.Kind == TaskTimelineEntryKind.NoteAdded &&
+                         entry.DeletedAt is null &&
+                         !string.IsNullOrWhiteSpace(entry.Details))
+                     .OrderBy(entry => entry.OccurredAt))
+        {
+            copiedTask.AddNote(entry.Details!, occurredAt);
+        }
+    }
+
     private static string NormalizeFieldValue(
         FieldDefinition fieldDefinition,
         JsonElement value)
@@ -784,6 +1337,7 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.ArchivedAt,
             taskItem.ArchiveResolutionId,
             noteCount,
+            MapShares(taskItem),
             latestTimelineEntry is null
                 ? null
                 : new TaskTimelineEntryResponse(
@@ -815,6 +1369,7 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.ArchivedAt,
             taskItem.ArchiveResolutionId,
             CountNotes(taskItem),
+            MapShares(taskItem),
             taskTemplate is null ? null : MapTaskTemplateForTask(taskTemplate, taskItem),
             taskItem.FieldValues
                 .OrderBy(value => value.UpdatedAt)
@@ -837,6 +1392,46 @@ internal sealed class TaskItemService : ITaskItemService
                     entry.OccurredAt,
                     entry.UpdatedAt))
                 .ToList());
+    }
+
+    private static IReadOnlyList<TaskItemShareResponse> MapShares(TaskItem taskItem)
+    {
+        return taskItem.Shares
+            .Where(share => share.RevokedAt is null)
+            .OrderBy(share => share.Email)
+            .Select(MapShare)
+            .ToList();
+    }
+
+    private static TaskItemShareResponse MapShare(TaskItemShare share)
+    {
+        return new TaskItemShareResponse(
+            share.Id,
+            share.Email,
+            share.SharedWithUserId,
+            share.SharedByUserId,
+            share.Role,
+            share.CreatedAt,
+            share.ExpiresAt,
+            share.AcceptedAt,
+            share.RevokedAt);
+    }
+
+    private static TaskShareInboxResponse MapIncomingShare(TaskShareInboxItem item)
+    {
+        return new TaskShareInboxResponse(
+            item.Share.Id,
+            item.TaskItem.Id,
+            item.Workspace.Id,
+            item.Workspace.Name,
+            item.Workspace.Color,
+            item.TaskItem.Title,
+            item.SharedByUser.Email,
+            item.SharedByUser.DisplayName,
+            item.Share.Role,
+            item.Share.CreatedAt,
+            item.Share.ExpiresAt,
+            item.Share.AcceptedAt);
     }
 
     private static int CountNotes(TaskItem taskItem)

@@ -13,4 +13,8 @@ public sealed class AuthOptions
     public string DevelopmentPassword { get; set; } = "dumptether-dev-password";
 
     public string DevelopmentDisplayName { get; set; } = "Dev User";
+
+    public int SessionDays { get; set; } = 30;
+
+    public int SessionCleanupDays { get; set; } = 90;
 }

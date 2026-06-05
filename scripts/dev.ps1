@@ -9,9 +9,181 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $webRoot = Join-Path $repoRoot "apps\web"
 $apiProject = Join-Path $repoRoot "src\DumpTether.Api\DumpTether.Api.csproj"
-$connectionString = "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
-$apiHealthUrl = "http://127.0.0.1:55868/health"
 $webUrl = "http://127.0.0.1:5173"
+$envFilePath = Join-Path $repoRoot ".env"
+
+function Read-DotEnvFile {
+    param([string] $Path)
+
+    $values = @{}
+
+    if (-not (Test-Path $Path)) {
+        return $values
+    }
+
+    foreach ($line in Get-Content -Path $Path) {
+        $trimmed = $line.Trim()
+
+        if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith("#")) {
+            continue
+        }
+
+        $match = [regex]::Match($trimmed, "^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$")
+
+        if (-not $match.Success) {
+            continue
+        }
+
+        $key = $match.Groups[1].Value
+        $value = Remove-InlineDotEnvComment $match.Groups[2].Value.Trim()
+
+        if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
+            ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+
+        $values[$key] = $value
+    }
+
+    return $values
+}
+
+function Remove-InlineDotEnvComment {
+    param([string] $Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $Value
+    }
+
+    $quote = [char]0
+
+    for ($index = 0; $index -lt $Value.Length; $index++) {
+        $character = $Value[$index]
+
+        if ($quote -ne [char]0) {
+            if ($character -eq $quote) {
+                $quote = [char]0
+            }
+
+            continue
+        }
+
+        if ($character -eq '"' -or $character -eq "'") {
+            $quote = $character
+            continue
+        }
+
+        if ($character -eq '#' -and
+            ($index -eq 0 -or [char]::IsWhiteSpace($Value[$index - 1]))) {
+            return $Value.Substring(0, $index).TrimEnd()
+        }
+    }
+
+    return $Value
+}
+
+function Set-ProcessEnvironmentFromDotEnv {
+    param([hashtable] $Values)
+
+    foreach ($item in $Values.GetEnumerator()) {
+        [Environment]::SetEnvironmentVariable($item.Key, $item.Value, "Process")
+    }
+}
+
+function Get-EnvValue {
+    param(
+        [string] $Name,
+        [string] $DefaultValue
+    )
+
+    $value = [Environment]::GetEnvironmentVariable($Name, "Process")
+
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $DefaultValue
+    }
+
+    return $value
+}
+
+function Set-DumpTetherConfigAliases {
+    $aliases = @{
+        "DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP" = "Database__ApplyMigrationsOnStartup"
+        "DUMPTETHER_REQUIRE_AUTHENTICATION" = "Auth__RequireAuthentication"
+        "DUMPTETHER_ALLOW_GUEST_SESSIONS" = "Auth__AllowGuestSessions"
+        "DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN" = "Auth__EnableDevelopmentLogin"
+        "DUMPTETHER_DEVELOPMENT_EMAIL" = "Auth__DevelopmentEmail"
+        "DUMPTETHER_DEVELOPMENT_PASSWORD" = "Auth__DevelopmentPassword"
+        "DUMPTETHER_DEVELOPMENT_DISPLAY_NAME" = "Auth__DevelopmentDisplayName"
+        "DUMPTETHER_AUTH_SESSION_DAYS" = "Auth__SessionDays"
+        "DUMPTETHER_AUTH_SESSION_CLEANUP_DAYS" = "Auth__SessionCleanupDays"
+        "DUMPTETHER_EMAIL_CONFIRMATION_ENABLED" = "EmailConfirmation__Enabled"
+        "DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL" = "EmailConfirmation__PublicBaseUrl"
+        "DUMPTETHER_EMAIL_FROM" = "Email__FromEmail"
+        "DUMPTETHER_EMAIL_FROM_NAME" = "Email__FromName"
+        "DUMPTETHER_EMAIL_SMTP_ENABLED" = "Email__Smtp__Enabled"
+        "DUMPTETHER_EMAIL_SMTP_HOST" = "Email__Smtp__Host"
+        "DUMPTETHER_EMAIL_SMTP_PORT" = "Email__Smtp__Port"
+        "DUMPTETHER_EMAIL_SMTP_USERNAME" = "Email__Smtp__Username"
+        "DUMPTETHER_EMAIL_SMTP_PASSWORD" = "Email__Smtp__Password"
+        "DUMPTETHER_EMAIL_BREVO_API_ENABLED" = "Email__BrevoApi__Enabled"
+        "DUMPTETHER_EMAIL_BREVO_API_KEY" = "Email__BrevoApi__ApiKey"
+        "DUMPTETHER_EMAIL_MFA_ENABLED" = "Mfa__Email__Enabled"
+        "DUMPTETHER_OAUTH_GOOGLE_ENABLED" = "OAuth__Google__Enabled"
+        "DUMPTETHER_OAUTH_GOOGLE_CLIENT_ID" = "OAuth__Google__ClientId"
+        "DUMPTETHER_OAUTH_GOOGLE_CLIENT_SECRET" = "OAuth__Google__ClientSecret"
+        "DUMPTETHER_OAUTH_MICROSOFT_ENABLED" = "OAuth__Microsoft__Enabled"
+        "DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID" = "OAuth__Microsoft__ClientId"
+        "DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET" = "OAuth__Microsoft__ClientSecret"
+        "DUMPTETHER_OAUTH_FACEBOOK_ENABLED" = "OAuth__Facebook__Enabled"
+        "DUMPTETHER_OAUTH_FACEBOOK_CLIENT_ID" = "OAuth__Facebook__ClientId"
+        "DUMPTETHER_OAUTH_FACEBOOK_CLIENT_SECRET" = "OAuth__Facebook__ClientSecret"
+        "DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE" = "Usage__MaxActiveTasksPerWorkspace"
+        "DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE" = "Usage__MaxTotalTasksPerWorkspace"
+    }
+
+    foreach ($alias in $aliases.GetEnumerator()) {
+        $value = [Environment]::GetEnvironmentVariable($alias.Key, "Process")
+
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            [Environment]::SetEnvironmentVariable($alias.Value, $value, "Process")
+        }
+    }
+}
+
+function New-LocalConnectionString {
+    $explicitConnectionString = [Environment]::GetEnvironmentVariable(
+        "ConnectionStrings__DumpTether",
+        "Process")
+
+    if (-not [string]::IsNullOrWhiteSpace($explicitConnectionString)) {
+        return $explicitConnectionString
+    }
+
+    $hostName = Get-EnvValue "POSTGRES_HOST" "localhost"
+    $port = Get-EnvValue "POSTGRES_PORT" "5432"
+    $database = Get-EnvValue "POSTGRES_DB" "dumptether"
+    $username = Get-EnvValue "POSTGRES_USER" "dumptether"
+    $password = Get-EnvValue "POSTGRES_PASSWORD" "dumptether_dev_password"
+
+    return "Host=$hostName;Port=$port;Database=$database;Username=$username;Password=$password"
+}
+
+function Set-DumpTetherRuntimeEnvironment {
+    Set-DumpTetherConfigAliases
+
+    $env:ConnectionStrings__DumpTether = New-LocalConnectionString
+    $env:ASPNETCORE_ENVIRONMENT = Get-EnvValue "ASPNETCORE_ENVIRONMENT" "Development"
+
+    if ([string]::IsNullOrWhiteSpace($env:ASPNETCORE_URLS)) {
+        $apiPort = Get-EnvValue "DUMPTETHER_API_PORT" "55868"
+        $env:ASPNETCORE_URLS = "http://localhost:$apiPort"
+    }
+}
+
+$dotenvValues = Read-DotEnvFile -Path $envFilePath
+Set-ProcessEnvironmentFromDotEnv -Values $dotenvValues
+$apiPort = Get-EnvValue "DUMPTETHER_API_PORT" "55868"
+$apiHealthUrl = "http://127.0.0.1:$apiPort/health"
 
 try {
     $consoleTitle = if ([string]::IsNullOrWhiteSpace($WindowTitle)) {
@@ -77,6 +249,7 @@ function Stop-Database {
 
 function Invoke-Migrations {
     Invoke-AtRepoRoot {
+        Set-DumpTetherRuntimeEnvironment
         dotnet tool restore
         if ($LASTEXITCODE -ne 0) {
             throw "dotnet tool restore failed with exit code $LASTEXITCODE."
@@ -90,8 +263,8 @@ function Invoke-Migrations {
 }
 
 function Start-Api {
-    $env:ConnectionStrings__DumpTether = $connectionString
-    dotnet run --project $apiProject --launch-profile DumpTether.Api
+    Set-DumpTetherRuntimeEnvironment
+    dotnet run --project $apiProject --no-launch-profile
 }
 
 function Start-Web {

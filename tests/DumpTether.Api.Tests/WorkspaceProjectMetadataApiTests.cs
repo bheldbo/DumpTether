@@ -63,6 +63,23 @@ public sealed class WorkspaceProjectMetadataApiTests
     }
 
     [Fact]
+    public async Task PostWorkspace_RejectsDuplicateName()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+
+        var firstResponse = await client.PostAsJsonAsync(
+            "/api/workspaces",
+            new { name = "Travel" });
+        firstResponse.EnsureSuccessStatusCode();
+        var duplicateResponse = await client.PostAsJsonAsync(
+            "/api/workspaces",
+            new { name = "travel" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, duplicateResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task PatchProject_UpdatesColor()
     {
         using var factory = new DumpTetherApiFactory();
@@ -105,6 +122,46 @@ public sealed class WorkspaceProjectMetadataApiTests
         Assert.Equal(workspace.Id, created.WorkspaceId);
         Assert.Equal("Procurement", created.Name);
         Assert.Equal("#93C5FD", created.Color);
+    }
+
+    [Fact]
+    public async Task PostProject_RejectsDuplicateName()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+
+        var firstResponse = await client.PostAsJsonAsync(
+            "/api/projects",
+            new { name = "Procurement" });
+        firstResponse.EnsureSuccessStatusCode();
+        var duplicateResponse = await client.PostAsJsonAsync(
+            "/api/projects",
+            new { name = "procurement" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, duplicateResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteProject_ClearsCategoryWithoutArchivingTasks()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var project = await CreateProjectAsync(client, "Ideas");
+        var task = await CreateTaskAsync(client, "Keep this task", project);
+
+        var response = await client.DeleteAsync($"/api/projects/{project.Id}");
+
+        response.EnsureSuccessStatusCode();
+        var projects = await client.GetFromJsonAsync<List<ProjectResponse>>("/api/projects");
+        var activeTasks = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+        var archivedTasks = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>(
+            "/api/tasks?archive=Archived");
+
+        var updatedTask = Assert.Single(activeTasks!, candidate => candidate.Id == task.Id);
+        Assert.DoesNotContain(projects!, candidate => candidate.Id == project.Id);
+        Assert.Null(updatedTask.ProjectId);
+        Assert.Null(updatedTask.Category);
+        Assert.DoesNotContain(archivedTasks!, candidate => candidate.Id == task.Id);
     }
 
     [Fact]

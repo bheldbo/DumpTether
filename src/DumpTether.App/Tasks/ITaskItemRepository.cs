@@ -22,6 +22,12 @@ public interface ITaskItemRepository
         bool includeArchived,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<TaskItem>> ListByCategoryAsync(
+        Guid workspaceId,
+        string category,
+        bool includeArchived,
+        CancellationToken cancellationToken);
+
     Task<int> CountAsync(
         Guid workspaceId,
         bool includeArchived,
@@ -32,6 +38,29 @@ public interface ITaskItemRepository
         Guid workspaceId,
         Guid? projectId,
         bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task<TaskItem?> GetByShareIdAsync(
+        Guid shareId,
+        Guid userId,
+        string normalizedEmail,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<TaskItem>> ListByIdsAsync(
+        Guid workspaceId,
+        IReadOnlyList<Guid> ids,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<TaskItem>> ListByShareTokenHashAsync(
+        string tokenHash,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<TaskShareInboxItem>> ListIncomingSharesAsync(
+        Guid userId,
+        string normalizedEmail,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyDictionary<Guid, FieldDefinition>> GetFieldDefinitionsAsync(

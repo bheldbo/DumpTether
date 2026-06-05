@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using DumpTether.Domain;
 
 namespace DumpTether.App.Tasks;
 
@@ -15,6 +17,8 @@ public sealed record TaskItemListRequest(
     int? NotViewedSinceDays = null,
     int? NotTouchedSinceDays = null,
     string? Text = null,
+    string? SharedWith = null,
+    bool SharedWithMe = false,
     string? Sort = null,
     string? Direction = null);
 
@@ -53,3 +57,29 @@ public sealed record ArchiveTaskItemRequest(
 
 public sealed record ReopenTaskItemRequest(
     [MaxLength(4000)] string? Note = null);
+
+public sealed record CreateTaskShareRequest(
+    [Required]
+    [MaxLength(320)]
+    string Email,
+    [property: JsonConverter(typeof(JsonStringEnumConverter))]
+    TaskItemShareRole Role = TaskItemShareRole.Editor);
+
+public sealed record CreateTaskShareLinkRequest(
+    [Required]
+    [MaxLength(320)]
+    string Email,
+    IReadOnlyList<Guid>? TaskItemIds = null,
+    [property: JsonConverter(typeof(JsonStringEnumConverter))]
+    TaskItemShareRole Role = TaskItemShareRole.Editor);
+
+public sealed record AcceptShareLinkRequest(
+    [Required]
+    string Token);
+
+public sealed record CopyTaskItemsRequest(
+    [Required]
+    IReadOnlyList<Guid> TaskItemIds,
+    [Required]
+    Guid DestinationWorkspaceId,
+    bool IncludeTimeline = false);

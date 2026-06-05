@@ -23,6 +23,10 @@ public interface ITaskItemService
         UpdateTaskItemRequest request,
         CancellationToken cancellationToken);
 
+    Task<CopyTaskItemsResponse> CopyAsync(
+        CopyTaskItemsRequest request,
+        CancellationToken cancellationToken);
+
     Task<TaskItemDetailResponse?> AddTimelineEntryAsync(
         Guid id,
         AddTaskTimelineEntryRequest request,
@@ -47,5 +51,39 @@ public interface ITaskItemService
     Task<TaskItemDetailResponse?> ReopenAsync(
         Guid id,
         ReopenTaskItemRequest request,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<TaskItemShareResponse>?> ListSharesAsync(
+        Guid id,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<TaskShareInboxResponse>> ListIncomingSharesAsync(
+        CancellationToken cancellationToken);
+
+    Task<TaskItemDetailResponse?> ShareAsync(
+        Guid id,
+        CreateTaskShareRequest request,
+        CancellationToken cancellationToken);
+
+    Task<TaskShareLinkResponse?> CreateShareLinkAsync(
+        Guid id,
+        CreateTaskShareRequest request,
+        CancellationToken cancellationToken);
+
+    Task<TaskShareLinkResponse> CreateShareLinkAsync(
+        CreateTaskShareLinkRequest request,
+        CancellationToken cancellationToken);
+
+    Task<ShareLinkAcceptResponse> AcceptShareLinkAsync(
+        AcceptShareLinkRequest request,
+        CancellationToken cancellationToken);
+
+    Task<TaskItemDetailResponse?> RevokeShareAsync(
+        Guid id,
+        Guid shareId,
+        CancellationToken cancellationToken);
+
+    Task<bool> LeaveShareAsync(
+        Guid shareId,
         CancellationToken cancellationToken);
 }
