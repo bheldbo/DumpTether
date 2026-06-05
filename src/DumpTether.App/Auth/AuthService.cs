@@ -10,8 +10,6 @@ namespace DumpTether.App.Auth;
 
 internal sealed class AuthService : IAuthService
 {
-    private static readonly TimeSpan SessionDuration = TimeSpan.FromDays(30);
-
     private readonly IAuthRepository _authRepository;
     private readonly IAuthTokenAccessor _authTokenAccessor;
     private readonly IClock _clock;
@@ -384,18 +382,26 @@ internal sealed class AuthService : IAuthService
 
     private static AuthWorkspaceResponse MapWorkspace(UserWorkspaceMembership membership)
     {
-        return MapWorkspace(membership.Workspace, membership.Membership);
+        return MapWorkspace(
+            membership.Workspace,
+            membership.Membership,
+            membership.AccessKind,
+            membership.SharedTaskCount);
     }
 
     private static AuthWorkspaceResponse MapWorkspace(
         Workspace workspace,
-        WorkspaceMembership membership)
+        WorkspaceMembership membership,
+        string accessKind = WorkspaceAccessKinds.Membership,
+        int sharedTaskCount = 0)
     {
         return new AuthWorkspaceResponse(
             workspace.Id,
             workspace.Name,
             workspace.Color,
-            membership.Role);
+            membership.Role,
+            accessKind,
+            sharedTaskCount);
     }
 
     private async Task<(AppUser User, Workspace Workspace, WorkspaceMembership Membership)>
@@ -483,12 +489,14 @@ internal sealed class AuthService : IAuthService
         CancellationToken cancellationToken)
     {
         var now = _clock.UtcNow;
+        await CleanupInactiveSessionsAsync(now, cancellationToken);
+
         var sessionToken = _sessionTokenService.CreateSessionToken();
         var session = UserSession.Create(
             user.Id,
             _sessionTokenService.HashToken(sessionToken),
             now,
-            now.Add(SessionDuration),
+            now.Add(GetSessionDuration()),
             metadata.UserAgent,
             _sessionTokenService.HashOptionalMetadata(metadata.IpAddress),
             deviceName);
@@ -497,5 +505,29 @@ internal sealed class AuthService : IAuthService
         await _authRepository.AddSessionAsync(session, cancellationToken);
 
         return (sessionToken, session.ExpiresAt);
+    }
+
+    private TimeSpan GetSessionDuration()
+    {
+        var sessionDays = Math.Clamp(_authOptions.Value.SessionDays, 1, 365);
+        return TimeSpan.FromDays(sessionDays);
+    }
+
+    private async Task CleanupInactiveSessionsAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var cleanupDays = _authOptions.Value.SessionCleanupDays;
+
+        if (cleanupDays <= 0)
+        {
+            return;
+        }
+
+        var boundedCleanupDays = Math.Clamp(cleanupDays, 1, 3650);
+        await _authRepository.DeleteInactiveSessionsAsync(
+            now,
+            now.AddDays(-boundedCleanupDays),
+            cancellationToken);
     }
 }

@@ -37,6 +37,10 @@ public sealed class ProjectsController : ControllerBase
         {
             return BadRequest(new { error = exception.Message });
         }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
     }
 
     [HttpPatch("{id:guid}")]
@@ -55,6 +59,19 @@ public sealed class ProjectsController : ControllerBase
         {
             return BadRequest(new { error = exception.Message });
         }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<ActionResult<ProjectArchiveResponse>> Delete(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var response = await _projectService.DeleteAsync(id, cancellationToken);
+        return response is null ? NotFound() : Ok(response);
     }
 
     [HttpPost("{id:guid}/archive-tasks")]

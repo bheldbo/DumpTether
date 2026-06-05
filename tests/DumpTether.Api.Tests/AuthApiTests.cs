@@ -5,6 +5,7 @@ using DumpTether.Api;
 using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.Data;
+using DumpTether.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -89,6 +90,81 @@ public sealed class AuthApiTests
         Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
         Assert.NotEqual(login.SessionToken, session.SessionTokenHash);
         Assert.Null(session.RevokedAt);
+    }
+
+    [Fact]
+    public async Task PostLogin_UsesConfiguredSessionDays()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SessionDays"] = "2"
+            });
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "session-days@example.com", "correct horse battery");
+
+        var beforeExpectedExpiry = DateTimeOffset.UtcNow.AddDays(2).AddMinutes(-2);
+        var login = await LoginAsync(client, "session-days@example.com", "correct horse battery");
+        var afterExpectedExpiry = DateTimeOffset.UtcNow.AddDays(2).AddMinutes(2);
+
+        Assert.InRange(login.ExpiresAt, beforeExpectedExpiry, afterExpectedExpiry);
+    }
+
+    [Fact]
+    public async Task PostLogin_CleansOldInactiveSessions()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SessionCleanupDays"] = "90"
+            });
+        using var client = factory.CreateClient();
+        var registered = await RegisterAsync(
+            client,
+            "session-cleanup@example.com",
+            "correct horse battery");
+        var now = DateTimeOffset.UtcNow;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+            var oldExpiredSession = UserSession.Create(
+                registered.User.Id,
+                "old-expired-session-hash",
+                now.AddDays(-130),
+                now.AddDays(-120));
+            var recentExpiredSession = UserSession.Create(
+                registered.User.Id,
+                "recent-expired-session-hash",
+                now.AddDays(-2),
+                now.AddDays(-1));
+            var oldRevokedSession = UserSession.Create(
+                registered.User.Id,
+                "old-revoked-session-hash",
+                now.AddDays(-130),
+                now.AddDays(30));
+            oldRevokedSession.Revoke(now.AddDays(-120));
+            dbContext.UserSessions.AddRange(
+                oldExpiredSession,
+                recentExpiredSession,
+                oldRevokedSession);
+            await dbContext.SaveChangesAsync();
+        }
+
+        await LoginAsync(client, "session-cleanup@example.com", "correct horse battery");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+            var sessionHashes = await dbContext.UserSessions
+                .Select(session => session.SessionTokenHash)
+                .ToListAsync();
+
+            Assert.DoesNotContain("old-expired-session-hash", sessionHashes);
+            Assert.DoesNotContain("old-revoked-session-hash", sessionHashes);
+            Assert.Contains("recent-expired-session-hash", sessionHashes);
+            Assert.Equal(2, sessionHashes.Count);
+        }
     }
 
     [Fact]
@@ -224,6 +300,23 @@ public sealed class AuthApiTests
         Assert.Contains("Email:BrevoApi:Enabled", exception.Message);
         Assert.Contains("Email:BrevoApi:ApiKey", exception.Message);
         Assert.Contains("Email:FromEmail", exception.Message);
+    }
+
+    [Fact]
+    public void Startup_WhenBooleanContainsInlineComment_ThrowsHelpfulError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:BrevoApi:Enabled"] = "true # Needs EmailConfirmation:Enabled=true"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
+
+        Assert.Contains("Email:BrevoApi:Enabled", exception.Message);
+        Assert.Contains("Do not append inline comments", exception.Message);
     }
 
     [Fact]

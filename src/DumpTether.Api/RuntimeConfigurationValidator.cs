@@ -8,23 +8,23 @@ public static class RuntimeConfigurationValidator
     {
         var missingKeys = new List<string>();
 
-        if (configuration.GetValue<bool>("EmailConfirmation:Enabled"))
+        if (GetBoolean(configuration, "EmailConfirmation:Enabled"))
         {
             AddMissingBrevoApiKeys(configuration, missingKeys);
             AddIfMissing(configuration, "EmailConfirmation:PublicBaseUrl", missingKeys);
         }
 
-        if (configuration.GetValue<bool>("Mfa:Email:Enabled"))
+        if (GetBoolean(configuration, "Mfa:Email:Enabled"))
         {
             AddMissingBrevoApiKeys(configuration, missingKeys);
         }
 
-        if (configuration.GetValue<bool>("Email:Smtp:Enabled"))
+        if (GetBoolean(configuration, "Email:Smtp:Enabled"))
         {
             AddMissingEmailKeys(configuration, missingKeys);
         }
 
-        if (configuration.GetValue<bool>("Email:BrevoApi:Enabled"))
+        if (GetBoolean(configuration, "Email:BrevoApi:Enabled"))
         {
             AddIfMissing(configuration, "Email:BrevoApi:ApiKey", missingKeys);
             AddIfMissing(configuration, "Email:FromEmail", missingKeys);
@@ -35,7 +35,7 @@ public static class RuntimeConfigurationValidator
         AddMissingOAuthKeys(configuration, "Facebook", missingKeys);
 
         if (!isDevelopment &&
-            configuration.GetValue<bool>("Auth:EnableDevelopmentLogin"))
+            GetBoolean(configuration, "Auth:EnableDevelopmentLogin"))
         {
             throw new InvalidOperationException(
                 "Auth:EnableDevelopmentLogin must be false outside Development.");
@@ -65,7 +65,7 @@ public static class RuntimeConfigurationValidator
         IConfiguration configuration,
         List<string> missingKeys)
     {
-        if (!configuration.GetValue<bool>("Email:BrevoApi:Enabled"))
+        if (!GetBoolean(configuration, "Email:BrevoApi:Enabled"))
         {
             missingKeys.Add("Email:BrevoApi:Enabled");
         }
@@ -81,7 +81,7 @@ public static class RuntimeConfigurationValidator
     {
         var section = $"OAuth:{provider}";
 
-        if (!configuration.GetValue<bool>($"{section}:Enabled"))
+        if (!GetBoolean(configuration, $"{section}:Enabled"))
         {
             return;
         }
@@ -100,5 +100,24 @@ public static class RuntimeConfigurationValidator
         {
             missingKeys.Add(key);
         }
+    }
+
+    private static bool GetBoolean(IConfiguration configuration, string key)
+    {
+        var value = configuration[key];
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (bool.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new InvalidOperationException(
+            $"DumpTether configuration value '{key}' must be 'true' or 'false', but was '{value}'. " +
+            "Do not append inline comments after .env values; put comments on their own lines.");
     }
 }

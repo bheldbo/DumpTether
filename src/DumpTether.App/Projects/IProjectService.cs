@@ -17,4 +17,8 @@ public interface IProjectService
         Guid id,
         ArchiveProjectTasksRequest request,
         CancellationToken cancellationToken);
+
+    Task<ProjectArchiveResponse?> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken);
 }

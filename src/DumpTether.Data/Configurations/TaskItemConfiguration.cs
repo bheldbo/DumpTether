@@ -71,6 +71,9 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Ignore(taskItem => taskItem.FieldValues);
         builder.Ignore(taskItem => taskItem.TimelineEntries);
 
+        builder.Navigation(taskItem => taskItem.Shares)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+
         builder.HasIndex(taskItem => new
         {
             taskItem.WorkspaceId,

@@ -50,6 +50,8 @@ public sealed class TaskItemsController : ControllerBase
         [FromQuery] int? notViewedSinceDays,
         [FromQuery] int? notTouchedSinceDays,
         [FromQuery] string? text,
+        [FromQuery] string? sharedWith,
+        [FromQuery] bool sharedWithMe,
         [FromQuery] string? sort,
         [FromQuery] string? direction,
         CancellationToken cancellationToken)
@@ -74,10 +76,37 @@ public sealed class TaskItemsController : ControllerBase
                     notViewedSinceDays,
                     notTouchedSinceDays,
                     text,
+                    sharedWith,
+                    sharedWithMe,
                     sort,
                     direction),
                 cancellationToken);
             return Ok(response);
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpPost("copy")]
+    public async Task<ActionResult<CopyTaskItemsResponse>> Copy(
+        CopyTaskItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.CopyAsync(request, cancellationToken);
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
         }
         catch (ValidationException exception)
         {
@@ -245,6 +274,138 @@ public sealed class TaskItemsController : ControllerBase
             return BadRequest(new { error = exception.Message });
         }
         catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpGet("{id:guid}/shares")]
+    public async Task<ActionResult<IReadOnlyList<TaskItemShareResponse>>> ListShares(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var response = await _taskItemService.ListSharesAsync(id, cancellationToken);
+        return response is null ? NotFound() : Ok(response);
+    }
+
+    [HttpGet("/api/account/task-shares")]
+    public async Task<ActionResult<IReadOnlyList<TaskShareInboxResponse>>> ListIncomingShares(
+        CancellationToken cancellationToken)
+    {
+        var response = await _taskItemService.ListIncomingSharesAsync(cancellationToken);
+        return Ok(response);
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpPost("{id:guid}/shares")]
+    public async Task<ActionResult<TaskItemDetailResponse>> Share(
+        Guid id,
+        CreateTaskShareRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.ShareAsync(id, request, cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpPost("{id:guid}/share-links")]
+    public async Task<ActionResult<TaskShareLinkResponse>> CreateShareLink(
+        Guid id,
+        CreateTaskShareRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.CreateShareLinkAsync(id, request, cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpPost("share-links")]
+    public async Task<ActionResult<TaskShareLinkResponse>> CreateShareLink(
+        CreateTaskShareLinkRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.CreateShareLinkAsync(request, cancellationToken);
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpDelete("{id:guid}/shares/{shareId:guid}")]
+    public async Task<ActionResult<TaskItemDetailResponse>> RevokeShare(
+        Guid id,
+        Guid shareId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.RevokeShareAsync(
+                id,
+                shareId,
+                cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpDelete("/api/account/task-shares/{shareId:guid}")]
+    public async Task<IActionResult> LeaveShare(
+        Guid shareId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var left = await _taskItemService.LeaveShareAsync(shareId, cancellationToken);
+            return left ? NoContent() : NotFound();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
         {
             return BadRequest(new { error = exception.Message });
         }

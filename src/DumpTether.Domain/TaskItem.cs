@@ -3,6 +3,7 @@ namespace DumpTether.Domain;
 public sealed class TaskItem
 {
     private readonly List<FieldValue> _fieldValues = [];
+    private readonly List<TaskItemShare> _shares = [];
     private readonly List<TaskTimelineEntry> _timelineEntries = [];
 
     private TaskItem()
@@ -61,6 +62,8 @@ public sealed class TaskItem
     public Guid? ArchiveResolutionId { get; private set; }
 
     public IReadOnlyCollection<FieldValue> FieldValues => _fieldValues.AsReadOnly();
+
+    public IReadOnlyCollection<TaskItemShare> Shares => _shares.AsReadOnly();
 
     public IReadOnlyCollection<TaskTimelineEntry> TimelineEntries => _timelineEntries.AsReadOnly();
 
@@ -219,6 +222,71 @@ public sealed class TaskItem
             Color is null ? "Color cleared" : "Color changed",
             occurredAt,
             Color);
+    }
+
+    public TaskItemShare AddShare(
+        string email,
+        Guid? sharedWithUserId,
+        Guid sharedByUserId,
+        TaskItemShareRole role,
+        string? tokenHash,
+        DateTimeOffset? expiresAt,
+        DateTimeOffset occurredAt)
+    {
+        var normalizedEmail = AppUser.NormalizeEmail(email);
+        var existingShare = _shares.FirstOrDefault(share =>
+            share.RevokedAt is null &&
+            string.Equals(share.NormalizedEmail, normalizedEmail, StringComparison.Ordinal));
+
+        if (existingShare is not null)
+        {
+            if (sharedWithUserId.HasValue)
+            {
+                existingShare.LinkUser(sharedWithUserId.Value);
+            }
+
+            return existingShare;
+        }
+
+        var share = TaskItemShare.Create(
+            WorkspaceId,
+            Id,
+            email,
+            sharedWithUserId,
+            sharedByUserId,
+            role,
+            tokenHash,
+            expiresAt,
+            occurredAt);
+        _shares.Add(share);
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.Shared,
+            "Task shared",
+            occurredAt,
+            share.Email);
+
+        return share;
+    }
+
+    public void RevokeShare(Guid shareId, DateTimeOffset occurredAt)
+    {
+        DomainGuards.NotEmpty(shareId, nameof(shareId));
+        var share = _shares.FirstOrDefault(candidate => candidate.Id == shareId) ??
+            throw new InvalidOperationException("Task share was not found.");
+
+        if (share.RevokedAt is not null)
+        {
+            return;
+        }
+
+        share.Revoke(occurredAt);
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.ShareRevoked,
+            "Task share removed",
+            occurredAt,
+            share.Email);
     }
 
     public bool SetFieldValue(

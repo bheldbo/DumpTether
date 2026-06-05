@@ -38,6 +38,11 @@ public interface IAuthRepository
 
     Task AddSessionAsync(UserSession session, CancellationToken cancellationToken);
 
+    Task<int> DeleteInactiveSessionsAsync(
+        DateTimeOffset now,
+        DateTimeOffset deleteBefore,
+        CancellationToken cancellationToken);
+
     Task AddEmailConfirmationTokenAsync(
         EmailConfirmationToken token,
         CancellationToken cancellationToken);

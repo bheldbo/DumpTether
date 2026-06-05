@@ -34,34 +34,19 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
                 new("Context", FieldDefinitionType.LongText)
             ]),
         new(
-            "Work Task",
+            "ToDo Task",
             [
-                new("Area", FieldDefinitionType.Select, ["Backend", "Frontend", "Data", "Docs", "DevOps"]),
-                new("Priority", FieldDefinitionType.Select, ["Low", "Normal", "High"]),
-                new("Due Date", FieldDefinitionType.Date)
-            ]),
-        new(
-            "Service Desk Case",
-            [
-                new("Customer", FieldDefinitionType.Text),
-                new("Severity", FieldDefinitionType.Select, ["Low", "Medium", "High", "Critical"]),
-                new("Resolution Notes", FieldDefinitionType.LongText)
-            ]),
-        new(
-            "Project Note",
-            [
-                new("Topic", FieldDefinitionType.Text),
-                new("Decision", FieldDefinitionType.LongText),
-                new("Follow-up Needed", FieldDefinitionType.Checkbox)
-            ]),
-        new(
-            "Upgrade/Gotcha Note",
-            [
-                new("System", FieldDefinitionType.Text),
-                new("Version", FieldDefinitionType.Text),
-                new("Gotcha", FieldDefinitionType.LongText),
-                new("Workaround", FieldDefinitionType.LongText)
+                new("Done", FieldDefinitionType.Checkbox),
+                new("Next step", FieldDefinitionType.Text)
             ])
+    ];
+
+    private static readonly string[] LegacyDevelopmentTaskTemplateNames =
+    [
+        "Work Task",
+        "Service Desk Case",
+        "Project Note",
+        "Upgrade/Gotcha Note"
     ];
 
     private static readonly string[] DevelopmentProjectNames =
@@ -127,9 +112,12 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             throw new UnauthorizedAccessException("Authentication is required.");
         }
 
-        var workspace = await GetSelectedWorkspaceAsync(
+        var selectedWorkspace = await GetSelectedWorkspaceAsync(
             currentSession?.UserId,
+            currentSession is null ? null : AppUser.NormalizeEmail(currentSession.Email),
             cancellationToken);
+        var workspace = selectedWorkspace?.Workspace;
+        var isSharedOnly = selectedWorkspace?.IsSharedOnly ?? false;
 
         if (workspace is null)
         {
@@ -265,14 +253,16 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         }
 
         await DeactivateDuplicateDevelopmentTemplatesAsync(workspace.Id, cancellationToken);
+        await DeactivateLegacyDevelopmentTemplatesAsync(workspace.Id, cancellationToken);
         await SeedDevelopmentSavedViewsAsync(workspace.Id, projects, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new DevelopmentWorkspaceContext(workspace.Id, project.Id);
+        return new DevelopmentWorkspaceContext(workspace.Id, project.Id, isSharedOnly);
     }
 
-    private async Task<Workspace?> GetSelectedWorkspaceAsync(
+    private async Task<SelectedWorkspace?> GetSelectedWorkspaceAsync(
         Guid? currentUserId,
+        string? currentNormalizedEmail,
         CancellationToken cancellationToken)
     {
         if (currentUserId.HasValue)
@@ -293,7 +283,26 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
                 if (selectedWorkspace is not null)
                 {
-                    return selectedWorkspace;
+                    return new SelectedWorkspace(selectedWorkspace, IsSharedOnly: false);
+                }
+
+                var selectedSharedWorkspace = await _dbContext.TaskItemShares
+                    .Where(share =>
+                        (share.SharedWithUserId == currentUserId.Value ||
+                            share.NormalizedEmail == currentNormalizedEmail) &&
+                        share.WorkspaceId == selectedWorkspaceId &&
+                        share.RevokedAt == null &&
+                        (share.AcceptedAt != null || share.TokenHash == null))
+                    .Join(
+                        _dbContext.Workspaces,
+                        share => share.WorkspaceId,
+                        workspace => workspace.Id,
+                        (_, workspace) => workspace)
+                    .SingleOrDefaultAsync(cancellationToken);
+
+                if (selectedSharedWorkspace is not null)
+                {
+                    return new SelectedWorkspace(selectedSharedWorkspace, IsSharedOnly: true);
                 }
             }
 
@@ -306,9 +315,32 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
                     (_, workspace) => workspace)
                 .ToListAsync(cancellationToken);
 
-            return userWorkspaces
+            var firstWorkspace = userWorkspaces
                 .OrderBy(workspace => workspace.CreatedAt)
                 .FirstOrDefault();
+
+            if (firstWorkspace is not null)
+            {
+                return new SelectedWorkspace(firstWorkspace, IsSharedOnly: false);
+            }
+
+            var sharedWorkspace = await _dbContext.TaskItemShares
+                .Where(share =>
+                    (share.SharedWithUserId == currentUserId.Value ||
+                        share.NormalizedEmail == currentNormalizedEmail) &&
+                    share.RevokedAt == null &&
+                    (share.AcceptedAt != null || share.TokenHash == null))
+                .Join(
+                    _dbContext.Workspaces,
+                    share => share.WorkspaceId,
+                    workspace => workspace.Id,
+                    (_, workspace) => workspace)
+                .OrderBy(workspace => workspace.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return sharedWorkspace is null
+                ? null
+                : new SelectedWorkspace(sharedWorkspace, IsSharedOnly: true);
         }
 
         if (_currentWorkspaceSelection.WorkspaceId.HasValue)
@@ -320,16 +352,20 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
             if (selectedWorkspace is not null)
             {
-                return selectedWorkspace;
+                return new SelectedWorkspace(selectedWorkspace, IsSharedOnly: false);
             }
         }
 
-        return await _dbContext.Workspaces
+        var developmentWorkspace = await _dbContext.Workspaces
             .Where(candidate =>
                 candidate.Name == DevelopmentWorkspaceName ||
                 candidate.Name == LegacyDevelopmentWorkspaceName)
             .OrderBy(candidate => candidate.Name == DevelopmentWorkspaceName ? 0 : 1)
             .FirstOrDefaultAsync(cancellationToken);
+
+        return developmentWorkspace is null
+            ? null
+            : new SelectedWorkspace(developmentWorkspace, IsSharedOnly: false);
     }
 
     private async Task DeactivateDuplicateDevelopmentTemplatesAsync(
@@ -352,6 +388,23 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             {
                 duplicateTemplate.SoftDelete(_clock.UtcNow);
             }
+        }
+    }
+
+    private async Task DeactivateLegacyDevelopmentTemplatesAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        var legacyTemplates = await _dbContext.TaskTemplates
+            .Where(template =>
+                template.WorkspaceId == workspaceId &&
+                template.DeletedAt == null &&
+                LegacyDevelopmentTaskTemplateNames.Contains(template.Name))
+            .ToListAsync(cancellationToken);
+
+        foreach (var legacyTemplate in legacyTemplates)
+        {
+            legacyTemplate.SoftDelete(_clock.UtcNow);
         }
     }
 
@@ -495,4 +548,8 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     private sealed record DevelopmentSavedViewSort(
         string Field = "lastTouchedAt",
         string Direction = "desc");
+
+    private sealed record SelectedWorkspace(
+        Workspace Workspace,
+        bool IsSharedOnly);
 }

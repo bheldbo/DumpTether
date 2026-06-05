@@ -36,6 +36,11 @@ public sealed record TaskItemQuery(
     int? NotViewedSinceDays,
     int? NotTouchedSinceDays,
     string? Text,
+    string? SharedWith,
+    Guid? SharedAccessUserId,
+    string? SharedAccessNormalizedEmail,
+    bool LimitToSharedAccess,
+    bool SharedWithMe,
     TaskItemSortField SortField,
     bool SortDescending,
     DateTimeOffset Now);

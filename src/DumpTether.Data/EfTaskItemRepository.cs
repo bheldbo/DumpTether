@@ -36,6 +36,11 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
                 NotViewedSinceDays: null,
                 NotTouchedSinceDays: null,
                 Text: null,
+                SharedWith: null,
+                SharedAccessUserId: null,
+                SharedAccessNormalizedEmail: null,
+                LimitToSharedAccess: false,
+                SharedWithMe: false,
                 TaskItemSortField.LastTouchedAt,
                 SortDescending: true,
                 DateTimeOffset.UtcNow),
@@ -49,6 +54,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         var candidates = await _dbContext.TaskItems
             .AsNoTracking()
             .Include("_fieldValues")
+            .Include(taskItem => taskItem.Shares)
             .Include("_timelineEntries")
             .AsSplitQuery()
             .Where(taskItem => taskItem.WorkspaceId == query.WorkspaceId)
@@ -80,6 +86,37 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         return await query.ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<TaskItem>> ListByCategoryAsync(
+        Guid workspaceId,
+        string category,
+        bool includeArchived,
+        CancellationToken cancellationToken)
+    {
+        var normalizedCategory = category.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedCategory))
+        {
+            return [];
+        }
+
+        var query = _dbContext.TaskItems
+            .Include("_timelineEntries")
+            .AsSplitQuery()
+            .Where(taskItem =>
+                taskItem.WorkspaceId == workspaceId &&
+                taskItem.Category != null);
+
+        if (!includeArchived)
+        {
+            query = query.Where(taskItem => taskItem.ArchivedAt == null);
+        }
+
+        var candidates = await query.ToListAsync(cancellationToken);
+
+        return candidates
+            .Where(taskItem => CategoryListContains(taskItem.Category, normalizedCategory))
+            .ToList();
+    }
+
     public async Task<int> CountAsync(
         Guid workspaceId,
         bool includeArchived,
@@ -106,6 +143,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
     {
         var query = _dbContext.TaskItems
             .Include("_fieldValues")
+            .Include(taskItem => taskItem.Shares)
             .Include("_timelineEntries")
             .AsSplitQuery()
             .Where(taskItem =>
@@ -164,6 +202,149 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         return await query.SingleOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<TaskItem?> GetByShareIdAsync(
+        Guid shareId,
+        Guid userId,
+        string normalizedEmail,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var share = await _dbContext.TaskItemShares
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.Id == shareId &&
+                    candidate.RevokedAt == null &&
+                    (candidate.SharedWithUserId == userId ||
+                        candidate.NormalizedEmail == normalizedEmail),
+                cancellationToken);
+
+        if (share is null)
+        {
+            return null;
+        }
+
+        var query = _dbContext.TaskItems
+            .Include("_fieldValues")
+            .Include(taskItem => taskItem.Shares)
+            .Include("_timelineEntries")
+            .AsSplitQuery()
+            .Where(taskItem =>
+                taskItem.Id == share.TaskItemId &&
+                taskItem.WorkspaceId == share.WorkspaceId);
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskItem>> ListByIdsAsync(
+        Guid workspaceId,
+        IReadOnlyList<Guid> ids,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var filteredIds = ids
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (filteredIds.Length == 0)
+        {
+            return [];
+        }
+
+        var query = _dbContext.TaskItems
+            .Include("_fieldValues")
+            .Include(taskItem => taskItem.Shares)
+            .Include("_timelineEntries")
+            .AsSplitQuery()
+            .Where(taskItem =>
+                taskItem.WorkspaceId == workspaceId &&
+                filteredIds.Contains(taskItem.Id));
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskItem>> ListByShareTokenHashAsync(
+        string tokenHash,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var shareTaskIds = await _dbContext.TaskItemShares
+            .AsNoTracking()
+            .Where(share => share.TokenHash == tokenHash)
+            .Select(share => share.TaskItemId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        if (shareTaskIds.Count == 0)
+        {
+            return [];
+        }
+
+        var query = _dbContext.TaskItems
+            .Include("_fieldValues")
+            .Include(taskItem => taskItem.Shares)
+            .Include("_timelineEntries")
+            .AsSplitQuery()
+            .Where(taskItem => shareTaskIds.Contains(taskItem.Id));
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskShareInboxItem>> ListIncomingSharesAsync(
+        Guid userId,
+        string normalizedEmail,
+        CancellationToken cancellationToken)
+    {
+        var items = await _dbContext.TaskItemShares
+            .AsNoTracking()
+            .Where(share =>
+                share.RevokedAt == null &&
+                share.AcceptedAt == null &&
+                share.TokenHash != null &&
+                (share.SharedWithUserId == userId ||
+                    share.NormalizedEmail == normalizedEmail))
+            .Join(
+                _dbContext.TaskItems.AsNoTracking(),
+                share => share.TaskItemId,
+                taskItem => taskItem.Id,
+                (share, taskItem) => new { share, taskItem })
+            .Join(
+                _dbContext.Workspaces.AsNoTracking(),
+                item => item.share.WorkspaceId,
+                workspace => workspace.Id,
+                (item, workspace) => new { item.share, item.taskItem, workspace })
+            .Join(
+                _dbContext.AppUsers.AsNoTracking(),
+                item => item.share.SharedByUserId,
+                user => user.Id,
+                (item, user) => new TaskShareInboxItem(
+                    item.share,
+                    item.taskItem,
+                    item.workspace,
+                    user))
+            .ToListAsync(cancellationToken);
+
+        return items
+            .OrderByDescending(item => item.Share.CreatedAt)
+            .ToList();
+    }
+
     public async Task<TaskTemplate?> GetDefaultTaskTemplateAsync(
         Guid workspaceId,
         CancellationToken cancellationToken)
@@ -212,10 +393,12 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
     private static bool MatchesQuery(TaskItem taskItem, TaskItemQuery query)
     {
         return MatchesProject(taskItem, query.ProjectId) &&
+            MatchesSharedAccess(taskItem, query) &&
             MatchesArchive(taskItem, query.ArchiveFilter) &&
             MatchesStatus(taskItem, query.Status) &&
             MatchesCategory(taskItem, query.Category) &&
             MatchesColor(taskItem, query.Color) &&
+            MatchesSharedWith(taskItem, query) &&
             MatchesFollowUp(taskItem, query.FollowUpFilter, query.Now) &&
             MatchesNotViewedSince(taskItem, query.NotViewedSinceDays, query.Now) &&
             MatchesNotTouchedSince(taskItem, query.NotTouchedSinceDays, query.Now) &&
@@ -264,7 +447,19 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             return string.IsNullOrWhiteSpace(taskItem.Category);
         }
 
-        return string.Equals(taskItem.Category, category, StringComparison.OrdinalIgnoreCase);
+        return CategoryListContains(taskItem.Category, category);
+    }
+
+    private static bool CategoryListContains(string? categories, string category)
+    {
+        if (string.IsNullOrWhiteSpace(categories))
+        {
+            return false;
+        }
+
+        return categories
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(value => string.Equals(value, category.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool MatchesColor(TaskItem taskItem, string? color)
@@ -280,6 +475,47 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         }
 
         return string.Equals(taskItem.Color, color, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesSharedAccess(TaskItem taskItem, TaskItemQuery query)
+    {
+        if (!query.SharedAccessUserId.HasValue ||
+            !query.LimitToSharedAccess ||
+            string.IsNullOrWhiteSpace(query.SharedAccessNormalizedEmail))
+        {
+            return true;
+        }
+
+        return taskItem.Shares.Any(share =>
+            share.MatchesUser(
+                query.SharedAccessUserId.Value,
+                query.SharedAccessNormalizedEmail));
+    }
+
+    private static bool MatchesSharedWith(TaskItem taskItem, TaskItemQuery query)
+    {
+        if (query.SharedWithMe)
+        {
+            if (!query.SharedAccessUserId.HasValue ||
+                string.IsNullOrWhiteSpace(query.SharedAccessNormalizedEmail))
+            {
+                return false;
+            }
+
+            return taskItem.Shares.Any(share =>
+                share.MatchesUser(
+                    query.SharedAccessUserId.Value,
+                    query.SharedAccessNormalizedEmail));
+        }
+
+        if (string.IsNullOrWhiteSpace(query.SharedWith))
+        {
+            return true;
+        }
+
+        return taskItem.Shares.Any(share =>
+            share.IsActive &&
+            ContainsText(share.Email, query.SharedWith));
     }
 
     private static bool MatchesFollowUp(

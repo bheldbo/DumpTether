@@ -1,11 +1,18 @@
 import type {
   AddTaskTimelineEntryRequest,
+  AcceptShareLinkRequest,
+  AcceptWorkspaceInvitationRequest,
   ArchiveProjectTasksRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   AuthClientOptionsResponse,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
+  CopyTaskItemsRequest,
+  CopyTaskItemsResponse,
+  CreateTaskShareRequest,
+  CreateTaskShareLinkRequest,
+  CreateWorkspaceInvitationRequest,
   CreateProjectRequest,
   CreateSavedViewRequest,
   CreateTaskTemplateRequest,
@@ -31,7 +38,14 @@ import type {
   UpdateTaskTemplateRequest,
   UpdateProjectRequest,
   UpdateWorkspaceRequest,
+  TaskShareInboxResponse,
+  WorkspaceInvitationResponse,
+  WorkspaceInvitationInboxResponse,
+  WorkspaceMemberResponse,
   WorkspaceResponse,
+  TaskItemShareResponse,
+  TaskShareLinkResponse,
+  ShareLinkAcceptResponse,
 } from './types';
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
@@ -223,6 +237,15 @@ export function createTaskItem(
   });
 }
 
+export function copyTaskItems(
+  requestBody: CopyTaskItemsRequest,
+): Promise<CopyTaskItemsResponse> {
+  return request<CopyTaskItemsResponse>('/api/tasks/copy', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
 export function updateTaskItem(
   id: string,
   requestBody: UpdateTaskItemRequest,
@@ -325,6 +348,12 @@ export function archiveProjectTasks(
   });
 }
 
+export function deleteProject(id: string): Promise<ProjectArchiveResponse> {
+  return request<ProjectArchiveResponse>(`/api/projects/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export function getWorkspace(): Promise<WorkspaceResponse> {
   return request<WorkspaceResponse>('/api/workspace');
 }
@@ -348,6 +377,93 @@ export function updateWorkspace(
   return request<WorkspaceResponse>('/api/workspace', {
     method: 'PATCH',
     body: JSON.stringify(requestBody),
+  });
+}
+
+export function updateWorkspaceById(
+  id: string,
+  requestBody: UpdateWorkspaceRequest,
+): Promise<WorkspaceResponse> {
+  return request<WorkspaceResponse>(`/api/workspaces/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function deleteWorkspace(id: string): Promise<void> {
+  return request<void>(`/api/workspaces/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function listWorkspaceMembers(): Promise<WorkspaceMemberResponse[]> {
+  return request<WorkspaceMemberResponse[]>('/api/workspace/members');
+}
+
+export function listWorkspaceInvitations(): Promise<WorkspaceInvitationResponse[]> {
+  return request<WorkspaceInvitationResponse[]>('/api/workspace/invitations');
+}
+
+export function createWorkspaceInvitation(
+  requestBody: CreateWorkspaceInvitationRequest,
+): Promise<WorkspaceInvitationResponse> {
+  return request<WorkspaceInvitationResponse>('/api/workspace/invitations', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function acceptWorkspaceInvitation(
+  requestBody: AcceptWorkspaceInvitationRequest,
+): Promise<WorkspaceInvitationResponse> {
+  return request<WorkspaceInvitationResponse>('/api/workspace/invitations/accept', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function acceptShareLink(
+  requestBody: AcceptShareLinkRequest,
+): Promise<ShareLinkAcceptResponse> {
+  return request<ShareLinkAcceptResponse>('/api/share-links/accept', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function listIncomingWorkspaceInvitations(): Promise<WorkspaceInvitationInboxResponse[]> {
+  return request<WorkspaceInvitationInboxResponse[]>('/api/account/invitations');
+}
+
+export function acceptIncomingWorkspaceInvitation(
+  invitationId: string,
+): Promise<WorkspaceInvitationResponse> {
+  return request<WorkspaceInvitationResponse>(`/api/account/invitations/${invitationId}/accept`, {
+    method: 'POST',
+  });
+}
+
+export function declineIncomingWorkspaceInvitation(id: string): Promise<void> {
+  return request<void>(`/api/account/invitations/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function leaveCurrentWorkspace(): Promise<void> {
+  return request<void>('/api/workspace/membership', {
+    method: 'DELETE',
+  });
+}
+
+export function removeWorkspaceMember(userId: string): Promise<void> {
+  return request<void>(`/api/workspace/members/${userId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function revokeWorkspaceInvitation(id: string): Promise<void> {
+  return request<void>(`/api/workspace/invitations/${id}`, {
+    method: 'DELETE',
   });
 }
 
@@ -392,6 +508,58 @@ export function deleteTaskTimelineEntry(
       method: 'DELETE',
     },
   );
+}
+
+export function listTaskShares(id: string): Promise<TaskItemShareResponse[]> {
+  return request<TaskItemShareResponse[]>(`/api/tasks/${id}/shares`);
+}
+
+export function createTaskShare(
+  id: string,
+  requestBody: CreateTaskShareRequest,
+): Promise<TaskItemDetailResponse> {
+  return request<TaskItemDetailResponse>(`/api/tasks/${id}/shares`, {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function createTaskShareLink(
+  id: string,
+  requestBody: CreateTaskShareRequest,
+): Promise<TaskShareLinkResponse> {
+  return request<TaskShareLinkResponse>(`/api/tasks/${id}/share-links`, {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function createTaskShareLinks(
+  requestBody: CreateTaskShareLinkRequest,
+): Promise<TaskShareLinkResponse> {
+  return request<TaskShareLinkResponse>('/api/tasks/share-links', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function revokeTaskShare(
+  id: string,
+  shareId: string,
+): Promise<TaskItemDetailResponse> {
+  return request<TaskItemDetailResponse>(`/api/tasks/${id}/shares/${shareId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function listIncomingTaskShares(): Promise<TaskShareInboxResponse[]> {
+  return request<TaskShareInboxResponse[]>('/api/account/task-shares');
+}
+
+export function leaveTaskShare(shareId: string): Promise<void> {
+  return request<void>(`/api/account/task-shares/${shareId}`, {
+    method: 'DELETE',
+  });
 }
 
 export function updateSavedView(

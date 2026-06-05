@@ -11,18 +11,26 @@ import {
 } from 'react';
 import {
   addTaskTimelineEntry,
+  acceptShareLink,
+  acceptIncomingWorkspaceInvitation,
   ApiError,
-  archiveProjectTasks,
   archiveTaskItem,
   beginOAuthLogin,
+  copyTaskItems,
   createArchiveResolution,
   createProject,
+  createTaskShareLink,
+  createTaskShareLinks,
   createTaskItem,
   createTaskTemplate,
   createWorkspace,
+  createWorkspaceInvitation,
   deleteArchiveResolution,
+  deleteProject,
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
+  deleteWorkspace,
+  declineIncomingWorkspaceInvitation,
   developmentLogin,
   checkHealth,
   getAuthOptions,
@@ -31,9 +39,15 @@ import {
   getTaskItem,
   getTaskTemplate,
   getWorkspace,
+  leaveCurrentWorkspace,
+  leaveTaskShare,
   listArchiveResolutions,
+  listIncomingTaskShares,
+  listIncomingWorkspaceInvitations,
   listProjects,
   listSavedViews,
+  listWorkspaceInvitations,
+  listWorkspaceMembers,
   listTaskItems,
   listTaskTemplates,
   listWorkspaces,
@@ -41,6 +55,9 @@ import {
   logoutUser,
   reopenTaskItem,
   registerUser,
+  removeWorkspaceMember,
+  revokeTaskShare,
+  revokeWorkspaceInvitation,
   setCurrentWorkspaceId,
   isTemporarySession,
   updateArchiveResolution,
@@ -49,6 +66,7 @@ import {
   updateTaskTimelineEntry,
   updateTaskTemplate,
   updateWorkspace,
+  updateWorkspaceById,
 } from './api';
 import './App.css';
 import { FieldEditorList, FieldValueList } from './fieldRenderers';
@@ -56,12 +74,14 @@ import { toFieldValueMap } from './fieldValues';
 import { type Language, type Translate, translate } from './localization';
 import type {
   AuthClientOptionsResponse,
-  ArchiveProjectTasksRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
+  CreateTaskShareRequest,
+  CreateTaskShareLinkRequest,
   CreateTaskItemRequest,
+  CreateWorkspaceInvitationRequest,
   FieldDefinitionType,
   FieldValueMap,
   LoginUserRequest,
@@ -72,8 +92,14 @@ import type {
   SavedViewResponse,
   SavedViewSortField,
   TaskItemDetailResponse,
+  TaskItemShareResponse,
   TaskItemSummaryResponse,
+  TaskShareInboxResponse,
+  TaskShareLinkResponse,
   TaskTemplateDetailResponse,
+  WorkspaceInvitationInboxResponse,
+  WorkspaceInvitationResponse,
+  WorkspaceMemberResponse,
   UpdateArchiveResolutionRequest,
   UpdateProjectRequest,
   UpdateTaskItemRequest,
@@ -95,6 +121,7 @@ type IconName =
   | 'cloud'
   | 'clock'
   | 'close'
+  | 'crown'
   | 'edit'
   | 'filterOff'
   | 'inbox'
@@ -114,7 +141,9 @@ type IconName =
   | 'tag'
   | 'templates'
   | 'trash'
+  | 'undo'
   | 'user'
+  | 'users'
   | 'waiting';
 
 interface EditableTemplateField {
@@ -135,6 +164,8 @@ interface TaskWallFilters {
   projectId: string;
   notTouchedDays: string;
   followUp: '' | SavedViewFollowUpFilter;
+  sharedWith: string;
+  sharedWithMe: boolean;
 }
 
 const fieldTypes: FieldDefinitionType[] = [
@@ -164,6 +195,9 @@ const colorChoices = [
 const languageStorageKey = 'dumptether.language';
 const workspaceStorageKey = 'dumptether.workspace';
 const statusOptionsStorageKey = 'dumptether.statusOptions';
+const sidebarWidthStorageKey = 'dumptether.sidebarWidth';
+const minSidebarWidth = 232;
+const maxSidebarWidth = 440;
 const defaultAuthOptions: AuthClientOptionsResponse = {
   requiresAuthentication: true,
   guestSessionsEnabled: true,
@@ -173,10 +207,11 @@ const defaultAuthOptions: AuthClientOptionsResponse = {
 };
 
 type ConnectionStatus = 'checking' | 'online' | 'offline';
+type ToastTone = 'info' | 'warning' | 'error';
 
 interface ToastMessage {
   id: number;
-  tone: 'info' | 'warning' | 'error';
+  tone: ToastTone;
   message: string;
 }
 
@@ -191,6 +226,8 @@ interface CachedWorkspaceSnapshot {
   templates: TaskTemplateDetailResponse[];
   viewCounts: Record<string, number>;
   workspace: WorkspaceResponse | null;
+  workspaceInvitations: WorkspaceInvitationResponse[];
+  workspaceMembers: WorkspaceMemberResponse[];
   workspaces: WorkspaceResponse[];
 }
 
@@ -202,6 +239,8 @@ function App() {
   const [taskItems, setTaskItems] = useState<TaskItemSummaryResponse[]>([]);
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
   const [archiveResolutions, setArchiveResolutions] = useState<ArchiveResolutionResponse[]>([]);
+  const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMemberResponse[]>([]);
+  const [workspaceInvitations, setWorkspaceInvitations] = useState<WorkspaceInvitationResponse[]>([]);
   const [templates, setTemplates] = useState<TaskTemplateDetailResponse[]>([]);
   const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(
     () => readStoredStringList(
@@ -216,11 +255,21 @@ function App() {
   const [selectedTask, setSelectedTask] = useState<TaskItemDetailResponse | null>(null);
   const [archiveDialogIsOpen, setArchiveDialogIsOpen] = useState(false);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const storedWidth = Number(window.localStorage.getItem(sidebarWidthStorageKey));
+    return Number.isFinite(storedWidth)
+      ? clamp(storedWidth, minSidebarWidth, maxSidebarWidth)
+      : 284;
+  });
   const [settingsIsOpen, setSettingsIsOpen] = useState(false);
   const [accountIsOpen, setAccountIsOpen] = useState(false);
   const [authOptions, setAuthOptions] =
     useState<AuthClientOptionsResponse>(defaultAuthOptions);
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
+  const [incomingWorkspaceInvitations, setIncomingWorkspaceInvitations] =
+    useState<WorkspaceInvitationInboxResponse[]>([]);
+  const [incomingTaskShares, setIncomingTaskShares] = useState<TaskShareInboxResponse[]>([]);
+  const processedWorkspaceInviteTokenRef = useRef<string | null>(null);
   const [temporarySessionIsActive, setTemporarySessionIsActive] = useState(isTemporarySession);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
   const [lastPingedAt, setLastPingedAt] = useState<string | null>(null);
@@ -240,6 +289,7 @@ function App() {
     () => uniqueSorted([...configuredStatuses, ...knownStatuses]),
     [configuredStatuses, knownStatuses],
   );
+  const accountNotificationCount = incomingWorkspaceInvitations.length + incomingTaskShares.length;
 
   const currentView = useMemo(
     () => savedViews.find((view) => view.id === currentViewId) ?? null,
@@ -283,11 +333,19 @@ function App() {
 
       try {
         const user = await getCurrentUser();
+        const [workspaceInvites, taskShares] = await Promise.all([
+          listIncomingWorkspaceInvitations().catch(() => []),
+          listIncomingTaskShares().catch(() => []),
+        ]);
         setCurrentUser(user);
+        setIncomingWorkspaceInvitations(workspaceInvites);
+        setIncomingTaskShares(taskShares);
         setTemporarySessionIsActive(isTemporarySession());
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           setCurrentUser(null);
+          setIncomingWorkspaceInvitations([]);
+          setIncomingTaskShares([]);
           setTemporarySessionIsActive(false);
         } else {
           throw error;
@@ -328,6 +386,8 @@ function App() {
             setSavedViews(cachedSnapshot.savedViews);
             setProjects(cachedSnapshot.projects);
             setArchiveResolutions(cachedSnapshot.archiveResolutions);
+            setWorkspaceMembers(cachedSnapshot.workspaceMembers ?? []);
+            setWorkspaceInvitations(cachedSnapshot.workspaceInvitations ?? []);
             setTemplates(cachedSnapshot.templates);
             setTaskColorOptions(cachedSnapshot.taskColorOptions);
             setKnownStatuses(cachedSnapshot.knownStatuses);
@@ -348,13 +408,26 @@ function App() {
         setCurrentWorkspaceId(effectiveWorkspaceId);
         window.localStorage.setItem(workspaceStorageKey, effectiveWorkspaceId ?? '');
 
-        const [workspaceInfo, views, projectList, resolutions, templateSummaries] = await Promise.all([
+        const [
+          workspaceInfo,
+          views,
+          projectList,
+          resolutions,
+          templateSummaries,
+          members,
+          invitations,
+        ] = await Promise.all([
           getWorkspace(),
           listSavedViews(),
           listProjects(),
           listArchiveResolutions(),
           listTaskTemplates(),
+          listWorkspaceMembers().catch(() => []),
+          listWorkspaceInvitations().catch(() => []),
         ]);
+        const resolvedWorkspaceList = workspaceList.some((candidate) => candidate.id === workspaceInfo.id)
+          ? workspaceList
+          : await listWorkspaces();
         const selectedViewId = pickSavedViewId(views, preferredViewId);
         const resolvedWorkspaceCacheKey = buildWorkspaceCacheKey(
           workspaceInfo.id,
@@ -373,12 +446,14 @@ function App() {
           listTaskItems({ archive: 'All' }),
         ]);
 
-        setWorkspaces(workspaceList);
+        setWorkspaces(resolvedWorkspaceList);
         setWorkspace(workspaceInfo);
         setSelectedWorkspaceId(workspaceInfo.id);
         setSavedViews(views);
         setProjects(projectList);
         setArchiveResolutions(resolutions);
+        setWorkspaceMembers(members);
+        setWorkspaceInvitations(invitations);
         setTemplates(templateDetails);
         setTaskColorOptions(mergeColorOptions(getTaskColors(allTasksForColors)));
         setKnownStatuses(uniqueSorted(allTasksForColors.map((taskItem) => taskItem.status)));
@@ -396,7 +471,9 @@ function App() {
           templates: templateDetails,
           viewCounts: Object.fromEntries(countEntries),
           workspace: workspaceInfo,
-          workspaces: workspaceList,
+          workspaceInvitations: invitations,
+          workspaceMembers: members,
+          workspaces: resolvedWorkspaceList,
         };
         writeCachedWorkspaceSnapshot(workspaceCacheKey, snapshot);
         writeCachedWorkspaceSnapshot(resolvedWorkspaceCacheKey, snapshot);
@@ -514,12 +591,202 @@ function App() {
     void loadWorkspace(null, workspaceId);
   };
 
+  const handleStartSidebarResize = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+
+    const handlePointerMove = (moveEvent: globalThis.MouseEvent) => {
+      const nextWidth = clamp(
+        startWidth + moveEvent.clientX - startX,
+        minSidebarWidth,
+        maxSidebarWidth,
+      );
+      setSidebarWidth(nextWidth);
+      window.localStorage.setItem(sidebarWidthStorageKey, nextWidth.toString());
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', handlePointerUp);
+    };
+
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', handlePointerUp);
+  };
+
   const handleCreateWorkspace = async (name: string) => {
     try {
       setCurrentWorkspaceId(null);
       const created = await createWorkspace({ name: name.trim() });
       setWorkspaces((currentWorkspaces) => [...currentWorkspaces, created]);
       handleSelectWorkspace(created.id);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleCreateWorkspaceInvitation = async (
+    requestBody: CreateWorkspaceInvitationRequest,
+  ) => {
+    try {
+      const created = await createWorkspaceInvitation(requestBody);
+      setWorkspaceInvitations((currentInvitations) => [created, ...currentInvitations]);
+      setErrorMessage(null);
+      return created;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleAcceptShareLink = useCallback(async (token: string) => {
+    try {
+      const accepted = await acceptShareLink({ token });
+      await loadAuth();
+      await loadWorkspace(null, accepted.workspaceId || selectedWorkspaceId, { force: true });
+      showToast(t('workspaceInviteAccepted'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  }, [loadAuth, loadWorkspace, selectedWorkspaceId, showToast, t]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const inviteToken = searchParams.get('shareToken') ?? searchParams.get('workspaceInvite');
+
+    if (!currentUser || !inviteToken || processedWorkspaceInviteTokenRef.current === inviteToken) {
+      return;
+    }
+
+    processedWorkspaceInviteTokenRef.current = inviteToken;
+    void handleAcceptShareLink(inviteToken)
+      .then(() => {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete('shareToken');
+        nextUrl.searchParams.delete('workspaceInvite');
+        window.history.replaceState({}, '', nextUrl.toString());
+      })
+      .catch(() => {
+        processedWorkspaceInviteTokenRef.current = null;
+      });
+  }, [currentUser, handleAcceptShareLink]);
+
+  const handleAcceptIncomingWorkspaceInvitation = async (id: string) => {
+    try {
+      await acceptIncomingWorkspaceInvitation(id);
+      setIncomingWorkspaceInvitations((currentInvitations) =>
+        currentInvitations.filter((invitation) => invitation.id !== id),
+      );
+      await loadAuth();
+      await loadWorkspace(null, selectedWorkspaceId, { force: true });
+      showToast(t('workspaceInviteAccepted'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleDeclineIncomingWorkspaceInvitation = async (id: string) => {
+    try {
+      await declineIncomingWorkspaceInvitation(id);
+      setIncomingWorkspaceInvitations((currentInvitations) =>
+        currentInvitations.filter((invitation) => invitation.id !== id),
+      );
+      showToast(t('workspaceInviteDeclined'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleLeaveTaskShare = async (shareId: string) => {
+    try {
+      await leaveTaskShare(shareId);
+      setIncomingTaskShares((currentShares) =>
+        currentShares.filter((share) => share.shareId !== shareId),
+      );
+      if (selectedTask?.shares.some((share) => share.id === shareId)) {
+        setSelectedTaskId(null);
+        setSelectedTask(null);
+      }
+      await loadAuth();
+      await loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
+      showToast(t('taskShareLeft'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleRevokeWorkspaceInvitation = async (id: string) => {
+    try {
+      await revokeWorkspaceInvitation(id);
+      setWorkspaceInvitations((currentInvitations) =>
+        currentInvitations.filter((invitation) => invitation.id !== id),
+      );
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleRemoveWorkspaceMember = async (userId: string) => {
+    try {
+      await removeWorkspaceMember(userId);
+      setWorkspaceMembers((currentMembers) =>
+        currentMembers.filter((member) => member.userId !== userId),
+      );
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleLeaveWorkspaceAccess = async (workspaceId: string) => {
+    const workspaceToLeave = workspaces.find((candidate) => candidate.id === workspaceId);
+
+    try {
+      if (workspaceToLeave && isTaskShareWorkspace(workspaceToLeave)) {
+        const sharesToLeave = incomingTaskShares.filter((share) => share.workspaceId === workspaceId);
+        await Promise.all(sharesToLeave.map((share) => leaveTaskShare(share.shareId)));
+        setIncomingTaskShares((currentShares) =>
+          currentShares.filter((share) => share.workspaceId !== workspaceId),
+        );
+      } else {
+        setCurrentWorkspaceId(workspaceId);
+        await leaveCurrentWorkspace();
+      }
+
+      if (selectedWorkspaceId === workspaceId) {
+        setSelectedWorkspaceId(null);
+        setSelectedTaskId(null);
+        setSelectedTask(null);
+      }
+
+      await loadAuth();
+      await loadWorkspace(null, null, { force: true });
+      showToast(t('workspaceLeft'), 'info');
+      setErrorMessage(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -543,7 +810,9 @@ function App() {
       showToast(t('authLoggedIn'), 'info');
       setErrorMessage(null);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
       throw error;
     }
   };
@@ -568,7 +837,9 @@ function App() {
       setErrorMessage(null);
       return registered;
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
       throw error;
     }
   };
@@ -580,7 +851,9 @@ function App() {
       showToast(t('authLoggedIn'), 'info');
       setErrorMessage(null);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
       throw error;
     }
   };
@@ -607,6 +880,10 @@ function App() {
       setSelectedWorkspaceId(null);
       setWorkspace(null);
       setWorkspaces([]);
+      setWorkspaceMembers([]);
+      setWorkspaceInvitations([]);
+      setIncomingWorkspaceInvitations([]);
+      setIncomingTaskShares([]);
       setSavedViews([]);
       setProjects([]);
       setTaskItems([]);
@@ -634,7 +911,10 @@ function App() {
       });
       setProjects((currentProjects) => [...currentProjects, created]);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
     }
   };
 
@@ -672,6 +952,33 @@ function App() {
     }
   };
 
+  const handleCopyTaskItemsToWorkspace = async (
+    taskItemIds: string[],
+    destinationWorkspaceId: string,
+  ) => {
+    if (taskItemIds.length === 0) {
+      return;
+    }
+
+    try {
+      await copyTaskItems({
+        taskItemIds,
+        destinationWorkspaceId,
+      });
+
+      if (destinationWorkspaceId === selectedWorkspaceId) {
+        await loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
+      }
+
+      showToast(t('tasksCopied'));
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
   const handleUpdateTaskItem = async (requestBody: UpdateTaskItemRequest) => {
     if (!selectedTask) {
       return;
@@ -682,7 +989,72 @@ function App() {
       setSelectedTask(updated);
       await loadWorkspace(currentViewId);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleCreateTaskShareLink = async (
+    taskItemId: string,
+    requestBody: CreateTaskShareRequest,
+  ) => {
+    try {
+      const created = await createTaskShareLink(taskItemId, requestBody);
+      const updated = await getTaskItem(taskItemId);
+      setSelectedTask((currentTask) =>
+        currentTask?.id === updated.id ? updated : currentTask,
+      );
+      setTaskItems((currentItems) =>
+        currentItems.map((taskItem) =>
+          taskItem.id === updated.id ? updated : taskItem,
+        ),
+      );
+      await loadWorkspace(currentViewId);
+      setErrorMessage(null);
+      return created;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleCreateTaskShareLinks = async (
+    requestBody: CreateTaskShareLinkRequest,
+  ) => {
+    try {
+      const created = await createTaskShareLinks(requestBody);
+      await loadWorkspace(currentViewId);
+      setErrorMessage(null);
+      return created;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleRevokeTaskShare = async (taskItemId: string, shareId: string) => {
+    try {
+      const updated = await revokeTaskShare(taskItemId, shareId);
+      setSelectedTask((currentTask) =>
+        currentTask?.id === updated.id ? updated : currentTask,
+      );
+      setTaskItems((currentItems) =>
+        currentItems.map((taskItem) =>
+          taskItem.id === updated.id ? updated : taskItem,
+        ),
+      );
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
     }
   };
 
@@ -801,19 +1173,38 @@ function App() {
     }
   };
 
-  const handleArchiveProject = async (
-    projectId: string,
-    requestBody: ArchiveProjectTasksRequest,
-  ) => {
+  const handleDeleteProject = async (projectId: string) => {
     try {
-      await archiveProjectTasks(projectId, requestBody);
-      setProjects((currentProjects) =>
-        currentProjects.filter((project) => project.id !== projectId),
+      const deletedProject = projects.find((project) => project.id === projectId) ?? null;
+      const remainingProjects = projects.filter((project) => project.id !== projectId);
+      await deleteProject(projectId);
+      setProjects(remainingProjects);
+      setTaskItems((currentItems) =>
+        currentItems.map((taskItem) => {
+          const nextCategory = deletedProject
+            ? joinTaskCategories(
+              splitTaskCategories(taskItem.category).filter((category) =>
+                category.toLowerCase() !== deletedProject.name.toLowerCase()),
+            )
+            : taskItem.category;
+          const nextProjectId = taskItem.projectId === projectId
+            ? getPrimaryProjectIdForCategories(nextCategory, remainingProjects)
+            : taskItem.projectId;
+
+          return {
+            ...taskItem,
+            projectId: nextProjectId,
+            category: nextCategory,
+          };
+        }),
       );
-      await loadWorkspace(currentViewId);
+      await loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
       setErrorMessage(null);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
     }
   };
 
@@ -925,7 +1316,55 @@ function App() {
       );
       setErrorMessage(null);
     } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleUpdateWorkspaceById = async (
+    workspaceId: string,
+    requestBody: UpdateWorkspaceRequest,
+  ) => {
+    try {
+      const updated = await updateWorkspaceById(workspaceId, requestBody);
+      setWorkspaces((currentWorkspaces) =>
+        currentWorkspaces.map((currentWorkspace) =>
+          currentWorkspace.id === updated.id ? updated : currentWorkspace,
+        ),
+      );
+      setWorkspace((currentWorkspace) =>
+        currentWorkspace?.id === updated.id ? updated : currentWorkspace,
+      );
+      await loadAuth();
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleDeleteWorkspace = async (workspaceId: string) => {
+    try {
+      await deleteWorkspace(workspaceId);
+      setWorkspaces((currentWorkspaces) =>
+        currentWorkspaces.filter((currentWorkspace) => currentWorkspace.id !== workspaceId),
+      );
+      if (selectedWorkspaceId === workspaceId) {
+        setSelectedWorkspaceId(null);
+        setSelectedTaskId(null);
+        setSelectedTask(null);
+      }
+      await loadAuth();
+      await loadWorkspace(null, null, { force: true });
+      showToast(t('workspaceDeleted'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
       setErrorMessage(getErrorMessage(error));
+      throw error;
     }
   };
 
@@ -939,25 +1378,38 @@ function App() {
       );
       setErrorMessage(null);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
     }
   };
 
   return (
-    <main className="app-shell" data-sidebar-collapsed={sidebarIsCollapsed}>
+    <main
+      className="app-shell"
+      data-sidebar-collapsed={sidebarIsCollapsed}
+      style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
+    >
       <Sidebar
+        accountNotificationCount={accountNotificationCount}
         counts={viewCounts}
+        currentUser={currentUser}
         currentViewId={currentViewId}
         language={language}
         mode={mode}
         onCreateWorkspace={handleCreateWorkspace}
+        onDeleteWorkspace={handleDeleteWorkspace}
+        onLeaveWorkspaceAccess={handleLeaveWorkspaceAccess}
         onOpenAccount={() => setAccountIsOpen(true)}
         onOpenSettings={() => setSettingsIsOpen(true)}
         onOpenTemplates={handleOpenTemplates}
         onRefresh={() => void loadWorkspace(currentViewId, selectedWorkspaceId, { force: true })}
+        onResizeStart={handleStartSidebarResize}
         onSelectWorkspace={handleSelectWorkspace}
         onSelectView={handleSelectSavedView}
         onToggleSidebar={() => setSidebarIsCollapsed((isCollapsed) => !isCollapsed)}
+        onUpdateWorkspace={handleUpdateWorkspaceById}
         connectionStatus={connectionStatus}
         lastPingedAt={lastPingedAt}
         savedViews={savedViews}
@@ -1008,19 +1460,27 @@ function App() {
             archiveDialogIsOpen={archiveDialogIsOpen}
             archiveResolutions={archiveResolutions}
             currentView={currentView}
+            currentUserEmail={currentUser?.user.email ?? null}
             colorOptions={taskColorOptions}
             isLoading={isLoadingWorkspace}
             isLoadingDetail={isLoadingDetail}
             onAddTimelineEntry={handleAddTimelineEntry}
             onArchive={handleArchiveTaskItem}
-            onArchiveProject={handleArchiveProject}
             onArchiveTaskItems={handleArchiveTaskItems}
             onCloseArchiveDialog={() => setArchiveDialogIsOpen(false)}
+            onCopyTaskItemsToWorkspace={handleCopyTaskItemsToWorkspace}
             onCreateTaskItem={handleCreateTaskItem}
             onCreateProject={handleCreateProject}
+            onCreateTaskShareLink={handleCreateTaskShareLink}
+            onCreateTaskShareLinks={handleCreateTaskShareLinks}
+            onCreateWorkspaceInvitation={handleCreateWorkspaceInvitation}
             onDeleteTimelineEntry={handleDeleteTimelineEntry}
+            onDeleteProject={handleDeleteProject}
             onOpenArchiveDialog={() => setArchiveDialogIsOpen(true)}
             onReopen={handleReopenTaskItem}
+            onRevokeTaskShare={handleRevokeTaskShare}
+            onRevokeWorkspaceInvitation={handleRevokeWorkspaceInvitation}
+            onRemoveWorkspaceMember={handleRemoveWorkspaceMember}
             onSelectTaskItem={(id) => {
               setSelectedTaskId(id);
             }}
@@ -1034,6 +1494,7 @@ function App() {
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
             onUpdateProject={handleUpdateProject}
             onUpdateWorkspace={handleUpdateWorkspace}
+            onShowToast={showToast}
             projects={projects}
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
@@ -1041,7 +1502,10 @@ function App() {
             taskItems={taskItems}
             templates={templates}
             t={t}
+            workspaceInvitations={workspaceInvitations}
+            workspaceMembers={workspaceMembers}
             workspace={workspace}
+            workspaces={workspaces}
           />
         )}
       </section>
@@ -1064,10 +1528,15 @@ function App() {
         <AccountPanel
           authOptions={authOptions}
           currentUser={currentUser}
+          incomingTaskShares={incomingTaskShares}
+          incomingWorkspaceInvitations={incomingWorkspaceInvitations}
           isLoadingAuth={isLoadingAuth}
+          onAcceptIncomingWorkspaceInvitation={handleAcceptIncomingWorkspaceInvitation}
           onClose={() => setAccountIsOpen(false)}
+          onDeclineIncomingWorkspaceInvitation={handleDeclineIncomingWorkspaceInvitation}
           onDevelopmentLogin={handleDevelopmentLogin}
           onGuestLogin={handleGuestLogin}
+          onLeaveTaskShare={handleLeaveTaskShare}
           onLogin={handleLogin}
           onLogout={handleLogout}
           onRegister={handleRegister}
@@ -1081,20 +1550,26 @@ function App() {
 }
 
 function Sidebar({
+  accountNotificationCount,
   connectionStatus,
   counts,
+  currentUser,
   currentViewId,
   lastPingedAt,
   language,
   mode,
   onCreateWorkspace,
+  onDeleteWorkspace,
+  onLeaveWorkspaceAccess,
   onOpenAccount,
   onOpenSettings,
   onOpenTemplates,
   onRefresh,
+  onResizeStart,
   onSelectWorkspace,
   onSelectView,
   onToggleSidebar,
+  onUpdateWorkspace,
   savedViews,
   sidebarIsCollapsed,
   t,
@@ -1103,20 +1578,29 @@ function Sidebar({
   workspace,
   workspaces,
 }: {
+  accountNotificationCount: number;
   connectionStatus: ConnectionStatus;
   counts: Record<string, number>;
+  currentUser: CurrentUserResponse | null;
   currentViewId: string | null;
   lastPingedAt: string | null;
   language: Language;
   mode: WorkspaceMode;
   onCreateWorkspace: (name: string) => Promise<void>;
+  onDeleteWorkspace: (workspaceId: string) => Promise<void>;
+  onLeaveWorkspaceAccess: (workspaceId: string) => Promise<void>;
   onOpenAccount: () => void;
   onOpenSettings: () => void;
   onOpenTemplates: () => void;
   onRefresh: () => void;
+  onResizeStart: (event: MouseEvent<HTMLButtonElement>) => void;
   onSelectWorkspace: (workspaceId: string) => void;
   onSelectView: (viewId: string) => void;
   onToggleSidebar: () => void;
+  onUpdateWorkspace: (
+    workspaceId: string,
+    requestBody: UpdateWorkspaceRequest,
+  ) => Promise<void>;
   savedViews: SavedViewResponse[];
   sidebarIsCollapsed: boolean;
   t: Translate;
@@ -1127,8 +1611,17 @@ function Sidebar({
 }) {
   const [workspaceDraft, setWorkspaceDraft] = useState('');
   const [workspaceCreateIsOpen, setWorkspaceCreateIsOpen] = useState(false);
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<string | null>(null);
+  const [editingWorkspaceName, setEditingWorkspaceName] = useState('');
+  const [pendingDeleteWorkspace, setPendingDeleteWorkspace] =
+    useState<WorkspaceResponse | null>(null);
+  const [pendingWorkspaceLeaveId, setPendingWorkspaceLeaveId] = useState<string | null>(null);
   const [workspaceIsSubmitting, setWorkspaceIsSubmitting] = useState(false);
   const workspaceInputRef = useRef<HTMLInputElement>(null);
+  const workspaceMembershipsById = useMemo(
+    () => new Map(currentUser?.workspaces.map((workspaceItem) => [workspaceItem.id, workspaceItem]) ?? []),
+    [currentUser],
+  );
   const visibleSavedViews = useMemo(
     () => savedViews.filter((view) => ['all tasks', 'overview', 'archive'].includes(view.name.toLowerCase())),
     [savedViews],
@@ -1150,18 +1643,45 @@ function Sidebar({
     }
 
     setWorkspaceIsSubmitting(true);
-    await onCreateWorkspace(trimmedName);
-    setWorkspaceDraft('');
-    setWorkspaceCreateIsOpen(false);
-    setWorkspaceIsSubmitting(false);
+    try {
+      await onCreateWorkspace(trimmedName);
+      setWorkspaceDraft('');
+      setWorkspaceCreateIsOpen(false);
+    } finally {
+      setWorkspaceIsSubmitting(false);
+    }
+  };
+
+  const startWorkspaceEdit = (workspaceItem: WorkspaceResponse) => {
+    setEditingWorkspaceId(workspaceItem.id);
+    setEditingWorkspaceName(workspaceItem.name);
+    setPendingWorkspaceLeaveId(null);
+  };
+
+  const cancelWorkspaceEdit = () => {
+    setEditingWorkspaceId(null);
+    setEditingWorkspaceName('');
+  };
+
+  const submitWorkspaceEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedName = editingWorkspaceName.trim();
+    if (!editingWorkspaceId || !trimmedName) {
+      return;
+    }
+
+    await onUpdateWorkspace(editingWorkspaceId, { name: trimmedName });
+    cancelWorkspaceEdit();
   };
 
   return (
-    <aside
-      className="sidebar"
-      aria-label="DumpTether navigation"
-      style={getSidebarStyle(workspace?.color ?? null)}
-    >
+    <>
+      <aside
+        className="sidebar"
+        aria-label="DumpTether navigation"
+        style={getSidebarStyle(workspace?.color ?? null)}
+      >
       <div className="brand">
         <div className="brand-mark">DT</div>
         <div className="brand-copy">
@@ -1177,6 +1697,14 @@ function Sidebar({
           <Icon name="panel" />
         </button>
       </div>
+      {!sidebarIsCollapsed ? (
+        <button
+          aria-label="Resize sidebar"
+          className="sidebar-resizer"
+          onMouseDown={onResizeStart}
+          type="button"
+        />
+      ) : null}
 
       <div className="sidebar-section-label">
         <span>{t('workspaces')}</span>
@@ -1191,22 +1719,147 @@ function Sidebar({
       </div>
 
       <nav className="view-nav workspace-nav" aria-label={t('workspaces')}>
-        {workspaces.map((candidate) => (
-          <button
-            aria-current={workspace?.id === candidate.id ? 'page' : undefined}
-            className="nav-item workspace-nav-item"
-            key={candidate.id}
-            onClick={() => onSelectWorkspace(candidate.id)}
-            title={candidate.name}
-            type="button"
-          >
-            <span
-              className="workspace-color-dot"
-              style={{ backgroundColor: candidate.color ?? '#184c48' }}
-            />
-            <span className="nav-label">{candidate.name}</span>
-          </button>
-        ))}
+        {workspaces.map((candidate) => {
+          const isSharedOnly = isTaskShareWorkspace(candidate);
+          const membership = workspaceMembershipsById.get(candidate.id);
+          const isOwner = Boolean(membership && isOwnerRole(membership.role));
+          const isSharedMembership = Boolean(membership && !isOwnerRole(membership.role));
+          const canDelete = Boolean(membership && isOwnerRole(membership.role) && !isSharedOnly);
+          const canEdit = canDelete;
+          const canLeave = isSharedOnly ||
+            isSharedMembership;
+          const isEditing = editingWorkspaceId === candidate.id;
+          const leaveIsPending = pendingWorkspaceLeaveId === candidate.id;
+          const isSharedAccess = isSharedOnly || isSharedMembership;
+          const ownerSharedSignalIsVisible = isOwner &&
+            !isSharedAccess &&
+            ((candidate.memberCount ?? 1) > 1 ||
+              (candidate.pendingInvitationCount ?? 0) > 0);
+
+          return (
+            <div
+              className="workspace-nav-row"
+              key={candidate.id}
+            >
+              {isEditing ? (
+                <form className="workspace-row-editor" onSubmit={(event) => void submitWorkspaceEdit(event)}>
+                  <span
+                    className="workspace-color-dot"
+                    style={{ backgroundColor: candidate.color ?? '#184c48' }}
+                  />
+                  <input
+                    aria-label={t('editBoard')}
+                    autoFocus
+                    onChange={(event) => setEditingWorkspaceName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        cancelWorkspaceEdit();
+                      }
+                    }}
+                    type="text"
+                    value={editingWorkspaceName}
+                  />
+                  <button
+                    className="tiny-icon-button"
+                    disabled={!editingWorkspaceName.trim()}
+                    title={t('saved')}
+                    type="submit"
+                  >
+                    <Icon name="check" />
+                  </button>
+                  <button
+                    className="tiny-icon-button"
+                    onClick={cancelWorkspaceEdit}
+                    title={t('cancel')}
+                    type="button"
+                  >
+                    <Icon name="close" />
+                  </button>
+                  {canDelete ? (
+                    <button
+                      className="tiny-icon-button danger-icon-button"
+                      onClick={() => setPendingDeleteWorkspace(candidate)}
+                      title={t('deleteBoard')}
+                      type="button"
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  ) : null}
+                </form>
+              ) : (
+                <button
+                  aria-current={workspace?.id === candidate.id ? 'page' : undefined}
+                  className={`nav-item workspace-nav-item${isSharedAccess ? ' is-shared-access' : ''}`}
+                  onClick={() => onSelectWorkspace(candidate.id)}
+                  title={isSharedAccess
+                    ? `${formatWorkspaceName(candidate.name, t)} - ${t('sharedWorkspace')}`
+                    : formatWorkspaceName(candidate.name, t)}
+                  type="button"
+                >
+                  <span
+                    className="workspace-color-dot"
+                    style={{ backgroundColor: candidate.color ?? '#184c48' }}
+                  />
+                  <span className="nav-label">{formatWorkspaceName(candidate.name, t)}</span>
+                  {ownerSharedSignalIsVisible ? (
+                    <span className="owner-workspace-badge" title={t('roleOwner')}>
+                      <Icon name="crown" />
+                    </span>
+                  ) : null}
+                  {isSharedAccess ? (
+                    <span className="shared-workspace-badge" title={t('sharedWorkspace')}>
+                      <Icon name={isSharedOnly ? 'users' : 'user'} />
+                      {isSharedOnly ? candidate.sharedTaskCount ?? 0 : null}
+                    </span>
+                  ) : null}
+                </button>
+              )}
+              <span className="workspace-row-actions">
+                {canEdit && !isEditing ? (
+                  <button
+                    className="tiny-icon-button workspace-row-action"
+                    onClick={() => startWorkspaceEdit(candidate)}
+                    title={t('editBoard')}
+                    type="button"
+                  >
+                    <Icon name="edit" />
+                  </button>
+                ) : null}
+                {canLeave ? (
+                  leaveIsPending ? (
+                    <span className="workspace-row-confirm">
+                      <button
+                        className="tiny-icon-button"
+                        onClick={() => void onLeaveWorkspaceAccess(candidate.id)}
+                        title={t('leaveBoard')}
+                        type="button"
+                      >
+                        <Icon name="check" />
+                      </button>
+                      <button
+                        className="tiny-icon-button"
+                        onClick={() => setPendingWorkspaceLeaveId(null)}
+                        title={t('cancel')}
+                        type="button"
+                      >
+                        <Icon name="close" />
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      className="tiny-icon-button workspace-row-action"
+                      onClick={() => setPendingWorkspaceLeaveId(candidate.id)}
+                      title={t('leaveBoard')}
+                      type="button"
+                    >
+                      <Icon name="logout" />
+                    </button>
+                  )
+                ) : null}
+              </span>
+            </div>
+          );
+        })}
         {workspaceCreateIsOpen ? (
           <form className="sidebar-inline-form" onSubmit={submitWorkspace}>
             <input
@@ -1229,6 +1882,8 @@ function Sidebar({
         ) : null}
       </nav>
 
+      <div className="sidebar-separator" />
+
       <div className="sidebar-section-label">
         <span>{t('savedViews')}</span>
       </div>
@@ -1250,6 +1905,8 @@ function Sidebar({
         ))}
       </nav>
 
+      <div className="sidebar-separator sidebar-separator-actions" />
+
       <div className="sidebar-actions">
         <button
           aria-current={mode === 'templates' ? 'page' : undefined}
@@ -1264,12 +1921,16 @@ function Sidebar({
         <button className="nav-item" onClick={onOpenSettings} type="button">
           <Icon name="settings" />
           <span className="nav-label">{t('settings')}</span>
-          <span className="nav-count">{language.toUpperCase()}</span>
+          <span className={`nav-count${accountNotificationCount > 0 ? ' notification-badge' : ''}`}>
+            {accountNotificationCount > 0 ? accountNotificationCount : language.toUpperCase()}
+          </span>
         </button>
         <button className="nav-item" onClick={onOpenAccount} type="button">
           <Icon name="user" />
           <span className="nav-label">{t('account')}</span>
-          {temporarySessionIsActive ? (
+          {accountNotificationCount > 0 ? (
+            <span className="nav-count">{accountNotificationCount}</span>
+          ) : temporarySessionIsActive ? (
             <span className="nav-count">{t('guestModeShort')}</span>
           ) : null}
         </button>
@@ -1303,7 +1964,77 @@ function Sidebar({
           <span>© 2026</span>
         </div>
       </div>
-    </aside>
+      </aside>
+      {pendingDeleteWorkspace ? (
+        <DeleteWorkspaceDialog
+          onClose={() => setPendingDeleteWorkspace(null)}
+          onDelete={async () => {
+            await onDeleteWorkspace(pendingDeleteWorkspace.id);
+            setPendingDeleteWorkspace(null);
+          }}
+          t={t}
+          workspace={pendingDeleteWorkspace}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function DeleteWorkspaceDialog({
+  onClose,
+  onDelete,
+  t,
+  workspace,
+}: {
+  onClose: () => void;
+  onDelete: () => Promise<void>;
+  t: Translate;
+  workspace: WorkspaceResponse;
+}) {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-labelledby="delete-workspace-title"
+        aria-modal="true"
+        className="delete-workspace-dialog"
+        role="dialog"
+      >
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">{t('deleteBoard')}</p>
+            <h2 id="delete-workspace-title">{workspace.name}</h2>
+          </div>
+          <button className="icon-button" disabled={isDeleting} onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">{t('close')}</span>
+          </button>
+        </div>
+        <p>{t('deleteBoardConfirmBody')}</p>
+        <div className="dialog-actions">
+          <button className="ghost-button" disabled={isDeleting} onClick={onClose} type="button">
+            {t('cancel')}
+          </button>
+          <button
+            className="danger-action"
+            disabled={isDeleting}
+            onClick={async () => {
+              setIsDeleting(true);
+              try {
+                await onDelete();
+              } finally {
+                setIsDeleting(false);
+              }
+            }}
+            type="button"
+          >
+            <Icon name="trash" />
+            {t('deleteBoardNow')}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1312,18 +2043,26 @@ function TaskBoard({
   archiveResolutions,
   colorOptions,
   currentView,
+  currentUserEmail,
   isLoading,
   isLoadingDetail,
   onAddTimelineEntry,
   onArchive,
-  onArchiveProject,
   onArchiveTaskItems,
   onCloseArchiveDialog,
+  onCopyTaskItemsToWorkspace,
   onCreateProject,
+  onCreateTaskShareLink,
+  onCreateTaskShareLinks,
   onCreateTaskItem,
+  onCreateWorkspaceInvitation,
+  onDeleteProject,
   onDeleteTimelineEntry,
   onOpenArchiveDialog,
   onReopen,
+  onRemoveWorkspaceMember,
+  onRevokeTaskShare,
+  onRevokeWorkspaceInvitation,
   onCloseTaskItem,
   onSelectTaskItem,
   onUpdateFieldValues,
@@ -1332,6 +2071,7 @@ function TaskBoard({
   onUpdateTaskItem,
   onUpdateTimelineEntry,
   onUpdateWorkspace,
+  onShowToast,
   projects,
   selectedTask,
   selectedTaskId,
@@ -1339,27 +2079,45 @@ function TaskBoard({
   taskItems,
   templates,
   t,
+  workspaceInvitations,
+  workspaceMembers,
   workspace,
+  workspaces,
 }: {
   archiveDialogIsOpen: boolean;
   archiveResolutions: ArchiveResolutionResponse[];
   colorOptions: string[];
   currentView: SavedViewResponse | null;
+  currentUserEmail: string | null;
   isLoading: boolean;
   isLoadingDetail: boolean;
   onAddTimelineEntry: (note: string) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
-  onArchiveProject: (projectId: string, requestBody: ArchiveProjectTasksRequest) => Promise<void>;
   onArchiveTaskItems: (taskItemIds: string[], requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onCloseArchiveDialog: () => void;
+  onCopyTaskItemsToWorkspace: (taskItemIds: string[], workspaceId: string) => Promise<void>;
   onCreateProject: (name: string, color?: string | null) => Promise<void>;
+  onCreateTaskShareLink: (
+    taskItemId: string,
+    requestBody: CreateTaskShareRequest,
+  ) => Promise<TaskShareLinkResponse>;
+  onCreateTaskShareLinks: (
+    requestBody: CreateTaskShareLinkRequest,
+  ) => Promise<TaskShareLinkResponse>;
   onCreateTaskItem: (
     title: string,
     options?: Partial<CreateTaskItemRequest>,
   ) => Promise<TaskItemDetailResponse | null>;
+  onCreateWorkspaceInvitation: (
+    requestBody: CreateWorkspaceInvitationRequest,
+  ) => Promise<WorkspaceInvitationResponse>;
+  onDeleteProject: (projectId: string) => Promise<void>;
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
+  onRemoveWorkspaceMember: (userId: string) => Promise<void>;
+  onRevokeTaskShare: (taskItemId: string, shareId: string) => Promise<void>;
+  onRevokeWorkspaceInvitation: (id: string) => Promise<void>;
   onCloseTaskItem: () => void;
   onSelectTaskItem: (id: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
@@ -1368,6 +2126,7 @@ function TaskBoard({
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
+  onShowToast: (message: string, tone?: ToastTone) => void;
   projects: ProjectResponse[];
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
@@ -1375,18 +2134,32 @@ function TaskBoard({
   taskItems: TaskItemSummaryResponse[];
   templates: TaskTemplateDetailResponse[];
   t: Translate;
+  workspaceInvitations: WorkspaceInvitationResponse[];
+  workspaceMembers: WorkspaceMemberResponse[];
   workspace: WorkspaceResponse | null;
+  workspaces: WorkspaceResponse[];
 }) {
-  const canCreateTask = currentView?.filter.archive !== 'Archived';
+  const currentWorkspaceMember = currentUserEmail
+    ? workspaceMembers.find((member) =>
+        member.email.toLowerCase() === currentUserEmail.toLowerCase())
+    : null;
+  const currentUserOwnsWorkspace = currentWorkspaceMember
+    ? isOwnerRole(currentWorkspaceMember.role)
+    : !currentUserEmail;
+  const workspaceIsSharedAccess = isTaskShareWorkspace(workspace ?? { accessKind: 'Membership' }) ||
+    Boolean(currentWorkspaceMember && !isOwnerRole(currentWorkspaceMember.role));
+  const canManageSharing = currentUserOwnsWorkspace && !workspaceIsSharedAccess;
+  const canCreateTask = currentView?.filter.archive !== 'Archived' &&
+    !workspaceIsSharedAccess;
   const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
   const [pendingDeletedNoteIds, setPendingDeletedNoteIds] = useState<string[]>([]);
   const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [batchArchiveIsOpen, setBatchArchiveIsOpen] = useState(false);
-  const [archiveProjectTarget, setArchiveProjectTarget] = useState<ProjectResponse | null>(null);
+  const [batchShareIsOpen, setBatchShareIsOpen] = useState(false);
   const visibleTaskItems = useMemo(
-    () => applyTaskWallFilters(taskItems, filters),
-    [filters, taskItems],
+    () => applyTaskWallFilters(taskItems, filters, currentUserEmail, projects),
+    [currentUserEmail, filters, projects, taskItems],
   );
   const [draftTaskIsOpen, setDraftTaskIsOpen] = useState(false);
   const focusedTaskItem = selectedTaskId
@@ -1396,10 +2169,6 @@ function TaskBoard({
   const displayedTaskItems = focusedTaskItem || draftTaskIsOpen
     ? focusedTaskItem ? [focusedTaskItem] : []
     : visibleTaskItems;
-  const projectById = useMemo(
-    () => new Map(projects.map((project) => [project.id, project])),
-    [projects],
-  );
   const projectByName = useMemo(
     () => new Map(projects.map((project) => [project.name.toLowerCase(), project])),
     [projects],
@@ -1431,7 +2200,7 @@ function TaskBoard({
     setEditModeIsEnabled(false);
     setSelectedTaskIds([]);
     setBatchArchiveIsOpen(false);
-    setArchiveProjectTarget(null);
+    setBatchShareIsOpen(false);
   };
 
   const closeFocusedTask = useCallback(async () => {
@@ -1447,12 +2216,17 @@ function TaskBoard({
   }, [onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
 
   const openCreateTask = useCallback(() => {
-    if (focusedTaskItem || draftTaskIsOpen || !canCreateTask) {
+    if (!canCreateTask) {
+      onShowToast(t('sharedBoardsCannotCreateTasks'), 'error');
+      return;
+    }
+
+    if (focusedTaskItem || draftTaskIsOpen) {
       return;
     }
 
     setDraftTaskIsOpen(true);
-  }, [canCreateTask, draftTaskIsOpen, focusedTaskItem]);
+  }, [canCreateTask, draftTaskIsOpen, focusedTaskItem, onShowToast, t]);
 
   useEffect(() => {
     if (!selectedTaskId || archiveDialogIsOpen) {
@@ -1507,7 +2281,7 @@ function TaskBoard({
         <WorkspaceHeader
           currentView={currentView}
           onCreateProject={onCreateProject}
-          onDeleteProject={(project) => setArchiveProjectTarget(project)}
+          onDeleteProject={onDeleteProject}
           onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
             ...currentFilters,
             category: '',
@@ -1515,11 +2289,17 @@ function TaskBoard({
           }))}
           onUpdateProject={onUpdateProject}
           onUpdateWorkspace={onUpdateWorkspace}
+          onCreateWorkspaceInvitation={onCreateWorkspaceInvitation}
+          onRemoveWorkspaceMember={onRemoveWorkspaceMember}
+          onRevokeWorkspaceInvitation={onRevokeWorkspaceInvitation}
           colorOptions={colorOptions}
+          invitations={workspaceInvitations}
+          members={workspaceMembers}
           projects={projects}
           selectedProjectId={filters.projectId}
           t={t}
           workspace={workspace}
+          canManageSharing={canManageSharing}
         />
       ) : null}
 
@@ -1566,11 +2346,7 @@ function TaskBoard({
         {displayedTaskItems.map((taskItem) => {
           const isExpanded = selectedTaskId === taskItem.id;
           const isSelectedForEdit = selectedTaskIds.includes(taskItem.id);
-          const taskProject = taskItem.projectId
-            ? projectById.get(taskItem.projectId)
-            : taskItem.category
-              ? projectByName.get(taskItem.category.toLowerCase())
-              : null;
+          const taskCategoryNames = splitTaskCategories(taskItem.category);
 
           return (
             <article
@@ -1615,6 +2391,12 @@ function TaskBoard({
                   {taskItem.noteCount > 0 ? (
                     <span className="note-count">{taskItem.noteCount}</span>
                   ) : null}
+                  {taskItem.shares.length > 0 ? (
+                    <span className="note-count share-count" title={t('sharing')}>
+                      <Icon name="user" />
+                      {taskItem.shares.length}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="task-card-main">
                   <span className="task-card-latest">
@@ -1634,14 +2416,18 @@ function TaskBoard({
                   {taskItem.status ? (
                     <TaskMetaChip icon="status" label={t('status')} value={taskItem.status} />
                   ) : null}
-                  {taskItem.category ? (
-                    <TaskMetaChip
-                      icon="tag"
-                      label={t('category')}
-                      style={getContextChipStyle(taskProject?.color ?? null)}
-                      value={taskItem.category}
-                    />
-                  ) : null}
+                  {taskCategoryNames.map((categoryName) => {
+                    const categoryProject = projectByName.get(categoryName.toLowerCase()) ?? null;
+                    return (
+                      <TaskMetaChip
+                        icon="tag"
+                        key={categoryName}
+                        label={t('category')}
+                        style={getContextChipStyle(categoryProject?.color ?? null)}
+                        value={categoryName}
+                      />
+                    );
+                  })}
                   <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
                     <Icon name="clock" />
                     {formatRelativeDate(taskItem.lastTouchedAt)}
@@ -1658,11 +2444,15 @@ function TaskBoard({
                   ) : null}
                 </span>
                 <TaskBadges taskItem={taskItem} t={t} />
-                <span
-                  className="task-card-created"
-                  title={`${t('created')}: ${formatFullDate(taskItem.createdAt)}`}
-                >
-                  {formatFullDate(taskItem.createdAt)}
+                <span className="task-card-created">
+                  {taskCategoryNames.length > 0 && !filters.projectId ? (
+                    <span title={`${t('category')}: ${taskCategoryNames.join(', ')}`}>
+                      {taskCategoryNames.join(', ')}
+                    </span>
+                  ) : null}
+                  <span title={`${t('created')}: ${formatFullDate(taskItem.createdAt)}`}>
+                    {formatFullDate(taskItem.createdAt)}
+                  </span>
                 </span>
               </button>
 
@@ -1689,9 +2479,12 @@ function TaskBoard({
                           currentIds.filter((currentId) => currentId !== entryId),
                         )}
                       onUpdateFieldValues={onUpdateFieldValues}
+                      onCreateTaskShareLink={onCreateTaskShareLink}
+                      onRevokeTaskShare={onRevokeTaskShare}
                       onUpdateTaskItem={onUpdateTaskItem}
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
                       colorOptions={colorOptions}
+                      canManageSharing={canManageSharing}
                       pendingDeletedNoteIds={pendingDeletedNoteIds}
                       projects={projects}
                       statusOptions={statusOptions}
@@ -1714,14 +2507,37 @@ function TaskBoard({
             await onUpdateTaskItems(selectedTaskIds, requestBody);
             setSelectedTaskIds([]);
           }}
+          onCopyTaskItemsToWorkspace={async (workspaceId) => {
+            await onCopyTaskItemsToWorkspace(selectedTaskIds, workspaceId);
+            setSelectedTaskIds([]);
+            closeEditMode();
+          }}
           onOpenCreateTask={openCreateTask}
           onOpenBatchArchive={() => setBatchArchiveIsOpen(true)}
+          onOpenBatchShare={() => setBatchShareIsOpen(true)}
           onToggleEditMode={() =>
             editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
           selectedTaskCount={selectedTaskIds.length}
+          canManageSharing={canManageSharing}
           projects={projects}
           statusOptions={statusOptions}
           t={t}
+          workspaces={workspaces}
+        />
+      ) : null}
+      {batchShareIsOpen ? (
+        <ShareDialog
+          existingTaskShares={[]}
+          onClose={() => setBatchShareIsOpen(false)}
+          onCreate={async (email) =>
+            await onCreateTaskShareLinks({
+              email,
+              taskItemIds: selectedTaskIds,
+            })}
+          onRevokeTaskShare={undefined}
+          pendingInvitations={[]}
+          t={t}
+          title={`${selectedTaskIds.length} ${t('selectedTasks')}`}
         />
       ) : null}
       {batchArchiveIsOpen ? (
@@ -1736,35 +2552,21 @@ function TaskBoard({
           taskTitle={`${selectedTaskIds.length} ${t('selectedTasks')}`}
         />
       ) : null}
-      {archiveProjectTarget ? (
-        <ArchiveDialog
-          archiveResolutions={archiveResolutions}
-          bodyText={t('deleteCategoryWarning')}
-          onArchive={async (requestBody) => {
-            await onArchiveProject(archiveProjectTarget.id, requestBody);
-            if (filters.projectId === archiveProjectTarget.id) {
-              setFilters((currentFilters) => ({
-                ...currentFilters,
-                projectId: '',
-                category: '',
-              }));
-            }
-            setArchiveProjectTarget(null);
-          }}
-          onClose={() => setArchiveProjectTarget(null)}
-          t={t}
-          taskTitle={archiveProjectTarget.name}
-        />
-      ) : null}
     </section>
   );
 }
 
 function WorkspaceHeader({
+  canManageSharing,
   colorOptions,
   currentView,
+  invitations,
+  members,
   onCreateProject,
+  onCreateWorkspaceInvitation,
   onDeleteProject,
+  onRemoveWorkspaceMember,
+  onRevokeWorkspaceInvitation,
   onSelectProjectFilter,
   onUpdateProject,
   onUpdateWorkspace,
@@ -1773,10 +2575,18 @@ function WorkspaceHeader({
   t,
   workspace,
 }: {
+  canManageSharing: boolean;
   colorOptions: string[];
   currentView: SavedViewResponse | null;
+  invitations: WorkspaceInvitationResponse[];
+  members: WorkspaceMemberResponse[];
   onCreateProject: (name: string, color?: string | null) => Promise<void>;
-  onDeleteProject: (project: ProjectResponse) => void;
+  onCreateWorkspaceInvitation: (
+    requestBody: CreateWorkspaceInvitationRequest,
+  ) => Promise<WorkspaceInvitationResponse>;
+  onDeleteProject: (projectId: string) => Promise<void>;
+  onRemoveWorkspaceMember: (userId: string) => Promise<void>;
+  onRevokeWorkspaceInvitation: (id: string) => Promise<void>;
   onSelectProjectFilter: (projectId: string) => void;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
@@ -1795,6 +2605,12 @@ function WorkspaceHeader({
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectColor, setNewProjectColor] = useState('');
   const [projectIsSubmitting, setProjectIsSubmitting] = useState(false);
+  const [inviteIsOpen, setInviteIsOpen] = useState(false);
+  const [pendingRemoveMemberId, setPendingRemoveMemberId] = useState<string | null>(null);
+  const [pendingDeleteProject, setPendingDeleteProject] = useState<ProjectResponse | null>(null);
+  const pendingInvitations = invitations.filter(
+    (invitation) => !invitation.acceptedAt && !invitation.revokedAt,
+  );
 
   useEffect(() => {
     setWorkspaceName(workspace?.name ?? '');
@@ -1806,12 +2622,14 @@ function WorkspaceHeader({
     setEditingProjectId(project.id);
     setProjectName(project.name);
     setProjectColor(project.color ?? '');
+    setPendingDeleteProject(null);
   };
 
   const cancelProjectEditing = () => {
     setEditingProjectId(null);
     setProjectName('');
     setProjectColor('');
+    setPendingDeleteProject(null);
   };
 
   const saveWorkspace = async (event: FormEvent<HTMLFormElement>) => {
@@ -1853,18 +2671,22 @@ function WorkspaceHeader({
     }
 
     setProjectIsSubmitting(true);
-    await onCreateProject(trimmedName, newProjectColor);
-    setNewProjectName('');
-    setNewProjectColor('');
-    setNewProjectIsOpen(false);
-    setProjectIsSubmitting(false);
+    try {
+      await onCreateProject(trimmedName, newProjectColor);
+      setNewProjectName('');
+      setNewProjectColor('');
+      setNewProjectIsOpen(false);
+    } finally {
+      setProjectIsSubmitting(false);
+    }
   };
 
   return (
-    <div
-      className="workspace-header"
-      style={getWorkspaceHeaderStyle(workspace?.color ?? null, null)}
-    >
+    <>
+      <div
+        className="workspace-header"
+        style={getWorkspaceHeaderStyle(workspace?.color ?? null, null)}
+      >
       <div className="workspace-title-block">
         <div className="workspace-title-row">
           {workspaceIsEditing ? (
@@ -1908,7 +2730,9 @@ function WorkspaceHeader({
             </form>
           ) : (
             <>
-              <h1 id="task-board-title">{workspace?.name ?? 'DumpTether'}</h1>
+              <h1 id="task-board-title">
+                {workspace ? formatWorkspaceName(workspace.name, t) : 'DumpTether'}
+              </h1>
               <button
                 className="icon-button header-edit-button"
                 onClick={() => setWorkspaceIsEditing(true)}
@@ -1924,6 +2748,74 @@ function WorkspaceHeader({
             </>
           )}
         </div>
+        <div className="member-chip-strip" aria-label={t('members')}>
+          {members.slice(0, 3).map((member) => (
+            <WorkspaceMemberChip
+              isConfirming={pendingRemoveMemberId === member.userId}
+              key={member.userId}
+              member={member}
+              onCancelRemove={() => setPendingRemoveMemberId(null)}
+              onConfirmRemove={async () => {
+                await onRemoveWorkspaceMember(member.userId);
+                setPendingRemoveMemberId(null);
+              }}
+              onRequestRemove={() => setPendingRemoveMemberId(member.userId)}
+              t={t}
+            />
+          ))}
+          {members.length > 3 ? (
+            <span className="member-chip">+{members.length - 3}</span>
+          ) : null}
+          {canManageSharing && pendingInvitations.length > 0 ? (
+            pendingInvitations.slice(0, 2).map((invitation) => (
+              <PendingInvitationChip
+                invitation={invitation}
+                key={invitation.id}
+                onRevoke={() => onRevokeWorkspaceInvitation(invitation.id)}
+                t={t}
+              />
+            ))
+          ) : null}
+          {canManageSharing && pendingInvitations.length > 2 ? (
+            <span className="member-chip member-chip-muted">
+              +{pendingInvitations.length - 2} {t('pendingInvites')}
+            </span>
+          ) : null}
+          {canManageSharing ? (
+            <button
+              className="tiny-icon-button"
+              onClick={() => {
+                setInviteIsOpen((isOpen) => !isOpen);
+              }}
+              title={t('inviteMember')}
+              type="button"
+            >
+              <Icon name="plus" />
+            </button>
+          ) : null}
+        </div>
+        {inviteIsOpen ? (
+          <ShareDialog
+            existingTaskShares={[]}
+            onClose={() => setInviteIsOpen(false)}
+            onCreate={async (email) => {
+              const created = await onCreateWorkspaceInvitation({
+                email,
+                role: 2,
+              });
+
+              return {
+                expiresAt: created.expiresAt,
+                token: created.token ?? '',
+              };
+            }}
+            onRevokeTaskShare={undefined}
+            onRevokeWorkspaceInvitation={onRevokeWorkspaceInvitation}
+            pendingInvitations={pendingInvitations}
+            t={t}
+            title={workspace ? formatWorkspaceName(workspace.name, t) : t('workspaces')}
+          />
+        ) : null}
         <div className="project-tag-strip" aria-label={t('projectTags')}>
           <button
             className="project-tag"
@@ -1972,8 +2864,8 @@ function WorkspaceHeader({
                 </button>
                 <button
                   className="tiny-icon-button danger-icon-button"
-                  onClick={() => onDeleteProject(project)}
-                  title={t('archiveCategory')}
+                  onClick={() => setPendingDeleteProject(project)}
+                  title={t('deleteProjectTag')}
                   type="button"
                 >
                   <Icon name="trash" />
@@ -2070,34 +2962,380 @@ function WorkspaceHeader({
           {currentView?.sort.direction === 'asc' ? t('sortAscending') : t('sortDescending')}
         </span>
       </div>
+      </div>
+      {pendingDeleteProject ? (
+        <DeleteProjectDialog
+          onClose={() => setPendingDeleteProject(null)}
+          onDelete={async () => {
+            await onDeleteProject(pendingDeleteProject.id);
+            if (selectedProjectId === pendingDeleteProject.id) {
+              onSelectProjectFilter('');
+            }
+            cancelProjectEditing();
+            setPendingDeleteProject(null);
+          }}
+          project={pendingDeleteProject}
+          t={t}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function DeleteProjectDialog({
+  onClose,
+  onDelete,
+  project,
+  t,
+}: {
+  onClose: () => void;
+  onDelete: () => Promise<void>;
+  project: ProjectResponse;
+  t: Translate;
+}) {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-labelledby="delete-project-title"
+        aria-modal="true"
+        className="delete-workspace-dialog"
+        role="dialog"
+      >
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">{t('deleteProjectTag')}</p>
+            <h2 id="delete-project-title">{project.name}</h2>
+          </div>
+          <button className="icon-button" disabled={isDeleting} onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">{t('close')}</span>
+          </button>
+        </div>
+        <p>{t('deleteCategoryWarning')}</p>
+        <div className="dialog-actions">
+          <button className="ghost-button" disabled={isDeleting} onClick={onClose} type="button">
+            {t('cancel')}
+          </button>
+          <button
+            className="danger-action"
+            disabled={isDeleting}
+            onClick={async () => {
+              setIsDeleting(true);
+              try {
+                await onDelete();
+              } finally {
+                setIsDeleting(false);
+              }
+            }}
+            type="button"
+          >
+            <Icon name="trash" />
+            {t('deleteCategoryNow')}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PendingInvitationChip({
+  invitation,
+  onRevoke,
+  t,
+}: {
+  invitation: WorkspaceInvitationResponse;
+  onRevoke: () => Promise<void>;
+  t: Translate;
+}) {
+  return (
+    <span className="pending-invite-chip pending-invite-chip-inline" title={invitation.email}>
+      <Icon name="mail" />
+      <span>{invitation.email}</span>
+      <small>{t('pendingInvites')}</small>
+      <button
+        className="tiny-icon-button"
+        onClick={() => void onRevoke()}
+        title={t('revokeInvite')}
+        type="button"
+      >
+        <Icon name="close" />
+      </button>
+    </span>
+  );
+}
+
+function WorkspaceMemberChip({
+  isConfirming,
+  member,
+  onCancelRemove,
+  onConfirmRemove,
+  onRequestRemove,
+  t,
+}: {
+  isConfirming: boolean;
+  member: WorkspaceMemberResponse;
+  onCancelRemove: () => void;
+  onConfirmRemove: () => Promise<void>;
+  onRequestRemove: () => void;
+  t: Translate;
+}) {
+  const canRemove = !isOwnerRole(member.role);
+  const isOwner = isOwnerRole(member.role);
+
+  return (
+    <span
+      className={`member-chip member-chip-manageable${isOwner ? ' member-chip-owner' : ''}`}
+      data-confirming={isConfirming}
+      title={isOwner ? `${member.email} - ${t('roleOwner')}` : member.email}
+    >
+      <Icon name={isOwner ? 'crown' : 'user'} />
+      <span>{member.displayName || member.email}</span>
+      {canRemove ? (
+        isConfirming ? (
+          <span className="member-chip-confirm">
+            <button
+              className="tiny-icon-button"
+              onClick={() => void onConfirmRemove()}
+              title={t('removeMember')}
+              type="button"
+            >
+              <Icon name="check" />
+            </button>
+            <button
+              className="tiny-icon-button"
+              onClick={onCancelRemove}
+              title={t('cancel')}
+              type="button"
+            >
+              <Icon name="close" />
+            </button>
+          </span>
+        ) : (
+          <button
+            className="tiny-icon-button member-chip-remove"
+            onClick={onRequestRemove}
+            title={t('removeMember')}
+            type="button"
+          >
+            <Icon name="close" />
+          </button>
+        )
+      ) : null}
+    </span>
+  );
+}
+
+function ShareDialog({
+  existingTaskShares,
+  onClose,
+  onCreate,
+  onRevokeTaskShare,
+  onRevokeWorkspaceInvitation,
+  pendingInvitations,
+  t,
+  title,
+}: {
+  existingTaskShares: TaskItemShareResponse[];
+  onClose: () => void;
+  onCreate: (
+    email: string,
+  ) => Promise<{ token: string | null; expiresAt: string }>;
+  onRevokeTaskShare?: (shareId: string) => Promise<void>;
+  onRevokeWorkspaceInvitation?: (id: string) => Promise<void>;
+  pendingInvitations: WorkspaceInvitationResponse[];
+  t: Translate;
+  title: string;
+}) {
+  const [shareEmail, setShareEmail] = useState('');
+  const [createdLink, setCreatedLink] = useState<string | null>(null);
+  const [copiedText, setCopiedText] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const visibleTaskShares = existingTaskShares.filter((share) => !share.revokedAt);
+
+  const copyShareUrl = async (value: string) => {
+    await copyTextToClipboard(value);
+    setCopiedText(true);
+  };
+
+  const submitShare = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedEmail = shareEmail.trim();
+
+    if (!trimmedEmail) {
+      return;
+    }
+
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      const created = await onCreate(trimmedEmail);
+      if (created.token) {
+        setCreatedLink(buildShareUrl(created.token));
+      }
+      setShareEmail('');
+      setCopiedText(false);
+    } catch (shareError) {
+      setError(getErrorMessage(shareError));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="dialog-backdrop share-dialog-backdrop"
+      onClick={(event) => {
+        event.stopPropagation();
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      role="presentation"
+    >
+      <section
+        aria-labelledby="share-dialog-title"
+        aria-modal="true"
+        className="workspace-invite-dialog share-dialog"
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">{t('sharing')}</p>
+            <h2 id="share-dialog-title">{title}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">{t('close')}</span>
+          </button>
+        </div>
+
+        <form className="workspace-invite-form share-dialog-form" onSubmit={(event) => void submitShare(event)}>
+          <input
+            aria-label={t('inviteEmail')}
+            autoFocus
+            onChange={(event) => setShareEmail(event.target.value)}
+            placeholder={t('inviteEmail')}
+            type="email"
+            value={shareEmail}
+          />
+          <button className="icon-button" disabled={!shareEmail.trim() || isSubmitting} type="submit">
+            <Icon name="check" />
+          </button>
+          <button className="icon-button" onClick={onClose} type="button">
+            <Icon name="close" />
+          </button>
+        </form>
+
+        {createdLink ? (
+          <div className="invite-token-panel">
+            <small>{t('shareLinkHelp')}</small>
+            <button
+              className="invite-token"
+              onClick={() => void copyShareUrl(createdLink)}
+              type="button"
+            >
+              {createdLink}
+            </button>
+            {copiedText ? (
+              <small className="copied-feedback">{t('copiedToClipboard')}</small>
+            ) : null}
+          </div>
+        ) : null}
+
+        {error ? <p className="form-error">{error}</p> : null}
+
+        {pendingInvitations.length > 0 || visibleTaskShares.length > 0 ? (
+          <div className="pending-invite-list share-dialog-list">
+            {pendingInvitations.map((invitation) => (
+              <span
+                className="pending-invite-chip"
+                key={invitation.id}
+                title={`${invitation.email} - ${formatDateTime(invitation.expiresAt)}`}
+              >
+                <Icon name="mail" />
+                <span>{invitation.email}</span>
+                <small>{t('pendingInvites')}</small>
+                {onRevokeWorkspaceInvitation ? (
+                  <button
+                    className="tiny-icon-button"
+                    onClick={() => void onRevokeWorkspaceInvitation(invitation.id)}
+                    title={t('revokeInvite')}
+                    type="button"
+                  >
+                    <Icon name="close" />
+                  </button>
+                ) : null}
+              </span>
+            ))}
+            {visibleTaskShares.map((share) => (
+              <span
+                className="share-chip"
+                key={share.id}
+                title={`${share.email}${share.expiresAt ? ` - ${formatDateTime(share.expiresAt)}` : ''}`}
+              >
+                <Icon name={share.acceptedAt ? 'user' : 'mail'} />
+                <span>{share.email}</span>
+                <small>{share.acceptedAt ? t('sharedWith') : t('pendingInvites')}</small>
+                {onRevokeTaskShare ? (
+                  <button
+                    className="tiny-icon-button"
+                    onClick={() => void onRevokeTaskShare(share.id)}
+                    title={t('removeShare')}
+                    type="button"
+                  >
+                    <Icon name="close" />
+                  </button>
+                ) : null}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="context-muted share-dialog-empty">{t('notShared')}</p>
+        )}
+      </section>
     </div>
   );
 }
 
 function FloatingBoardActions({
+  canManageSharing,
   colorOptions,
   editModeIsEnabled,
   onBatchUpdate,
+  onCopyTaskItemsToWorkspace,
   onOpenCreateTask,
   onOpenBatchArchive,
+  onOpenBatchShare,
   onToggleEditMode,
   projects,
   selectedTaskCount,
   statusOptions,
   taskCount,
   t,
+  workspaces,
 }: {
+  canManageSharing: boolean;
   colorOptions: string[];
   editModeIsEnabled: boolean;
   onBatchUpdate: (requestBody: UpdateTaskItemRequest) => Promise<void>;
+  onCopyTaskItemsToWorkspace: (workspaceId: string) => Promise<void>;
   onOpenCreateTask: () => void;
   onOpenBatchArchive: () => void;
+  onOpenBatchShare: () => void;
   onToggleEditMode: () => void;
   projects: ProjectResponse[];
   selectedTaskCount: number;
   statusOptions: string[];
   taskCount: number;
   t: Translate;
+  workspaces: WorkspaceResponse[];
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -2175,7 +3413,38 @@ function FloatingBoardActions({
                 <Icon name="archive" />
                 <span>{t('archiveSelected')}</span>
               </button>
+              {canManageSharing ? (
+                <button
+                  disabled={selectedTaskCount === 0}
+                  onClick={() => {
+                    onOpenBatchShare();
+                    setIsOpen(false);
+                  }}
+                  type="button"
+                >
+                  <Icon name="users" />
+                  <span>{t('shareSelected')}</span>
+                </button>
+              ) : null}
               <div className="batch-action-grid" aria-label={`${selectedTaskCount} ${t('selectedTasks')}`}>
+                <select
+                  aria-label={t('copyToBoard')}
+                  disabled={selectedTaskCount === 0 || workspaces.length === 0}
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      void onCopyTaskItemsToWorkspace(event.target.value);
+                      setIsOpen(false);
+                    }
+                  }}
+                  value=""
+                >
+                  <option value="">{t('copyToBoard')}</option>
+                  {workspaces.map((workspace) => (
+                    <option key={workspace.id} value={workspace.id}>
+                      {formatWorkspaceName(workspace.name, t)}
+                    </option>
+                  ))}
+                </select>
                 <select
                   aria-label={t('changeStatus')}
                   disabled={selectedTaskCount === 0}
@@ -2311,11 +3580,9 @@ function DraftTaskCard({
     inputRef.current?.focus();
   }, []);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const submitDraft = async () => {
     const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
+    if (!trimmedTitle || isSubmitting) {
       inputRef.current?.focus();
       return;
     }
@@ -2331,6 +3598,11 @@ function DraftTaskCard({
     if (created) {
       onCreated(created);
     }
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await submitDraft();
   };
 
   return (
@@ -2363,6 +3635,11 @@ function DraftTaskCard({
                   className="task-title-input"
                   onChange={(event) => setTitle(event.target.value)}
                   onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void submitDraft();
+                    }
+
                     if (event.key === 'Escape' && !title.trim()) {
                       onCancel();
                     }
@@ -2486,15 +3763,23 @@ function TaskFilterBar({
 
       <select
         aria-label="Filter by category"
-        onChange={(event) => updateFilter({ projectId: event.target.value })}
-        value={filters.projectId}
+        onChange={(event) => updateFilter({ category: event.target.value, projectId: '' })}
+        value={filters.category}
       >
-        <option value="">{t('anyProject')}</option>
+        <option value="">{t('anyCategory')}</option>
         {projects.map((project) => (
-          <option key={project.id} value={project.id}>
+          <option key={project.id} value={project.name}>
             {project.name}
           </option>
         ))}
+        {options.categories
+          .filter((category) => !projects.some((project) =>
+            project.name.toLowerCase() === category.toLowerCase()))
+          .map((category) => (
+            <option key={category} value={category}>
+              {category}
+            </option>
+          ))}
       </select>
 
       <select
@@ -2519,6 +3804,14 @@ function TaskFilterBar({
         placeholder={t('notTouchedDays')}
         type="number"
         value={filters.notTouchedDays}
+      />
+
+      <input
+        aria-label={t('sharedWith')}
+        onChange={(event) => updateFilter({ sharedWith: event.target.value })}
+        placeholder={t('sharedWith')}
+        type="search"
+        value={filters.sharedWith}
       />
 
       {filtersAreActive ? (
@@ -2638,6 +3931,7 @@ function ColorOptionPicker({
 function TaskDetail({
   archiveDialogIsOpen,
   archiveResolutions,
+  canManageSharing,
   colorOptions,
   onAddTimelineEntry,
   onArchive,
@@ -2645,7 +3939,9 @@ function TaskDetail({
   onCloseArchiveDialog,
   onOpenArchiveDialog,
   onReopen,
+  onCreateTaskShareLink,
   onQueueDeleteTimelineEntry,
+  onRevokeTaskShare,
   onUndoDeleteTimelineEntry,
   onUpdateFieldValues,
   onUpdateTaskItem,
@@ -2658,6 +3954,7 @@ function TaskDetail({
 }: {
   archiveDialogIsOpen: boolean;
   archiveResolutions: ArchiveResolutionResponse[];
+  canManageSharing: boolean;
   colorOptions: string[];
   onAddTimelineEntry: (note: string) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
@@ -2665,7 +3962,12 @@ function TaskDetail({
   onCloseArchiveDialog: () => void;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
+  onCreateTaskShareLink: (
+    taskItemId: string,
+    requestBody: CreateTaskShareRequest,
+  ) => Promise<TaskShareLinkResponse>;
   onQueueDeleteTimelineEntry: (entryId: string) => void;
+  onRevokeTaskShare: (taskItemId: string, shareId: string) => Promise<void>;
   onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
@@ -2689,7 +3991,7 @@ function TaskDetail({
   const closeFromHeader = (event: MouseEvent<HTMLDivElement>) => {
     if (
       event.target instanceof HTMLElement &&
-      event.target.closest('button, input, select, textarea, label, .color-popover')
+              event.target.closest('button, input, select, textarea, label, .color-popover, .task-share-popover, .share-dialog')
     ) {
       return;
     }
@@ -2699,7 +4001,11 @@ function TaskDetail({
 
   return (
     <section className="task-detail" aria-label="Task detail">
-      <div className="detail-header task-detail-header" onClick={closeFromHeader}>
+      <div
+        className="detail-header task-detail-header"
+        onClick={closeFromHeader}
+        style={getTaskCardStyle(taskItem.color)}
+      >
         <button
           className="icon-button task-detail-back-button"
           onClick={() => void onClose()}
@@ -2724,7 +4030,7 @@ function TaskDetail({
               colorOptions={colorOptions}
               label={t('taskColor')}
               onChange={(color) => void onUpdateTaskItem({ color })}
-              placement="left"
+              placement="leftWide"
               t={t}
             />
           ) : null}
@@ -2752,6 +4058,16 @@ function TaskDetail({
             </button>
           )}
         </div>
+        {canManageSharing ? (
+          <div className="task-detail-share-corner">
+            <TaskShareStrip
+              onCreateTaskShareLink={onCreateTaskShareLink}
+              onRevokeTaskShare={onRevokeTaskShare}
+              t={t}
+              taskItem={taskItem}
+            />
+          </div>
+        ) : null}
       </div>
 
       <details className="detail-section fields-details">
@@ -2817,6 +4133,62 @@ function TaskDetail({
   );
 }
 
+function TaskShareStrip({
+  onCreateTaskShareLink,
+  onRevokeTaskShare,
+  t,
+  taskItem,
+}: {
+  onCreateTaskShareLink: (
+    taskItemId: string,
+    requestBody: CreateTaskShareRequest,
+  ) => Promise<TaskShareLinkResponse>;
+  onRevokeTaskShare: (taskItemId: string, shareId: string) => Promise<void>;
+  t: Translate;
+  taskItem: TaskItemDetailResponse;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div
+      className="task-share-popover"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      ref={menuRef}
+    >
+      <button
+        className="secondary-action task-share-trigger"
+        onClick={(event) => {
+          event.stopPropagation();
+          setIsOpen((open) => !open);
+        }}
+        title={t('shareTask')}
+        type="button"
+      >
+        <Icon name="users" />
+        <span>{taskItem.shares.length > 0 ? taskItem.shares.length : t('shareTask')}</span>
+      </button>
+
+      {isOpen ? (
+        <ShareDialog
+          existingTaskShares={taskItem.shares}
+          onClose={() => setIsOpen(false)}
+          onCreate={async (email) =>
+            await onCreateTaskShareLink(taskItem.id, {
+              email,
+              role: 2,
+            })}
+          onRevokeTaskShare={(shareId) => onRevokeTaskShare(taskItem.id, shareId)}
+          pendingInvitations={[]}
+          t={t}
+          title={taskItem.title}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function TaskHeaderEditor({
   onUpdateTaskItem,
   projects,
@@ -2840,18 +4212,23 @@ function TaskHeaderEditor({
   const [editingField, setEditingField] = useState<
     'title' | 'status' | 'category' | 'followUp' | null
   >(null);
-  const displayedProject = projects.find((project) =>
-    project.id === (taskItem.projectId ?? categoryProjectId) ||
-    project.name === (taskItem.category ?? category),
-  ) ?? null;
+  const selectedCategoryNames = splitTaskCategories(category);
+  const displayedProjects = getProjectsForTaskCategories(taskItem.category ?? category, projects);
+  const displayedProject = taskItem.projectId
+    ? projects.find((project) => project.id === taskItem.projectId) ?? displayedProjects[0] ?? null
+    : displayedProjects[0] ?? null;
+  const displayedCategoryLabel = splitTaskCategories(taskItem.category).join(', ') || t('noCategory');
 
   useEffect(() => {
     setTitle(taskItem.title);
     setStatus(taskItem.status ?? '');
     setCategory(taskItem.category ?? '');
+    const taskCategoryNames = splitTaskCategories(taskItem.category);
     setCategoryProjectId(
       taskItem.projectId ??
-      projects.find((project) => project.name === taskItem.category)?.id ??
+      projects.find((project) =>
+        taskCategoryNames.some((categoryName) =>
+          categoryName.toLowerCase() === project.name.toLowerCase()))?.id ??
       '',
     );
     setFollowUpDate(toDateInputValue(taskItem.followUpAt));
@@ -2868,21 +4245,25 @@ function TaskHeaderEditor({
     category: string;
     projectId: string | null;
     followUpDate: string;
-  }> = {}) => {
+  }> = {}, options: { keepEditing?: boolean } = {}) => {
     if (taskItem.archivedAt) {
       return;
     }
 
     const nextTitle = (overrides.title ?? title).trim();
     const nextStatus = (overrides.status ?? status).trim();
-    const nextCategory = (overrides.category ?? category).trim();
+    const nextCategory = joinTaskCategories(splitTaskCategories(overrides.category ?? category)) ?? '';
     const nextProjectId = Object.prototype.hasOwnProperty.call(overrides, 'projectId')
       ? overrides.projectId
-      : categoryProjectId;
+      : Object.prototype.hasOwnProperty.call(overrides, 'category')
+        ? getPrimaryProjectIdForCategories(nextCategory, projects)
+        : categoryProjectId;
     const nextFollowUpDate = overrides.followUpDate ?? followUpDate;
     const normalizedFollowUpAt = nextFollowUpDate
       ? new Date(`${nextFollowUpDate}T12:00:00`).toISOString()
       : null;
+    const normalizedNextProjectId = nextProjectId ?? '';
+    const normalizedCurrentProjectId = taskItem.projectId ?? '';
 
     if (!nextTitle) {
       setTitle(taskItem.title);
@@ -2892,12 +4273,14 @@ function TaskHeaderEditor({
     const hasChanges =
       nextTitle !== taskItem.title ||
       nextStatus !== (taskItem.status ?? '') ||
-      nextCategory !== (taskItem.category ?? '') ||
-      nextProjectId !== (taskItem.projectId ?? '') ||
+      nextCategory !== (joinTaskCategories(splitTaskCategories(taskItem.category)) ?? '') ||
+      normalizedNextProjectId !== normalizedCurrentProjectId ||
       normalizedFollowUpAt !== taskItem.followUpAt;
 
     if (!hasChanges) {
-      setEditingField(null);
+      if (!options.keepEditing) {
+        setEditingField(null);
+      }
       return;
     }
 
@@ -2917,7 +4300,9 @@ function TaskHeaderEditor({
       setCategory(nextCategory);
       setCategoryProjectId(nextProjectId ?? '');
       setFollowUpDate(nextFollowUpDate);
-      setEditingField(null);
+      if (!options.keepEditing) {
+        setEditingField(null);
+      }
     } catch {
       setSaveState('error');
     } finally {
@@ -2934,7 +4319,11 @@ function TaskHeaderEditor({
       setTitle(taskItem.title);
       setStatus(taskItem.status ?? '');
       setCategory(taskItem.category ?? '');
-      setCategoryProjectId(taskItem.projectId ?? '');
+      setCategoryProjectId(
+        taskItem.projectId ??
+        getPrimaryProjectIdForCategories(taskItem.category ?? '', projects) ??
+        '',
+      );
       setFollowUpDate(toDateInputValue(taskItem.followUpAt));
       setEditingField(null);
       event.currentTarget.blur();
@@ -2952,9 +4341,20 @@ function TaskHeaderEditor({
             {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
           </span>
           <span>{t('status')}: {taskItem.status ?? t('noStatus')}</span>
-          <span style={getContextChipStyle(displayedProject?.color ?? null)}>
-            {t('category')}: {taskItem.category ?? t('noCategory')}
-          </span>
+          {splitTaskCategories(taskItem.category).length > 0 ? (
+            splitTaskCategories(taskItem.category).map((categoryName) => {
+              const project = projects.find((candidate) =>
+                candidate.name.toLowerCase() === categoryName.toLowerCase()) ?? null;
+
+              return (
+                <span key={categoryName} style={getContextChipStyle(project?.color ?? null)}>
+                  {t('category')}: {categoryName}
+                </span>
+              );
+            })
+          ) : (
+            <span>{t('category')}: {t('noCategory')}</span>
+          )}
           <span>{t('followUpDate')}: {taskItem.followUpAt ? formatFullDate(taskItem.followUpAt) : t('noFollowUp')}</span>
         </div>
       </div>
@@ -3026,30 +4426,26 @@ function TaskHeaderEditor({
           </button>
         )}
         {editingField === 'category' ? (
-          <select
-            aria-label={t('category')}
-            autoFocus
+          <CategoryMultiSelect
             disabled={isSubmitting}
-            onBlur={() => void saveChanges()}
-            onChange={(event) => {
-              const project = projects.find((candidate) => candidate.id === event.target.value);
-              const nextCategory = project?.name ?? '';
-              setCategoryProjectId(project?.id ?? '');
+            onChange={(nextCategories) => {
+              const nextCategory = joinTaskCategories(nextCategories) ?? '';
+              const nextProjectId = getPrimaryProjectIdForCategories(nextCategory, projects);
               setCategory(nextCategory);
-              void saveChanges({
-                category: nextCategory,
-                projectId: project?.id ?? null,
-              });
+              setCategoryProjectId(nextProjectId ?? '');
+              void saveChanges(
+                {
+                  category: nextCategory,
+                  projectId: nextProjectId,
+                },
+                { keepEditing: true },
+              );
             }}
-            value={categoryProjectId}
-          >
-            <option value="">{t('noCategory')}</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
+            onClose={() => setEditingField(null)}
+            projects={projects}
+            selectedCategories={selectedCategoryNames}
+            t={t}
+          />
         ) : (
           <button
             className="task-meta-chip"
@@ -3057,7 +4453,7 @@ function TaskHeaderEditor({
             style={getContextChipStyle(displayedProject?.color ?? null)}
             type="button"
           >
-            {t('category')}: {taskItem.category ?? t('noCategory')}
+            {t('category')}: {displayedCategoryLabel}
           </button>
         )}
         {editingField === 'followUp' ? (
@@ -3097,6 +4493,84 @@ function TaskHeaderEditor({
   );
 }
 
+function CategoryMultiSelect({
+  disabled,
+  onChange,
+  onClose,
+  projects,
+  selectedCategories,
+  t,
+}: {
+  disabled: boolean;
+  onChange: (categories: string[]) => void;
+  onClose: () => void;
+  projects: ProjectResponse[];
+  selectedCategories: string[];
+  t: Translate;
+}) {
+  const selectedNames = new Set(selectedCategories.map((category) => category.toLowerCase()));
+
+  const toggleCategory = (project: ProjectResponse) => {
+    const hasCategory = selectedNames.has(project.name.toLowerCase());
+    const nextCategories = hasCategory
+      ? selectedCategories.filter((category) =>
+        category.toLowerCase() !== project.name.toLowerCase())
+      : [...selectedCategories, project.name];
+
+    onChange(nextCategories);
+  };
+
+  return (
+    <div className="category-multi-select" onClick={(event) => event.stopPropagation()}>
+      <div className="category-option-list">
+        {projects.length === 0 ? (
+          <span className="context-muted">{t('noCategory')}</span>
+        ) : (
+          projects.map((project) => {
+            const isSelected = selectedNames.has(project.name.toLowerCase());
+
+            return (
+              <button
+                className="category-option"
+                data-selected={isSelected}
+                disabled={disabled}
+                key={project.id}
+                onClick={() => toggleCategory(project)}
+                style={getContextChipStyle(project.color)}
+                type="button"
+              >
+                <span className="category-option-check">
+                  {isSelected ? <Icon name="check" /> : null}
+                </span>
+                <span>{project.name}</span>
+              </button>
+            );
+          })
+        )}
+      </div>
+      <div className="category-multi-actions">
+        <button
+          className="tiny-icon-button"
+          disabled={disabled || selectedCategories.length === 0}
+          onClick={() => onChange([])}
+          title={t('noCategory')}
+          type="button"
+        >
+          <Icon name="close" />
+        </button>
+        <button
+          className="tiny-icon-button"
+          onClick={onClose}
+          title={t('saved')}
+          type="button"
+        >
+          <Icon name="check" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ColorPickerPopover({
   color,
   colorOptions,
@@ -3109,11 +4583,11 @@ function ColorPickerPopover({
   colorOptions?: string[];
   label: string;
   onChange: (color: string) => void;
-  placement?: 'below' | 'left';
+  placement?: 'below' | 'left' | 'leftWide';
   t: Translate;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [customColor, setCustomColor] = useState('');
+  const [draftColor, setDraftColor] = useState('');
   const popoverRef = useRef<HTMLDivElement>(null);
   const selectedColor = isHexColor(color) ? color : '#FDE68A';
   const choices = useMemo(
@@ -3126,7 +4600,7 @@ function ColorPickerPopover({
       return undefined;
     }
 
-    setCustomColor(selectedColor);
+    setDraftColor(isHexColor(color) ? color.toUpperCase() : selectedColor);
 
     const handlePointerDown = (event: PointerEvent) => {
       if (
@@ -3141,10 +4615,16 @@ function ColorPickerPopover({
     window.addEventListener('pointerdown', handlePointerDown);
 
     return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [isOpen, selectedColor]);
+  }, [color, isOpen, selectedColor]);
 
-  const chooseColor = (nextColor: string) => {
-    onChange(nextColor);
+  const commitColor = () => {
+    const nextColor = draftColor.trim().toUpperCase();
+    onChange(isHexColor(nextColor) ? nextColor : '');
+    setIsOpen(false);
+  };
+
+  const cancelColor = () => {
+    setDraftColor(isHexColor(color) ? color.toUpperCase() : selectedColor);
     setIsOpen(false);
   };
 
@@ -3172,27 +4652,40 @@ function ColorPickerPopover({
               <button
                 aria-label={`Use ${choice}`}
                 className="color-swatch"
-                data-selected={color.toUpperCase() === choice}
+                data-selected={draftColor.toUpperCase() === choice}
                 key={choice}
-                onClick={() => chooseColor(choice)}
+                onClick={() => setDraftColor(choice)}
                 style={{ backgroundColor: choice }}
                 type="button"
               />
             ))}
-            <span className="color-popover-code">{color || t('noColor')}</span>
+            <span className="color-popover-code">{draftColor || t('noColor')}</span>
+          </div>
+          <div className="custom-color-row">
             <input
               aria-label="Custom color"
-              onChange={(event) => setCustomColor(event.target.value.toUpperCase())}
+              onChange={(event) => setDraftColor(event.target.value.toUpperCase())}
               onClick={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
               type="color"
-              value={customColor || selectedColor}
+              value={isHexColor(draftColor) ? draftColor : selectedColor}
+            />
+            <input
+              aria-label={t('taskColor')}
+              className="custom-color-input"
+              onChange={(event) => setDraftColor(event.target.value.toUpperCase())}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+              placeholder="#FDE68A"
+              type="text"
+              value={draftColor}
             />
           </div>
           <div className="color-popover-actions">
             <button
               className="tiny-icon-button"
-              onClick={() => chooseColor(customColor || selectedColor)}
+              disabled={!isHexColor(draftColor)}
+              onClick={commitColor}
               title={t('saved')}
               type="button"
             >
@@ -3200,7 +4693,7 @@ function ColorPickerPopover({
             </button>
             <button
               className="tiny-icon-button"
-              onClick={() => setIsOpen(false)}
+              onClick={cancelColor}
               title={t('cancel')}
               type="button"
             >
@@ -3210,7 +4703,10 @@ function ColorPickerPopover({
           {color ? (
             <button
               className="clear-color-button"
-              onClick={() => chooseColor('')}
+              onClick={() => {
+                onChange('');
+                setIsOpen(false);
+              }}
               type="button"
             >
               {t('clearColor')}
@@ -3646,11 +5142,13 @@ function NoteEntry({
       <div className="note-delete-cell">
         {isPendingDelete ? (
           <button
-            className="ghost-button note-undo-button"
+            className="icon-button note-undo-button"
             onClick={() => onUndoDeleteTimelineEntry(entry.id)}
+            title={t('undo')}
             type="button"
           >
-            {t('undo')}
+            <Icon name="undo" />
+            <span className="sr-only">{t('undo')}</span>
           </button>
         ) : isConfirmingDelete ? (
           <div className="note-confirm-delete">
@@ -3664,14 +5162,15 @@ function NoteEntry({
               title={t('deleteNote')}
               type="button"
             >
-              <Icon name="close" />
+              <Icon name="check" />
             </button>
             <button
-              className="ghost-button"
+              className="icon-button"
               onClick={() => setIsConfirmingDelete(false)}
+              title={t('keep')}
               type="button"
             >
-              {t('keep')}
+              <Icon name="close" />
             </button>
           </div>
         ) : (
@@ -4143,10 +5642,15 @@ function ToastStack({ toasts }: { toasts: ToastMessage[] }) {
 function AccountPanel({
   authOptions,
   currentUser,
+  incomingTaskShares,
+  incomingWorkspaceInvitations,
   isLoadingAuth,
+  onAcceptIncomingWorkspaceInvitation,
   onClose,
+  onDeclineIncomingWorkspaceInvitation,
   onDevelopmentLogin,
   onGuestLogin,
+  onLeaveTaskShare,
   onLogin,
   onLogout,
   onRegister,
@@ -4155,10 +5659,15 @@ function AccountPanel({
 }: {
   authOptions: AuthClientOptionsResponse;
   currentUser: CurrentUserResponse | null;
+  incomingTaskShares: TaskShareInboxResponse[];
+  incomingWorkspaceInvitations: WorkspaceInvitationInboxResponse[];
   isLoadingAuth: boolean;
+  onAcceptIncomingWorkspaceInvitation: (id: string) => Promise<void>;
   onClose: () => void;
+  onDeclineIncomingWorkspaceInvitation: (id: string) => Promise<void>;
   onDevelopmentLogin: () => Promise<void>;
   onGuestLogin: () => Promise<void>;
+  onLeaveTaskShare: (shareId: string) => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout: () => Promise<void>;
   onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
@@ -4197,6 +5706,72 @@ function AccountPanel({
           t={t}
           variant="settings"
         />
+
+        <section className="settings-section">
+          <h3>{t('notifications')}</h3>
+          {incomingWorkspaceInvitations.length === 0 && incomingTaskShares.length === 0 ? (
+            <p>{t('noIncomingNotifications')}</p>
+          ) : (
+            <div className="account-notification-list">
+              {incomingWorkspaceInvitations.map((invitation) => (
+                <article className="account-notification-card" key={invitation.id}>
+                  <span
+                    className="workspace-color-dot"
+                    style={{ backgroundColor: invitation.workspaceColor ?? '#184c48' }}
+                  />
+                  <div>
+                    <strong>{invitation.workspaceName}</strong>
+                    <p>
+                      {t('invitedBy')} {invitation.invitedByDisplayName || invitation.invitedByEmail}
+                      {' '}({formatWorkspaceRole(invitation.role, t)})
+                    </p>
+                  </div>
+                  <div className="notification-actions">
+                    <button
+                      className="secondary-action"
+                      onClick={() => void onAcceptIncomingWorkspaceInvitation(invitation.id)}
+                      type="button"
+                    >
+                      <Icon name="check" />
+                      {t('acceptInvite')}
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={() => void onDeclineIncomingWorkspaceInvitation(invitation.id)}
+                      type="button"
+                    >
+                      {t('declineInvite')}
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {incomingTaskShares.map((share) => (
+                <article className="account-notification-card" key={share.shareId}>
+                  <span
+                    className="workspace-color-dot"
+                    style={{ backgroundColor: share.workspaceColor ?? '#184c48' }}
+                  />
+                  <div>
+                    <strong>{share.taskTitle}</strong>
+                    <p>
+                      {t('sharedBy')} {share.sharedByDisplayName || share.sharedByEmail}
+                      {' '} - {share.workspaceName}
+                    </p>
+                  </div>
+                  <div className="notification-actions">
+                    <button
+                      className="ghost-button"
+                      onClick={() => void onLeaveTaskShare(share.shareId)}
+                      type="button"
+                    >
+                      {t('leaveTaskShare')}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
 
         <section className="settings-section">
           <h3>{t('signInMethods')}</h3>
@@ -4562,7 +6137,15 @@ function formatWorkspaceRole(
   role: CurrentUserResponse['workspaces'][number]['role'],
   t: Translate,
 ) {
-  return role === 1 || role === 'Owner' ? t('roleOwner') : t('roleMember');
+  return isOwnerRole(role) ? t('roleOwner') : t('roleMember');
+}
+
+function isOwnerRole(role: CurrentUserResponse['workspaces'][number]['role']) {
+  return role === 1 || role === 'Owner';
+}
+
+function isTaskShareWorkspace(workspace: Pick<WorkspaceResponse, 'accessKind'>) {
+  return workspace.accessKind === 'TaskShare';
 }
 
 function formatOAuthProvider(provider: string, t: Translate) {
@@ -4589,6 +6172,7 @@ function Icon({ name }: { name: IconName }) {
     cloud: 'M17 18H8a5 5 0 1 1 .9-9.9A6.5 6.5 0 0 1 21 11.5 3.5 3.5 0 0 1 17 18Z',
     clock: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 4v5l3 2',
     close: 'M6 6l12 12M18 6 6 18',
+    crown: 'M5 17h14l1-9-5 4-3-6-3 6-5-4 1 9Zm1 3h12',
     edit: 'M4 20h4l10-10-4-4L4 16v4Zm12-16 4 4',
     filterOff: 'M4 5h16l-6 7v3l-4 2v-5L4 5Zm3 15 13-13',
     inbox: 'M4 5h16v10l-3 4H7l-3-4V5Zm0 10h5l1.5 2h3L15 15h5',
@@ -4608,7 +6192,9 @@ function Icon({ name }: { name: IconName }) {
     tag: 'M20 10 14 4H5v9l6 6 9-9ZM8 8h.01',
     templates: 'M4 5h7v7H4V5Zm9 0h7v7h-7V5ZM4 14h7v5H4v-5Zm9 0h7v5h-7v-5Z',
     trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+    undo: 'M9 7H4v5m0 0 5-5m-5 5h10a6 6 0 1 1-4.2 10.2',
     user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0',
+    users: 'M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 8a7 7 0 0 1 12 0M17 11a3 3 0 1 0 0-6M15 20a5 5 0 0 1 7-4.5',
     waiting: 'M6 4h12M8 4v5l4 3 4-3V4M8 20v-5l4-3 4 3v5M6 20h12',
   };
 
@@ -4760,6 +6346,8 @@ const emptyTaskWallFilters: TaskWallFilters = {
   projectId: '',
   notTouchedDays: '',
   followUp: '',
+  sharedWith: '',
+  sharedWithMe: false,
 };
 
 function buildTaskFilterOptions(
@@ -4768,7 +6356,7 @@ function buildTaskFilterOptions(
 ) {
   return {
     statuses: uniqueSorted(taskItems.map((taskItem) => taskItem.status)),
-    categories: uniqueSorted(taskItems.map((taskItem) => taskItem.category)),
+    categories: uniqueSorted(taskItems.flatMap((taskItem) => splitTaskCategories(taskItem.category))),
     colors: colorOptions,
   };
 }
@@ -4796,11 +6384,63 @@ function uniqueSorted(values: Array<string | null>) {
   ).sort((left, right) => left.localeCompare(right));
 }
 
+function splitTaskCategories(category: string | null | undefined) {
+  if (!category) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      category
+        .split(';')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function joinTaskCategories(categories: string[]) {
+  const normalized = Array.from(
+    new Set(
+      categories
+        .map((category) => category.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return normalized.length > 0 ? normalized.join('; ') : null;
+}
+
+function getProjectsForTaskCategories(
+  category: string | null | undefined,
+  projects: ProjectResponse[] | Map<string, ProjectResponse>,
+) {
+  const projectLookup = projects instanceof Map
+    ? projects
+    : new Map(projects.map((project) => [project.name.toLowerCase(), project]));
+
+  return splitTaskCategories(category)
+    .map((categoryName) => projectLookup.get(categoryName.toLowerCase()) ?? null)
+    .filter((project): project is ProjectResponse => Boolean(project));
+}
+
+function getPrimaryProjectIdForCategories(
+  category: string | null | undefined,
+  projects: ProjectResponse[],
+) {
+  const firstProject = getProjectsForTaskCategories(category, projects)[0];
+  return firstProject?.id ?? null;
+}
+
 function applyTaskWallFilters(
   taskItems: TaskItemSummaryResponse[],
   filters: TaskWallFilters,
+  currentUserEmail: string | null,
+  projects: ProjectResponse[],
 ) {
   const text = filters.text.trim().toLowerCase();
+  const sharedWith = filters.sharedWith.trim().toLowerCase();
+  const normalizedCurrentUserEmail = currentUserEmail?.trim().toLowerCase() ?? '';
   const notTouchedDays = numberOrNull(filters.notTouchedDays);
 
   return taskItems.filter((taskItem) => {
@@ -4812,7 +6452,7 @@ function applyTaskWallFilters(
       return false;
     }
 
-    if (filters.category && taskItem.category !== filters.category) {
+    if (filters.category && !taskHasCategory(taskItem, filters.category)) {
       return false;
     }
 
@@ -4820,7 +6460,7 @@ function applyTaskWallFilters(
       return false;
     }
 
-    if (filters.projectId && taskItem.projectId !== filters.projectId) {
+    if (filters.projectId && !taskMatchesProjectFilter(taskItem, filters.projectId, projects)) {
       return false;
     }
 
@@ -4829,6 +6469,17 @@ function applyTaskWallFilters(
     }
 
     if (notTouchedDays && !isNotTouchedForDays(taskItem, notTouchedDays)) {
+      return false;
+    }
+
+    if (sharedWith &&
+        !taskItem.shares.some((share) => share.email.toLowerCase().includes(sharedWith))) {
+      return false;
+    }
+
+    if (filters.sharedWithMe &&
+        !taskItem.shares.some((share) =>
+          share.email.toLowerCase() === normalizedCurrentUserEmail)) {
       return false;
     }
 
@@ -4842,7 +6493,26 @@ function taskMatchesText(taskItem: TaskItemSummaryResponse, text: string) {
     taskItem.status,
     taskItem.category,
     taskItem.latestTimelineEntry?.details,
+    ...taskItem.shares.map((share) => share.email),
   ].some((value) => value?.toLowerCase().includes(text));
+}
+
+function taskMatchesProjectFilter(
+  taskItem: TaskItemSummaryResponse,
+  projectId: string,
+  projects: ProjectResponse[],
+) {
+  if (taskItem.projectId === projectId) {
+    return true;
+  }
+
+  const project = projects.find((candidate) => candidate.id === projectId);
+  return project ? taskHasCategory(taskItem, project.name) : false;
+}
+
+function taskHasCategory(taskItem: TaskItemSummaryResponse, category: string) {
+  return splitTaskCategories(taskItem.category).some((taskCategory) =>
+    taskCategory.toLowerCase() === category.trim().toLowerCase());
 }
 
 function taskMatchesFollowUp(
@@ -4880,7 +6550,9 @@ function isNotTouchedForDays(taskItem: TaskItemSummaryResponse, days: number) {
 }
 
 function taskWallFiltersAreActive(filters: TaskWallFilters) {
-  return Object.values(filters).some((value) => value.trim().length > 0);
+  return Object.values(filters).some((value) =>
+    typeof value === 'boolean' ? value : value.trim().length > 0,
+  );
 }
 
 function getTaskCardStyle(color: string | null) {
@@ -4995,6 +6667,33 @@ function isTextEditingTarget(target: EventTarget | null) {
 
 function isHexColor(value: string) {
   return /^#[0-9A-F]{6}$/i.test(value);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildShareUrl(token: string) {
+  const shareUrl = new URL(window.location.href);
+  shareUrl.searchParams.set('shareToken', token);
+  shareUrl.searchParams.delete('workspaceInvite');
+  return shareUrl.toString();
+}
+
+async function copyTextToClipboard(value: string) {
+  if (navigator.clipboard) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
 }
 
 function getReadableTextColor(hexColor: string) {
@@ -5123,6 +6822,12 @@ function formatSavedViewName(name: string, t: Translate) {
     default:
       return name;
   }
+}
+
+function formatWorkspaceName(name: string, t: Translate) {
+  return name.trim().toLowerCase() === 'all tasks'
+    ? t('overview')
+    : name;
 }
 
 function formatDateTime(value: string) {

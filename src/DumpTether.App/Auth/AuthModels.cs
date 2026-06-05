@@ -28,7 +28,9 @@ public sealed record AuthWorkspaceResponse(
     Guid Id,
     string Name,
     string? Color,
-    WorkspaceMembershipRole Role);
+    WorkspaceMembershipRole Role,
+    string AccessKind = WorkspaceAccessKinds.Membership,
+    int SharedTaskCount = 0);
 
 public sealed record RegisterUserResponse(
     AuthUserResponse User,
@@ -74,4 +76,13 @@ public sealed record CurrentUserSession(
 
 public sealed record UserWorkspaceMembership(
     Workspace Workspace,
-    WorkspaceMembership Membership);
+    WorkspaceMembership Membership,
+    string AccessKind = WorkspaceAccessKinds.Membership,
+    int SharedTaskCount = 0);
+
+public static class WorkspaceAccessKinds
+{
+    public const string Membership = "Membership";
+
+    public const string TaskShare = "TaskShare";
+}

@@ -101,6 +101,15 @@ internal sealed class EfAuthRepository : IAuthRepository
         Guid userId,
         CancellationToken cancellationToken)
     {
+        var user = await _dbContext.AppUsers
+            .AsNoTracking()
+            .SingleOrDefaultAsync(candidate => candidate.Id == userId, cancellationToken);
+
+        if (user is null)
+        {
+            return [];
+        }
+
         var memberships = await _dbContext.WorkspaceMemberships
             .AsNoTracking()
             .Where(membership => membership.UserId == userId)
@@ -111,10 +120,45 @@ internal sealed class EfAuthRepository : IAuthRepository
                 (membership, workspace) => new { membership, workspace })
             .ToListAsync(cancellationToken);
 
-        return memberships
+        var sharedWorkspaceIds = await _dbContext.TaskItemShares
+            .AsNoTracking()
+            .Where(share =>
+                share.RevokedAt == null &&
+                (share.AcceptedAt != null || share.TokenHash == null) &&
+                (share.SharedWithUserId == userId ||
+                    share.NormalizedEmail == user.NormalizedEmail))
+            .Select(share => share.WorkspaceId)
+            .ToListAsync(cancellationToken);
+        var sharedTaskCounts = sharedWorkspaceIds
+            .GroupBy(workspaceId => workspaceId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var sharedWorkspaceKeys = sharedTaskCounts.Keys.ToList();
+        List<Workspace> sharedWorkspaces = sharedWorkspaceKeys.Count == 0
+            ? []
+            : await _dbContext.Workspaces
+                .AsNoTracking()
+                .Where(workspace => sharedWorkspaceKeys.Contains(workspace.Id))
+                .ToListAsync(cancellationToken);
+
+        var workspaceMemberships = memberships
             .OrderBy(item => item.membership.CreatedAt)
             .ThenBy(item => item.workspace.Name)
-            .Select(item => new UserWorkspaceMembership(item.workspace, item.membership))
+            .Select(item => new UserWorkspaceMembership(item.workspace, item.membership));
+        var sharedWorkspaceMemberships = sharedWorkspaces
+            .Where(workspace => memberships.All(item => item.workspace.Id != workspace.Id))
+            .OrderBy(workspace => workspace.Name)
+            .Select(workspace => new UserWorkspaceMembership(
+                workspace,
+                WorkspaceMembership.Create(
+                    workspace.Id,
+                    userId,
+                    WorkspaceMembershipRole.Member,
+                    DateTimeOffset.MinValue),
+                WorkspaceAccessKinds.TaskShare,
+                sharedTaskCounts.GetValueOrDefault(workspace.Id)));
+
+        return workspaceMemberships
+            .Concat(sharedWorkspaceMemberships)
             .ToList();
     }
 
@@ -126,6 +170,22 @@ internal sealed class EfAuthRepository : IAuthRepository
     public async Task AddSessionAsync(UserSession session, CancellationToken cancellationToken)
     {
         await _dbContext.UserSessions.AddAsync(session, cancellationToken);
+    }
+
+    public async Task<int> DeleteInactiveSessionsAsync(
+        DateTimeOffset now,
+        DateTimeOffset deleteBefore,
+        CancellationToken cancellationToken)
+    {
+        var sessions = await _dbContext.UserSessions.ToListAsync(cancellationToken);
+        var inactiveSessions = sessions
+            .Where(session =>
+                (session.ExpiresAt <= now && session.ExpiresAt <= deleteBefore) ||
+                (session.RevokedAt.HasValue && session.RevokedAt <= deleteBefore))
+            .ToList();
+
+        _dbContext.UserSessions.RemoveRange(inactiveSessions);
+        return inactiveSessions.Count;
     }
 
     public async Task AddEmailConfirmationTokenAsync(

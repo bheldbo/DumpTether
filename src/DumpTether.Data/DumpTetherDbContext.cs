@@ -18,6 +18,8 @@ public sealed class DumpTetherDbContext : DbContext
 
     public DbSet<WorkspaceMembership> WorkspaceMemberships => Set<WorkspaceMembership>();
 
+    public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();
+
     public DbSet<EmailConfirmationToken> EmailConfirmationTokens => Set<EmailConfirmationToken>();
 
     public DbSet<ExternalLogin> ExternalLogins => Set<ExternalLogin>();
@@ -25,6 +27,8 @@ public sealed class DumpTetherDbContext : DbContext
     public DbSet<Project> Projects => Set<Project>();
 
     public DbSet<TaskItem> TaskItems => Set<TaskItem>();
+
+    public DbSet<TaskItemShare> TaskItemShares => Set<TaskItemShare>();
 
     public DbSet<TaskTemplate> TaskTemplates => Set<TaskTemplate>();
 

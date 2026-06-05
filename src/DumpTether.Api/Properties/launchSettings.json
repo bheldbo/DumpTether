@@ -12,6 +12,8 @@
         "Auth__DevelopmentEmail": "dev@dumptether.local",
         "Auth__DevelopmentPassword": "dumptether-dev-password",
         "Auth__DevelopmentDisplayName": "Dev User",
+        "Auth__SessionDays": "30",
+        "Auth__SessionCleanupDays": "90",
         "EmailConfirmation__Enabled": "false",
         "EmailConfirmation__PublicBaseUrl": "http://localhost:55868",
         "Email__Smtp__Enabled": "false",
