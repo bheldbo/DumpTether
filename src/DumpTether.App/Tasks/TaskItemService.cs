@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using DumpTether.App.Auth;
+using DumpTether.App.LiveUpdates;
 using DumpTether.App.Projects;
 using DumpTether.App.Templates;
 using DumpTether.App.Usage;
@@ -18,6 +19,7 @@ internal sealed class TaskItemService : ITaskItemService
     private readonly IAuthRepository _authRepository;
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
+    private readonly ILiveUpdatePublisher _liveUpdatePublisher;
     private readonly IProjectRepository _projectRepository;
     private readonly ISavedViewRepository _savedViewRepository;
     private readonly ISessionTokenService _sessionTokenService;
@@ -29,6 +31,7 @@ internal sealed class TaskItemService : ITaskItemService
         IAuthRepository authRepository,
         ICurrentUserSessionProvider currentUserSessionProvider,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
+        ILiveUpdatePublisher liveUpdatePublisher,
         IProjectRepository projectRepository,
         ISavedViewRepository savedViewRepository,
         ISessionTokenService sessionTokenService,
@@ -39,6 +42,7 @@ internal sealed class TaskItemService : ITaskItemService
         _authRepository = authRepository;
         _currentUserSessionProvider = currentUserSessionProvider;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
+        _liveUpdatePublisher = liveUpdatePublisher;
         _projectRepository = projectRepository;
         _savedViewRepository = savedViewRepository;
         _sessionTokenService = sessionTokenService;
@@ -88,6 +92,11 @@ internal sealed class TaskItemService : ITaskItemService
 
         await _taskItemRepository.AddAsync(taskItem, cancellationToken);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskCreated,
+            taskItem,
+            now,
+            cancellationToken);
 
         return MapDetail(taskItem, taskTemplate);
     }
@@ -258,6 +267,12 @@ internal sealed class TaskItemService : ITaskItemService
 
         ApplyFieldValues(taskItem, taskTemplate, request.FieldValues, now);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskUpdated,
+            taskItem,
+            now,
+            cancellationToken,
+            currentSession);
 
         return MapDetail(taskItem, taskTemplate);
     }
@@ -377,6 +392,20 @@ internal sealed class TaskItemService : ITaskItemService
 
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
+        foreach (var copiedTask in copiedTasks)
+        {
+            await _liveUpdatePublisher.PublishAsync(
+                new LiveUpdateMessage(
+                    LiveUpdateEvents.TaskCreated,
+                    copiedTask.WorkspaceId,
+                    copiedTask.Id,
+                    null,
+                    currentSession.UserId,
+                    now,
+                    copiedTask.LastTouchedAt),
+                cancellationToken);
+        }
+
         return new CopyTaskItemsResponse(copiedTasks);
     }
 
@@ -397,6 +426,12 @@ internal sealed class TaskItemService : ITaskItemService
 
         taskItem.EditNote(entryId, request.Note, _clock.UtcNow);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.NoteEdited,
+            taskItem,
+            taskItem.LastTouchedAt,
+            cancellationToken,
+            timelineEntryId: entryId);
 
         var taskTemplate = await ResolveTaskTemplateForDetailAsync(
             taskItem,
@@ -420,6 +455,12 @@ internal sealed class TaskItemService : ITaskItemService
 
         taskItem.DeleteNote(entryId, _clock.UtcNow);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.NoteDeleted,
+            taskItem,
+            taskItem.LastTouchedAt,
+            cancellationToken,
+            timelineEntryId: entryId);
 
         var taskTemplate = await ResolveTaskTemplateForDetailAsync(
             taskItem,
@@ -443,8 +484,14 @@ internal sealed class TaskItemService : ITaskItemService
             return null;
         }
 
-        taskItem.AddNote(request.Note, _clock.UtcNow);
+        var now = _clock.UtcNow;
+        taskItem.AddNote(request.Note, now);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.NoteAdded,
+            taskItem,
+            now,
+            cancellationToken);
 
         var taskTemplate = await ResolveTaskTemplateForDetailAsync(
             taskItem,
@@ -498,6 +545,12 @@ internal sealed class TaskItemService : ITaskItemService
 
         taskItem.Archive(archiveResolution, _clock.UtcNow, request.Note);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskUpdated,
+            taskItem,
+            taskItem.LastTouchedAt,
+            cancellationToken,
+            currentSession);
 
         var taskTemplate = await ResolveTaskTemplateForDetailAsync(
             taskItem,
@@ -523,6 +576,11 @@ internal sealed class TaskItemService : ITaskItemService
 
         taskItem.Reopen(_clock.UtcNow, request.Note);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskUpdated,
+            taskItem,
+            taskItem.LastTouchedAt,
+            cancellationToken);
 
         var taskTemplate = await ResolveTaskTemplateForDetailAsync(
             taskItem,
@@ -591,6 +649,13 @@ internal sealed class TaskItemService : ITaskItemService
             expiresAt: null,
             _clock.UtcNow);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskShared,
+            taskItem,
+            taskItem.LastTouchedAt,
+            cancellationToken,
+            currentSession,
+            recipientUserIds: targetUser?.Id is null ? null : [targetUser.Id]);
 
         var taskTemplate = await ResolveTaskTemplateForDetailAsync(
             taskItem,
@@ -690,6 +755,17 @@ internal sealed class TaskItemService : ITaskItemService
 
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
+        foreach (var taskItem in taskItems)
+        {
+            await PublishTaskEventAsync(
+                LiveUpdateEvents.TaskShared,
+                taskItem,
+                now,
+                cancellationToken,
+                currentSession,
+                recipientUserIds: targetUser?.Id is null ? null : [targetUser.Id]);
+        }
+
         return new TaskShareLinkResponse(
             shares.OrderBy(share => share.Email).ToList(),
             token,
@@ -741,6 +817,17 @@ internal sealed class TaskItemService : ITaskItemService
 
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
+        foreach (var taskItem in taskItems)
+        {
+            await PublishTaskEventAsync(
+                LiveUpdateEvents.TaskShared,
+                taskItem,
+                now,
+                cancellationToken,
+                currentSession,
+                recipientUserIds: [currentSession.UserId]);
+        }
+
         return new ShareLinkAcceptResponse(
             "Task",
             workspaceId.Value,
@@ -761,6 +848,11 @@ internal sealed class TaskItemService : ITaskItemService
 
         taskItem.RevokeShare(shareId, _clock.UtcNow);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskUpdated,
+            taskItem,
+            taskItem.LastTouchedAt,
+            cancellationToken);
 
         var taskTemplate = await ResolveTaskTemplateForDetailAsync(
             taskItem,
@@ -789,8 +881,38 @@ internal sealed class TaskItemService : ITaskItemService
 
         taskItem.RevokeShare(shareId, _clock.UtcNow);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskUpdated,
+            taskItem,
+            taskItem.LastTouchedAt,
+            cancellationToken,
+            currentSession);
 
         return true;
+    }
+
+    private async Task PublishTaskEventAsync(
+        string eventName,
+        TaskItem taskItem,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken,
+        CurrentUserSession? currentSession = null,
+        Guid? timelineEntryId = null,
+        IReadOnlyList<Guid>? recipientUserIds = null)
+    {
+        currentSession ??= await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        await _liveUpdatePublisher.PublishAsync(
+            new LiveUpdateMessage(
+                eventName,
+                taskItem.WorkspaceId,
+                taskItem.Id,
+                timelineEntryId,
+                currentSession?.UserId,
+                occurredAt,
+                taskItem.LastTouchedAt,
+                recipientUserIds),
+            cancellationToken);
     }
 
     private async Task<TaskItem?> GetTaskItemForReadAsync(

@@ -1,8 +1,8 @@
-# ADR 0005: Live collaboration preparation with SignalR
+# ADR 0005: Live collaboration with SignalR
 
 ## Status
 
-Planned.
+Accepted, initial implementation.
 
 ## Context
 
@@ -12,9 +12,9 @@ The current MVP should not overbuild full realtime sync, conflict resolution, or
 
 ## Decision
 
-DumpTether will use SignalR for future live collaboration events from the ASP.NET Core API. Clients will treat events as invalidation hints and fetch fresh data through the existing API shape.
+DumpTether uses SignalR for lightweight live collaboration events from the ASP.NET Core API. Clients treat events as invalidation hints and fetch fresh data through the existing API shape.
 
-No SignalR hub or package is required in this step. ASP.NET Core can host SignalR later when the live-update implementation is added.
+The first implementation exposes `/api/live`, authenticates the connection with the existing session token, and joins the caller to allowed workspace groups. Clients may explicitly call `JoinWorkspace` after switching boards or after membership changes.
 
 The initial event names should be:
 
@@ -26,24 +26,27 @@ The initial event names should be:
 - `TaskShared`
 - `WorkspaceInviteAccepted`
 
-Future event payloads should stay small and contain identifiers, timestamps, and version hints rather than full business objects:
+Event payloads stay small and contain identifiers, timestamps, and future version hints rather than full business objects:
 
-- `eventId`
+- `eventName`
 - `workspaceId`
 - `taskItemId` when relevant
 - `timelineEntryId` when relevant
 - `actorUserId`
 - `occurredAt`
 - `updatedAt`
+- `recipientUserIds` when direct user notification is needed
 - `version` when available
 
 ## Authorization
 
-The backend remains authoritative. SignalR connections should be authenticated when login is required. Hub groups should be scoped by workspace membership and task-share access. Events must not leak tasks, notes, emails, tokens, connection strings, or other secrets to clients without access.
+The backend remains authoritative. SignalR connections are authenticated when login is required. Hub groups are scoped by workspace membership and task-share access. Events must not leak tasks, notes, emails, tokens, connection strings, or other secrets to clients without access.
 
 ## Desktop and offline impact
 
 The future desktop app can use the same event names locally from the .NET sidecar API. Offline sync remains separate future work. When sync is implemented, it should use stable IDs, `CreatedAt`, `UpdatedAt`, `DeletedAt`, `Version`, `DeviceId`, and append-only timeline entries where possible.
+
+Shared tasks and shared workspaces are server/session-scoped. The offline desktop app should show local user-owned data without login, then after login check server status, sync the user's own cloud data, and fetch shared tasks/workspaces only when the server connection succeeds. Sync or server connection errors should be shown clearly to the user without blocking local use.
 
 SignalR events should not become the source of truth. If a desktop client is offline, it can miss events and still recover by syncing/refetching later.
 

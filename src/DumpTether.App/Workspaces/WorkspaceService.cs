@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Auth;
+using DumpTether.App.LiveUpdates;
 using DumpTether.App.Tasks;
 using DumpTether.Domain;
 using Microsoft.Extensions.Options;
@@ -15,6 +16,7 @@ internal sealed class WorkspaceService : IWorkspaceService
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
+    private readonly ILiveUpdatePublisher _liveUpdatePublisher;
     private readonly ISessionTokenService _sessionTokenService;
     private readonly IWorkspaceRepository _workspaceRepository;
 
@@ -24,6 +26,7 @@ internal sealed class WorkspaceService : IWorkspaceService
         IOptions<AuthOptions> authOptions,
         ICurrentUserSessionProvider currentUserSessionProvider,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
+        ILiveUpdatePublisher liveUpdatePublisher,
         ISessionTokenService sessionTokenService,
         IWorkspaceRepository workspaceRepository)
     {
@@ -32,6 +35,7 @@ internal sealed class WorkspaceService : IWorkspaceService
         _authOptions = authOptions;
         _currentUserSessionProvider = currentUserSessionProvider;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
+        _liveUpdatePublisher = liveUpdatePublisher;
         _sessionTokenService = sessionTokenService;
         _workspaceRepository = workspaceRepository;
     }
@@ -603,6 +607,16 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         invitation.Accept(now);
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await _liveUpdatePublisher.PublishAsync(
+            new LiveUpdateMessage(
+                LiveUpdateEvents.WorkspaceInviteAccepted,
+                invitation.WorkspaceId,
+                null,
+                null,
+                currentSession.UserId,
+                now,
+                now),
+            cancellationToken);
 
         return MapInvitation(invitation, token: null);
     }

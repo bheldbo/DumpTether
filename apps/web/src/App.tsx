@@ -71,6 +71,7 @@ import {
 import './App.css';
 import { FieldEditorList, FieldValueList } from './fieldRenderers';
 import { toFieldValueMap } from './fieldValues';
+import { startLiveUpdates, type LiveUpdateMessage } from './liveUpdates';
 import { type Language, type Translate, translate } from './localization';
 import type {
   AuthClientOptionsResponse,
@@ -275,6 +276,7 @@ function App() {
   const [lastPingedAt, setLastPingedAt] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [language, setLanguage] = useState<Language>(getInitialLanguage);
+  const liveConnectionToastAtRef = useRef(0);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     getInitialWorkspaceId,
   );
@@ -527,6 +529,96 @@ function App() {
 
     return () => window.clearInterval(intervalId);
   }, [pingBackend]);
+
+  useEffect(() => {
+    if (!currentUser || temporarySessionIsActive) {
+      return undefined;
+    }
+
+    let isDisposed = false;
+    let reloadTimer: number | undefined;
+
+    const scheduleWorkspaceReload = () => {
+      if (reloadTimer) {
+        window.clearTimeout(reloadTimer);
+      }
+
+      reloadTimer = window.setTimeout(() => {
+        void loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
+      }, 250);
+    };
+
+    const handleLiveUpdate = (message: LiveUpdateMessage) => {
+      if (message.actorUserId === currentUser.user.id) {
+        return;
+      }
+
+      if (
+        message.eventName === 'TaskShared' ||
+        message.eventName === 'WorkspaceInviteAccepted'
+      ) {
+        void loadAuth();
+      }
+
+      if (
+        !selectedWorkspaceId ||
+        message.workspaceId === selectedWorkspaceId ||
+        message.eventName === 'TaskShared' ||
+        message.eventName === 'WorkspaceInviteAccepted'
+      ) {
+        scheduleWorkspaceReload();
+      }
+
+      if (selectedTaskId && message.taskItemId === selectedTaskId) {
+        void getTaskItem(selectedTaskId)
+          .then((taskItem) => {
+            setSelectedTask(taskItem);
+          })
+          .catch(() => {
+            setSelectedTaskId(null);
+            setSelectedTask(null);
+          });
+      }
+    };
+
+    const subscription = startLiveUpdates(
+      handleLiveUpdate,
+      () => {
+        if (isDisposed) {
+          return;
+        }
+
+        const now = Date.now();
+        if (now - liveConnectionToastAtRef.current > 15000) {
+          liveConnectionToastAtRef.current = now;
+          showToast(t('liveUpdatesDisconnected'), 'error');
+        }
+      },
+    );
+    if (selectedWorkspaceId) {
+      void subscription.joinWorkspace(selectedWorkspaceId);
+    }
+
+    return () => {
+      isDisposed = true;
+
+      if (reloadTimer) {
+        window.clearTimeout(reloadTimer);
+      }
+
+      void subscription.stop();
+    };
+  }, [
+    currentUser,
+    currentViewId,
+    loadAuth,
+    loadWorkspace,
+    selectedTaskId,
+    selectedWorkspaceId,
+    showToast,
+    t,
+    temporarySessionIsActive,
+  ]);
 
   useEffect(() => {
     if (mode !== 'tasks' || !selectedTaskId) {
@@ -3651,21 +3743,22 @@ function DraftTaskCard({
                   value={title}
                 />
               </div>
-              <div className="task-header-fields task-header-fields-edit">
+              <div className="task-header-fields task-header-fields-edit draft-task-controls">
                 {selectedProject ? (
-                  <span style={getContextChipStyle(selectedProject.color)}>
+                  <span className="task-meta-chip draft-meta-chip" style={getContextChipStyle(selectedProject.color)}>
                     <Icon name="tag" />
                     {t('category')}: {selectedProject.name}
                   </span>
                 ) : (
-                  <span>
+                  <span className="task-meta-chip draft-meta-chip">
                     <Icon name="tag" />
                     {t('category')}: {t('noCategory')}
                   </span>
                 )}
                 {templates.length > 0 ? (
-                  <label>
-                    {t('templates')}
+                  <label className="task-meta-chip draft-template-chip">
+                    <Icon name="templates" />
+                    <span className="sr-only">{t('templates')}</span>
                     <select
                       aria-label={t('templates')}
                       onChange={(event) => setSelectedTemplateId(event.target.value)}

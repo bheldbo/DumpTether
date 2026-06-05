@@ -2,10 +2,13 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using DumpTether.App.Auth;
+using DumpTether.App.LiveUpdates;
 using DumpTether.App.Templates;
 using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
 using DumpTether.Data;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -59,6 +62,72 @@ public sealed class SharingApiTests
 
         Assert.Contains(invitedTasks!, taskItem => taskItem.Id == ownerTask.Id);
         Assert.Contains(invitedMembers!, member => member.Email == invited.User.Email);
+    }
+
+    [Fact]
+    public async Task LiveUpdates_SharedWorkspaceMemberReceivesTaskCreatedEvent()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var memberClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "live-owner@example.com",
+            "correct horse battery");
+        var member = await RegisterAndLoginAsync(
+            memberClient,
+            "live-member@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+
+        var inviteResponse = await ownerClient.PostAsJsonAsync(
+            "/api/workspace/invitations",
+            new
+            {
+                email = member.User.Email
+            });
+        inviteResponse.EnsureSuccessStatusCode();
+        var invite = (await inviteResponse.Content.ReadFromJsonAsync<WorkspaceInvitationResponse>())!;
+
+        var acceptResponse = await memberClient.PostAsJsonAsync(
+            "/api/workspace/invitations/accept",
+            new
+            {
+                token = invite.Token
+            });
+        acceptResponse.EnsureSuccessStatusCode();
+
+        var received = new TaskCompletionSource<LiveUpdateMessage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var connection = new HubConnectionBuilder()
+            .WithUrl(
+                new Uri(factory.Server.BaseAddress, "/api/live"),
+                options =>
+                {
+                    options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                    options.AccessTokenProvider = () => Task.FromResult<string?>(member.SessionToken);
+                    options.Headers.Add("Authorization", $"Bearer {member.SessionToken}");
+                    options.Transports = HttpTransportType.LongPolling;
+                })
+            .Build();
+
+        connection.On<LiveUpdateMessage>("LiveUpdate", message =>
+        {
+            if (message.EventName == LiveUpdateEvents.TaskCreated)
+            {
+                received.TrySetResult(message);
+            }
+        });
+        await connection.StartAsync();
+        await connection.InvokeAsync("JoinWorkspace", ownerWorkspaceId);
+
+        var created = await CreateTaskAsync(ownerClient, "Live task from owner");
+        var message = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(LiveUpdateEvents.TaskCreated, message.EventName);
+        Assert.Equal(ownerWorkspaceId, message.WorkspaceId);
+        Assert.Equal(created.Id, message.TaskItemId);
+        Assert.Equal(owner.User.Id, message.ActorUserId);
     }
 
     [Fact]

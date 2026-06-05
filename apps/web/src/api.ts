@@ -64,6 +64,10 @@ export function getStoredSessionToken() {
   return currentSessionToken;
 }
 
+export function getApiBaseUrl() {
+  return apiBaseUrl;
+}
+
 export function isTemporarySession() {
   return sessionIsTemporary;
 }

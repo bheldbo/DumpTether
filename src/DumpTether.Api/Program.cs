@@ -2,6 +2,7 @@ using DumpTether.App;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using DumpTether.Api;
+using DumpTether.App.LiveUpdates;
 using DumpTether.Data;
 using DumpTether.App.Usage;
 using DumpTether.App.Workspaces;
@@ -31,7 +32,9 @@ RuntimeConfigurationValidator.Validate(
     builder.Environment.IsDevelopment());
 builder.Services.AddDumpTetherApplication();
 builder.Services.RemoveAll<IEmailSender>();
+builder.Services.RemoveAll<ILiveUpdatePublisher>();
 builder.Services.AddHttpClient<IEmailSender, BrevoEmailSender>();
+builder.Services.AddSingleton<ILiveUpdatePublisher, SignalRLiveUpdatePublisher>();
 builder.Services.AddDumpTetherData(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();
@@ -59,6 +62,7 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 
 var app = builder.Build();
 
@@ -91,6 +95,7 @@ app.MapGet("/health", () => Results.Ok(new
 app.UseRateLimiter();
 app.UseAuthentication();
 app.MapControllers();
+app.MapHub<LiveUpdateHub>("/api/live");
 
 app.Run();
 
