@@ -35,13 +35,23 @@ Application services still enforce workspace membership, owner/member boundaries
 - Development login is disabled outside development.
 - Protected controllers use the session policy.
 - SignalR live updates use the same session policy and authenticated user identity.
+- Cookie-authenticated unsafe requests require a matching `DumpTether.Csrf` cookie and `X-DumpTether-CSRF` header.
 - Rate limiting exists for auth and task write endpoints.
+- The API adds conservative security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `X-Permitted-Cross-Domain-Policies`.
+
+## Roles
+
+The intentional role set is small:
+
+- `Owner`: controls the board/workspace and can delete it.
+- `Member`: can participate in shared boards and shared tasks, but cannot delete owner resources.
+- `ReadOnly`/`Guest`: future permission level for limited access without write authority.
+
+The HTTP policy only proves that a request belongs to a valid session. Workspace and task permissions are still checked in the application layer because the allowed action depends on the target workspace, task, share, and ownership boundary.
 
 ## Remaining Hardening Work
 
-- Add CSRF protection before relying on cookie auth for state-changing browser requests.
-- Add role-specific endpoint policies once owner/member/share permissions settle.
-- Add security headers at the reverse proxy or API layer for production.
+- Add role-specific endpoint policies once `ReadOnly`/`Guest` behavior is implemented.
 - Add audit-friendly logs for auth failures without logging tokens or secrets.
 - Disconnect or reject existing live-update connections promptly when sessions are revoked.
 - Add storage and malware-scan rules before attachments are implemented.

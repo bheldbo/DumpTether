@@ -6,6 +6,7 @@ using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.Data;
 using DumpTether.Domain;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -295,6 +296,79 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task UnsafeCookieAuthenticatedRequest_WithoutCsrfHeader_IsRejected()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = false
+        });
+        await RegisterAsync(client, "cookie-no-csrf@example.com", "correct horse battery");
+        var loginResponse = await LoginWithResponseAsync(
+            client,
+            "cookie-no-csrf@example.com",
+            "correct horse battery");
+        var sessionCookie = GetSetCookie(loginResponse, "DumpTether.Session");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/tasks")
+        {
+            Content = JsonContent.Create(new { title = "Cookie-only task" })
+        };
+        request.Headers.Add("Cookie", sessionCookie);
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UnsafeCookieAuthenticatedRequest_WithCsrfHeader_Succeeds()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = false
+        });
+        await RegisterAsync(client, "cookie-csrf@example.com", "correct horse battery");
+        var loginResponse = await LoginWithResponseAsync(
+            client,
+            "cookie-csrf@example.com",
+            "correct horse battery");
+        var sessionCookie = GetSetCookie(loginResponse, "DumpTether.Session");
+        var csrfCookie = GetSetCookie(loginResponse, "DumpTether.Csrf");
+        var csrfToken = GetCookieValue(csrfCookie, "DumpTether.Csrf");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/tasks")
+        {
+            Content = JsonContent.Create(new { title = "Cookie CSRF task" })
+        };
+        request.Headers.Add("Cookie", $"{sessionCookie}; {csrfCookie}");
+        request.Headers.Add("X-DumpTether-CSRF", csrfToken);
+
+        var response = await client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task SecurityHeaders_AreReturnedOnHealthCheck()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/health");
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal(
+            "nosniff",
+            response.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Equal(
+            "DENY",
+            response.Headers.GetValues("X-Frame-Options").Single());
+        Assert.Equal(
+            "strict-origin-when-cross-origin",
+            response.Headers.GetValues("Referrer-Policy").Single());
+    }
+
+    [Fact]
     public void Startup_WhenEmailConfirmationEnabledWithoutSmtpConfig_ThrowsHelpfulError()
     {
         var configuration = new ConfigurationBuilder()
@@ -415,5 +489,36 @@ public sealed class AuthApiTests
             $"Expected OK, got {response.StatusCode}. Body: {body}");
 
         return (await response.Content.ReadFromJsonAsync<LoginUserResponse>())!;
+    }
+
+    private static Task<HttpResponseMessage> LoginWithResponseAsync(
+        HttpClient client,
+        string email,
+        string password) =>
+        client.PostAsJsonAsync(
+            "/api/auth/login",
+            new
+            {
+                email,
+                password,
+                deviceName = "test client"
+            });
+
+    private static string GetSetCookie(HttpResponseMessage response, string cookieName)
+    {
+        var setCookieValues = response.Headers.TryGetValues("Set-Cookie", out var values)
+            ? values
+            : Array.Empty<string>();
+        var setCookie = setCookieValues.Single(
+            cookie => cookie.StartsWith($"{cookieName}=", StringComparison.Ordinal));
+
+        return setCookie.Split(';', 2)[0];
+    }
+
+    private static string GetCookieValue(string cookie, string cookieName)
+    {
+        var prefix = $"{cookieName}=";
+        Assert.StartsWith(prefix, cookie, StringComparison.Ordinal);
+        return WebUtility.UrlDecode(cookie[prefix.Length..]);
     }
 }

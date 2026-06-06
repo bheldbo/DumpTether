@@ -5,7 +5,6 @@ namespace DumpTether.Api;
 
 internal sealed class CurrentAuthTokenAccessor : IAuthTokenAccessor
 {
-    private const string SessionCookieName = "DumpTether.Session";
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     public CurrentAuthTokenAccessor(IHttpContextAccessor httpContextAccessor)
@@ -33,7 +32,7 @@ internal sealed class CurrentAuthTokenAccessor : IAuthTokenAccessor
                 return queryToken;
             }
 
-            return httpContext?.Request.Cookies[SessionCookieName];
+            return httpContext?.Request.Cookies[SessionCsrfProtectionMiddleware.SessionCookieName];
         }
     }
 }

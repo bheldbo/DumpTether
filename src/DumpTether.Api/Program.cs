@@ -84,6 +84,8 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
     await dbContext.Database.MigrateAsync();
 }
 
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
 app.Use(async (context, next) =>
 {
     try
@@ -104,6 +106,7 @@ app.MapGet("/health", () => Results.Ok(new
 }));
 
 app.UseRateLimiter();
+app.UseMiddleware<SessionCsrfProtectionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

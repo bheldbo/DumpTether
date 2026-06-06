@@ -84,7 +84,7 @@ Production auth work should include:
 - Password hashing through the framework, not custom hashing.
 - Refresh-token rotation and reuse detection.
 - Login/session rate limiting.
-- CSRF protection for cookie-authenticated browser flows.
+- CSRF protection for cookie-authenticated browser flows using a non-HttpOnly CSRF cookie and matching request header on unsafe requests.
 - Secure cookie flags in production.
 - Clear separation between deployment secrets and workspace/user configuration.
 - Tests proving that a user cannot access another workspace.

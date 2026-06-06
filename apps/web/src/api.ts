@@ -53,6 +53,8 @@ const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
 const apiBaseUrl = configuredBaseUrl ?? '';
 const sessionTokenStorageKey = 'dumptether.sessionToken';
 const guestSessionTokenStorageKey = 'dumptether.guestSessionToken';
+const csrfCookieName = 'DumpTether.Csrf';
+const csrfHeaderName = 'X-DumpTether-CSRF';
 let currentWorkspaceId: string | null = null;
 let currentSessionToken: string | null = readStoredSessionToken();
 let sessionIsTemporary = readStoredTemporarySessionFlag();
@@ -72,6 +74,11 @@ export function getStoredSessionToken() {
 
 export function getApiBaseUrl() {
   return apiBaseUrl;
+}
+
+export function getCookieAuthCsrfHeader(): Record<string, string> {
+  const csrfToken = readCookie(csrfCookieName);
+  return csrfToken ? { [csrfHeaderName]: csrfToken } : {};
 }
 
 export function isTemporarySession() {
@@ -112,6 +119,10 @@ async function request<T>(
   const requestWorkspaceId = options.workspaceId === undefined
     ? currentWorkspaceId
     : options.workspaceId;
+  const method = init?.method?.toUpperCase() ?? 'GET';
+  const csrfToken = !currentSessionToken && requiresCsrfHeader(method)
+    ? readCookie(csrfCookieName)
+    : null;
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     credentials: 'include',
@@ -119,6 +130,7 @@ async function request<T>(
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(currentSessionToken ? { Authorization: `Bearer ${currentSessionToken}` } : {}),
+      ...(csrfToken ? { [csrfHeaderName]: csrfToken } : {}),
       ...(requestWorkspaceId ? { 'X-DumpTether-Workspace-Id': requestWorkspaceId } : {}),
       ...init?.headers,
     },
@@ -153,6 +165,24 @@ function readStoredSessionToken() {
 function readStoredTemporarySessionFlag() {
   return !window.localStorage.getItem(sessionTokenStorageKey) &&
     Boolean(window.sessionStorage.getItem(guestSessionTokenStorageKey));
+}
+
+function requiresCsrfHeader(method: string) {
+  return !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method);
+}
+
+function readCookie(name: string) {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const prefix = `${name}=`;
+  const cookie = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
 }
 
 export function registerUser(

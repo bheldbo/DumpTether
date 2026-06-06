@@ -1,12 +1,14 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 
 namespace DumpTether.Api.Controllers;
@@ -275,7 +277,8 @@ public sealed class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        Response.Cookies.Delete("DumpTether.Session");
+        Response.Cookies.Delete(SessionCsrfProtectionMiddleware.SessionCookieName);
+        Response.Cookies.Delete(SessionCsrfProtectionMiddleware.CsrfCookieName);
         return NoContent();
     }
 
@@ -320,10 +323,8 @@ public sealed class AuthController : ControllerBase
 
     private void AppendSessionCookie(LoginUserResponse response)
     {
-        // TODO auth-hardening: if the frontend switches from bearer storage to cookies,
-        // add CSRF protection before relying on cookie auth for state-changing requests.
         Response.Cookies.Append(
-            "DumpTether.Session",
+            SessionCsrfProtectionMiddleware.SessionCookieName,
             response.SessionToken,
             new CookieOptions
             {
@@ -332,7 +333,20 @@ public sealed class AuthController : ControllerBase
                 Secure = !_environment.IsDevelopment(),
                 Expires = response.ExpiresAt
             });
+        Response.Cookies.Append(
+            SessionCsrfProtectionMiddleware.CsrfCookieName,
+            CreateCsrfToken(),
+            new CookieOptions
+            {
+                HttpOnly = false,
+                SameSite = SameSiteMode.Strict,
+                Secure = !_environment.IsDevelopment(),
+                Expires = response.ExpiresAt
+            });
     }
+
+    private static string CreateCsrfToken() =>
+        WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
 
     private string? NormalizeEnabledOAuthProvider(string provider)
     {
