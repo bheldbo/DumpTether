@@ -4,6 +4,7 @@ using DumpTether.App.Email;
 using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
 using DumpTether.Domain;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace DumpTether.App.Auth;
@@ -17,6 +18,7 @@ internal sealed class AuthService : IAuthService
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<EmailConfirmationOptions> _emailConfirmationOptions;
     private readonly IEmailSender _emailSender;
+    private readonly ILogger<AuthService> _logger;
     private readonly IPasswordHashService _passwordHashService;
     private readonly ISessionTokenService _sessionTokenService;
     private readonly IWorkspaceRepository _workspaceRepository;
@@ -29,6 +31,7 @@ internal sealed class AuthService : IAuthService
         IOptions<AuthOptions> authOptions,
         IOptions<EmailConfirmationOptions> emailConfirmationOptions,
         IEmailSender emailSender,
+        ILogger<AuthService> logger,
         IPasswordHashService passwordHashService,
         ISessionTokenService sessionTokenService,
         IWorkspaceRepository workspaceRepository)
@@ -40,6 +43,7 @@ internal sealed class AuthService : IAuthService
         _authOptions = authOptions;
         _emailConfirmationOptions = emailConfirmationOptions;
         _emailSender = emailSender;
+        _logger = logger;
         _passwordHashService = passwordHashService;
         _sessionTokenService = sessionTokenService;
         _workspaceRepository = workspaceRepository;
@@ -92,20 +96,33 @@ internal sealed class AuthService : IAuthService
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var normalizedEmail = AppUser.NormalizeEmail(request.Email);
         var user = await _authRepository.GetUserByNormalizedEmailAsync(
-            AppUser.NormalizeEmail(request.Email),
+            normalizedEmail,
             trackChanges: true,
             cancellationToken);
 
-        if (user is null ||
-            !user.IsActive ||
-            !_passwordHashService.VerifyPassword(user.PasswordHash, request.Password))
+        if (user is null)
         {
+            LogAuthAuditEvent("login_failed_unknown_user", normalizedEmail, metadata);
+            throw new ValidationException("Invalid email or password.");
+        }
+
+        if (!user.IsActive)
+        {
+            LogAuthAuditEvent("login_failed_inactive_user", normalizedEmail, metadata);
+            throw new ValidationException("Invalid email or password.");
+        }
+
+        if (!_passwordHashService.VerifyPassword(user.PasswordHash, request.Password))
+        {
+            LogAuthAuditEvent("login_failed_bad_password", normalizedEmail, metadata);
             throw new ValidationException("Invalid email or password.");
         }
 
         if (_emailConfirmationOptions.Value.Enabled && user.EmailConfirmedAt is null)
         {
+            LogAuthAuditEvent("login_failed_unconfirmed_email", normalizedEmail, metadata);
             throw new EmailConfirmationRequiredException();
         }
 
@@ -529,5 +546,18 @@ internal sealed class AuthService : IAuthService
             now,
             now.AddDays(-boundedCleanupDays),
             cancellationToken);
+    }
+
+    private void LogAuthAuditEvent(
+        string eventName,
+        string normalizedEmail,
+        AuthRequestMetadata metadata)
+    {
+        _logger.LogWarning(
+            "Auth audit event {EventName}. EmailHash: {EmailHash}. IpHash: {IpHash}. UserAgentLength: {UserAgentLength}.",
+            eventName,
+            _sessionTokenService.HashOptionalMetadata(normalizedEmail),
+            _sessionTokenService.HashOptionalMetadata(metadata.IpAddress),
+            metadata.UserAgent?.Length ?? 0);
     }
 }

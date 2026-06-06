@@ -2393,9 +2393,14 @@ function TaskBoard({
     ? isOwnerRole(currentWorkspaceMember.role)
     : !currentUserEmail;
   const workspaceIsTaskShareOnly = isTaskShareWorkspace(workspace ?? { accessKind: 'Membership' });
+  const currentUserHasReadOnlyWorkspaceAccess = currentWorkspaceMember
+    ? isReadOnlyRole(currentWorkspaceMember.role)
+    : false;
   const canManageSharing = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
+  const canManageWorkspaceMetadata = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
   const canCreateTask = currentView?.filter.archive !== 'Archived' &&
-    !workspaceIsTaskShareOnly;
+    !workspaceIsTaskShareOnly &&
+    !currentUserHasReadOnlyWorkspaceAccess;
   const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
   const [pendingDeletedNoteIds, setPendingDeletedNoteIds] = useState<string[]>([]);
   const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
@@ -2462,7 +2467,7 @@ function TaskBoard({
 
   const openCreateTask = useCallback(() => {
     if (!canCreateTask) {
-      onShowToast(t('sharedBoardsCannotCreateTasks'), 'error');
+      onShowToast(t('boardAccessCannotCreateTasks'), 'error');
       return;
     }
 
@@ -2544,6 +2549,7 @@ function TaskBoard({
           selectedProjectId={filters.projectId}
           t={t}
           workspace={workspace}
+          canManageWorkspaceMetadata={canManageWorkspaceMetadata}
           canManageSharing={canManageSharing}
         />
       ) : null}
@@ -2810,6 +2816,7 @@ function TaskBoard({
 }
 
 function WorkspaceHeader({
+  canManageWorkspaceMetadata,
   canManageSharing,
   colorOptions,
   currentView,
@@ -2828,6 +2835,7 @@ function WorkspaceHeader({
   t,
   workspace,
 }: {
+  canManageWorkspaceMetadata: boolean;
   canManageSharing: boolean;
   colorOptions: string[];
   currentView: SavedViewResponse | null;
@@ -2870,6 +2878,15 @@ function WorkspaceHeader({
     setWorkspaceColor(workspace?.color ?? '');
     setWorkspaceIsEditing(false);
   }, [workspace]);
+
+  useEffect(() => {
+    if (!canManageWorkspaceMetadata) {
+      setWorkspaceIsEditing(false);
+      setEditingProjectId(null);
+      setNewProjectIsOpen(false);
+      setPendingDeleteProject(null);
+    }
+  }, [canManageWorkspaceMetadata]);
 
   const startProjectEditing = (project: ProjectResponse) => {
     setEditingProjectId(project.id);
@@ -2983,28 +3000,36 @@ function WorkspaceHeader({
             </form>
           ) : (
             <>
-              <button
-                className="heading-edit-trigger"
-                onClick={() => setWorkspaceIsEditing(true)}
-                title={t('editBoard')}
-                type="button"
-              >
+              {canManageWorkspaceMetadata ? (
+                <button
+                  className="heading-edit-trigger"
+                  onClick={() => setWorkspaceIsEditing(true)}
+                  title={t('editBoard')}
+                  type="button"
+                >
+                  <h1 id="task-board-title">
+                    {workspace ? formatWorkspaceName(workspace.name, t) : 'DumpTether'}
+                  </h1>
+                </button>
+              ) : (
                 <h1 id="task-board-title">
                   {workspace ? formatWorkspaceName(workspace.name, t) : 'DumpTether'}
                 </h1>
-              </button>
-              <button
-                className="icon-button header-edit-button"
-                onClick={() => setWorkspaceIsEditing(true)}
-                title={t('editBoard')}
-                type="button"
-              >
-                <span
-                  className="header-color-dot"
-                  style={{ backgroundColor: workspace?.color ?? '#ffffff' }}
-                />
-                <Icon name="edit" />
-              </button>
+              )}
+              {canManageWorkspaceMetadata ? (
+                <button
+                  className="icon-button header-edit-button"
+                  onClick={() => setWorkspaceIsEditing(true)}
+                  title={t('editBoard')}
+                  type="button"
+                >
+                  <span
+                    className="header-color-dot"
+                    style={{ backgroundColor: workspace?.color ?? '#ffffff' }}
+                  />
+                  <Icon name="edit" />
+                </button>
+              ) : null}
             </>
           )}
         </div>
@@ -3144,18 +3169,20 @@ function WorkspaceHeader({
                 >
                   {project.name}
                 </button>
-                <button
-                  className="tiny-icon-button project-tag-edit"
-                  onClick={() => startProjectEditing(project)}
-                  title={t('editProject')}
-                  type="button"
-                >
-                  <Icon name="edit" />
-                </button>
+                {canManageWorkspaceMetadata ? (
+                  <button
+                    className="tiny-icon-button project-tag-edit"
+                    onClick={() => startProjectEditing(project)}
+                    title={t('editProject')}
+                    type="button"
+                  >
+                    <Icon name="edit" />
+                  </button>
+                ) : null}
               </span>
             )
           ))}
-          {newProjectIsOpen ? (
+          {canManageWorkspaceMetadata && newProjectIsOpen ? (
             <form
               className="project-tag-editor"
               onSubmit={(event) => void createProjectFromInlineForm(event)}
@@ -3203,7 +3230,7 @@ function WorkspaceHeader({
                 <Icon name="close" />
               </button>
             </form>
-          ) : (
+          ) : canManageWorkspaceMetadata ? (
             <button
               className="project-tag project-tag-add"
               onClick={() => setNewProjectIsOpen(true)}
@@ -3213,7 +3240,7 @@ function WorkspaceHeader({
               <Icon name="plus" />
               <span>{t('newProjectTag')}</span>
             </button>
-          )}
+          ) : null}
         </div>
         <p>{t('wallHelp')}</p>
       </div>

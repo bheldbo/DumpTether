@@ -433,9 +433,9 @@ public sealed class SharingApiTests
         var visibleTasks = await GetRequiredJsonAsync<List<TaskItemSummaryResponse>>(
             readOnlyClient,
             "/api/tasks");
-        var visibleWorkspaces = await GetRequiredJsonAsync<List<WorkspaceResponse>>(
+        var currentUser = await GetRequiredJsonAsync<CurrentUserResponse>(
             readOnlyClient,
-            "/api/workspaces");
+            "/api/auth/me");
         var createTaskResponse = await readOnlyClient.PostAsJsonAsync(
             "/api/tasks",
             new
@@ -456,7 +456,7 @@ public sealed class SharingApiTests
             });
 
         var visibleWorkspace = Assert.Single(
-            visibleWorkspaces!,
+            currentUser.Workspaces,
             workspace => workspace.Id == ownerWorkspaceId);
         Assert.Equal("ReadOnly", visibleWorkspace.Role.ToString());
         Assert.Contains(visibleTasks!, taskItem => taskItem.Id == ownerTask.Id);

@@ -116,6 +116,8 @@ function Set-DumpTetherConfigAliases {
         "DUMPTETHER_DEVELOPMENT_DISPLAY_NAME" = "Auth__DevelopmentDisplayName"
         "DUMPTETHER_AUTH_SESSION_DAYS" = "Auth__SessionDays"
         "DUMPTETHER_AUTH_SESSION_CLEANUP_DAYS" = "Auth__SessionCleanupDays"
+        "DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS" = "Auth__SessionCleanupIntervalHours"
+        "DUMPTETHER_ARCHIVE_RETENTION_DAYS" = "Archive__RetentionDays"
         "DUMPTETHER_EMAIL_CONFIRMATION_ENABLED" = "EmailConfirmation__Enabled"
         "DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL" = "EmailConfirmation__PublicBaseUrl"
         "DUMPTETHER_EMAIL_FROM" = "Email__FromEmail"

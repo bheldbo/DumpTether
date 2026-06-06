@@ -14,6 +14,8 @@
         "Auth__DevelopmentDisplayName": "Dev User",
         "Auth__SessionDays": "30",
         "Auth__SessionCleanupDays": "90",
+        "Auth__SessionCleanupIntervalHours": "24",
+        "Archive__RetentionDays": "30",
         "EmailConfirmation__Enabled": "false",
         "EmailConfirmation__PublicBaseUrl": "http://localhost:55868",
         "Email__Smtp__Enabled": "false",

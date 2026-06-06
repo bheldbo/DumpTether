@@ -397,6 +397,10 @@ Useful local/runtime environment variables:
 - `Auth__RequireAuthentication`: requires a session for the app.
 - `Auth__AllowGuestSessions`: allows temporary browser-tab sessions.
 - `Auth__EnableDevelopmentLogin`: local-only dev login button.
+- `Auth__SessionDays`: how long a normal session lasts; default is `30`.
+- `Auth__SessionCleanupDays`: how old expired/revoked sessions must be before deletion; default is `90`.
+- `Auth__SessionCleanupIntervalHours`: periodic server cleanup interval; default is `24`.
+- `Archive__RetentionDays`: planned archive retention window before permanent cleanup; default is `30`.
 - `EmailConfirmation__Enabled`: requires newly registered email/password users to confirm their email before login.
 - `EmailConfirmation__PublicBaseUrl`: public API base URL used to build confirmation links.
 - `Email__FromEmail`: sender address for transactional email.

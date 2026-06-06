@@ -125,6 +125,7 @@ internal sealed class WorkspaceService : IWorkspaceService
             ? await GetCurrentWorkspaceAsync(cancellationToken)
             : (await RequireCurrentMembershipAsync(
                 requireOwner: true,
+                trackChanges: true,
                 cancellationToken)).Workspace;
 
         if (request.Name is not null)
@@ -185,6 +186,7 @@ internal sealed class WorkspaceService : IWorkspaceService
     {
         var (workspace, _, _) = await RequireCurrentMembershipAsync(
             requireOwner: false,
+            trackChanges: false,
             cancellationToken);
         var members = await _workspaceRepository.ListMembersAsync(
             workspace.Id,
@@ -198,6 +200,7 @@ internal sealed class WorkspaceService : IWorkspaceService
     {
         var (workspace, _, _) = await RequireCurrentMembershipAsync(
             requireOwner: true,
+            trackChanges: false,
             cancellationToken);
         var invitations = await _workspaceRepository.ListInvitationsAsync(
             workspace.Id,
@@ -226,6 +229,7 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         var (workspace, currentSession, _) = await RequireCurrentMembershipAsync(
             requireOwner: true,
+            trackChanges: false,
             cancellationToken);
         var normalizedEmail = AppUser.NormalizeEmail(request.Email);
         var existingUser = await _authRepository.GetUserByNormalizedEmailAsync(
@@ -365,6 +369,7 @@ internal sealed class WorkspaceService : IWorkspaceService
     {
         var (workspace, _, _) = await RequireCurrentMembershipAsync(
             requireOwner: true,
+            trackChanges: false,
             cancellationToken);
         var invitation = await _workspaceRepository.GetInvitationByIdAsync(
             workspace.Id,
@@ -394,6 +399,7 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         var (workspace, currentSession, _) = await RequireCurrentMembershipAsync(
             requireOwner: true,
+            trackChanges: false,
             cancellationToken);
 
         if (userId == currentSession.UserId)
@@ -427,6 +433,7 @@ internal sealed class WorkspaceService : IWorkspaceService
     {
         var (workspace, _, membership) = await RequireCurrentMembershipAsync(
             requireOwner: false,
+            trackChanges: true,
             cancellationToken);
 
         if (membership.Role == WorkspaceMembershipRole.Owner)
@@ -502,6 +509,7 @@ internal sealed class WorkspaceService : IWorkspaceService
     private async Task<(Workspace Workspace, CurrentUserSession CurrentSession, WorkspaceMembership Membership)>
         RequireCurrentMembershipAsync(
             bool requireOwner,
+            bool trackChanges,
             CancellationToken cancellationToken)
     {
         var currentSession = await RequireCurrentSessionAsync(cancellationToken);
@@ -509,7 +517,7 @@ internal sealed class WorkspaceService : IWorkspaceService
         var membership = await _workspaceRepository.GetMembershipAsync(
             workspace.Id,
             currentSession.UserId,
-            trackChanges: false,
+            trackChanges,
             cancellationToken);
 
         if (membership is null)

@@ -81,6 +81,7 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
+builder.Services.AddHostedService<SessionCleanupHostedService>();
 
 var app = builder.Build();
 

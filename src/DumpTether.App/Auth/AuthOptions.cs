@@ -17,4 +17,6 @@ public sealed class AuthOptions
     public int SessionDays { get; set; } = 30;
 
     public int SessionCleanupDays { get; set; } = 90;
+
+    public int SessionCleanupIntervalHours { get; set; } = 24;
 }

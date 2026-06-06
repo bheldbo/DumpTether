@@ -25,6 +25,8 @@ services:
       Auth__EnableDevelopmentLogin: ${DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN:-false}
       Auth__SessionDays: ${DUMPTETHER_AUTH_SESSION_DAYS:-30}
       Auth__SessionCleanupDays: ${DUMPTETHER_AUTH_SESSION_CLEANUP_DAYS:-90}
+      Auth__SessionCleanupIntervalHours: ${DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS:-24}
+      Archive__RetentionDays: ${DUMPTETHER_ARCHIVE_RETENTION_DAYS:-30}
       EmailConfirmation__Enabled: ${DUMPTETHER_EMAIL_CONFIRMATION_ENABLED:-false}
       EmailConfirmation__PublicBaseUrl: ${DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL}
       Email__FromEmail: ${DUMPTETHER_EMAIL_FROM}
