@@ -1,30 +1,24 @@
+using System.Security.Claims;
 using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Net.Http.Headers;
 
 namespace DumpTether.Api;
 
+[Authorize(Policy = AuthPolicies.SessionRequired)]
 internal sealed class LiveUpdateHub : Hub
 {
-    private const string SessionCookieName = "DumpTether.Session";
     private readonly IAuthRepository _authRepository;
-    private readonly IClock _clock;
-    private readonly ISessionTokenService _sessionTokenService;
 
-    public LiveUpdateHub(
-        IAuthRepository authRepository,
-        IClock clock,
-        ISessionTokenService sessionTokenService)
+    public LiveUpdateHub(IAuthRepository authRepository)
     {
         _authRepository = authRepository;
-        _clock = clock;
-        _sessionTokenService = sessionTokenService;
     }
 
     public override async Task OnConnectedAsync()
     {
-        var currentSession = await GetCurrentSessionAsync();
+        var currentSession = GetCurrentSession();
 
         if (currentSession is null)
         {
@@ -59,7 +53,7 @@ internal sealed class LiveUpdateHub : Hub
             return;
         }
 
-        var currentSession = await GetCurrentSessionAsync();
+        var currentSession = GetCurrentSession();
 
         if (currentSession is null)
         {
@@ -82,61 +76,27 @@ internal sealed class LiveUpdateHub : Hub
             Context.ConnectionAborted);
     }
 
-    private async Task<CurrentUserSession?> GetCurrentSessionAsync()
+    private CurrentUserSession? GetCurrentSession()
     {
-        var token = GetSessionToken();
+        var user = Context.User;
+        var rawUserId = user?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var rawSessionId = user?.FindFirstValue("dumptether:session_id");
+        var email = user?.FindFirstValue(ClaimTypes.Email);
+        var displayName = user?.FindFirstValue(ClaimTypes.Name);
 
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            return null;
-        }
-
-        var session = await _authRepository.GetSessionByTokenHashAsync(
-            _sessionTokenService.HashToken(token),
-            trackChanges: false,
-            Context.ConnectionAborted);
-
-        if (session is null || !session.IsUsable(_clock.UtcNow))
-        {
-            return null;
-        }
-
-        var user = await _authRepository.GetUserByIdAsync(
-            session.UserId,
-            trackChanges: false,
-            Context.ConnectionAborted);
-
-        if (user is null || !user.IsActive)
+        if (!Guid.TryParse(rawUserId, out var userId) ||
+            !Guid.TryParse(rawSessionId, out var sessionId) ||
+            string.IsNullOrWhiteSpace(email) ||
+            string.IsNullOrWhiteSpace(displayName))
         {
             return null;
         }
 
         return new CurrentUserSession(
-            user.Id,
-            session.Id,
-            user.Email,
-            user.DisplayName);
-    }
-
-    private string? GetSessionToken()
-    {
-        var httpContext = Context.GetHttpContext();
-        var authorization = httpContext?.Request.Headers[HeaderNames.Authorization].FirstOrDefault();
-
-        if (!string.IsNullOrWhiteSpace(authorization) &&
-            authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-        {
-            return authorization["Bearer ".Length..].Trim();
-        }
-
-        var queryToken = httpContext?.Request.Query["access_token"].FirstOrDefault();
-
-        if (!string.IsNullOrWhiteSpace(queryToken))
-        {
-            return queryToken;
-        }
-
-        return httpContext?.Request.Cookies[SessionCookieName];
+            userId,
+            sessionId,
+            email,
+            displayName);
     }
 
     public static string WorkspaceGroup(Guid workspaceId)

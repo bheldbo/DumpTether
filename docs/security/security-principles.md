@@ -25,3 +25,7 @@ Archiving a task must require a resolution reason. This protects task history fr
 ## Keep the MVP Small
 
 AI, MCP, calendar, email, sharing, and desktop support are extensions. They should not be added to the MVP security model before the core task system exists.
+
+## Auth Hardening
+
+See [auth-hardening.md](auth-hardening.md) for the current session authentication scheme, endpoint policy, and remaining hardening work.

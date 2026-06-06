@@ -107,7 +107,8 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHub<LiveUpdateHub>("/api/live");
+app.MapHub<LiveUpdateHub>("/api/live")
+    .RequireAuthorization(AuthPolicies.SessionRequired);
 
 app.Run();
 

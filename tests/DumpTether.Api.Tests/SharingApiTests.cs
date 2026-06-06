@@ -131,6 +131,23 @@ public sealed class SharingApiTests
     }
 
     [Fact]
+    public async Task LiveUpdates_WithoutSession_WhenAuthRequired_CannotConnect()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        await using var connection = new HubConnectionBuilder()
+            .WithUrl(
+                new Uri(factory.Server.BaseAddress, "/api/live"),
+                options =>
+                {
+                    options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                    options.Transports = HttpTransportType.LongPolling;
+                })
+            .Build();
+
+        await Assert.ThrowsAnyAsync<Exception>(() => connection.StartAsync());
+    }
+
+    [Fact]
     public async Task WorkspaceInvitation_CreateAcceptsStringRole()
     {
         using var factory = new DumpTetherApiFactory();
