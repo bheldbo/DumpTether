@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Tasks;
 using DumpTether.Domain;
 
@@ -37,6 +38,7 @@ internal sealed class ArchiveResolutionService : IArchiveResolutionService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var archiveResolution = ArchiveResolution.Create(
             context.WorkspaceId,
             request.Name,
@@ -58,6 +60,7 @@ internal sealed class ArchiveResolutionService : IArchiveResolutionService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var archiveResolution = await _archiveResolutionRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -80,6 +83,7 @@ internal sealed class ArchiveResolutionService : IArchiveResolutionService
     public async Task<bool> DeactivateAsync(Guid id, CancellationToken cancellationToken)
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var archiveResolution = await _archiveResolutionRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -94,6 +98,14 @@ internal sealed class ArchiveResolutionService : IArchiveResolutionService
         await _archiveResolutionRepository.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private static void EnsureCanWriteWorkspace(DevelopmentWorkspaceContext context)
+    {
+        if (!context.CanWriteWorkspace)
+        {
+            throw new ValidationException("Read-only board access cannot change archive reasons.");
+        }
     }
 
     private static ArchiveResolutionResponse Map(ArchiveResolution archiveResolution)

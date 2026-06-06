@@ -43,12 +43,19 @@ builder.Services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();
 builder.Services.AddScoped<ICurrentWorkspaceSelection, CurrentWorkspaceSelection>();
 ConfigureAuthentication(builder.Services, builder.Configuration, builder.Environment);
 builder.Services.AddSingleton<IAuthorizationHandler, SessionRequiredAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, WorkspaceWriteAuthorizationHandler>();
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AuthPolicies.SessionRequired, policy =>
     {
         policy.AddAuthenticationSchemes(AuthSchemes.Session);
         policy.Requirements.Add(new SessionRequiredRequirement());
+    });
+    options.AddPolicy(AuthPolicies.WorkspaceWriteRequired, policy =>
+    {
+        policy.AddAuthenticationSchemes(AuthSchemes.Session);
+        policy.Requirements.Add(new SessionRequiredRequirement());
+        policy.Requirements.Add(new WorkspaceWriteRequirement());
     });
 });
 builder.Services.AddRateLimiter(options =>

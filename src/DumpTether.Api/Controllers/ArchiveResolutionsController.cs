@@ -25,6 +25,7 @@ public sealed class ArchiveResolutionsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<ArchiveResolutionResponse>> Create(
         CreateArchiveResolutionRequest request,
         CancellationToken cancellationToken)
@@ -41,6 +42,7 @@ public sealed class ArchiveResolutionsController : ControllerBase
     }
 
     [HttpPatch("{id:guid}")]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<ArchiveResolutionResponse>> Update(
         Guid id,
         UpdateArchiveResolutionRequest request,
@@ -62,6 +64,7 @@ public sealed class ArchiveResolutionsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken cancellationToken)
     {
         var wasDeleted = await _archiveResolutionService.DeactivateAsync(id, cancellationToken);

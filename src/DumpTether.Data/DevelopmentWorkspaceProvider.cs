@@ -118,6 +118,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             cancellationToken);
         var workspace = selectedWorkspace?.Workspace;
         var isSharedOnly = selectedWorkspace?.IsSharedOnly ?? false;
+        var membershipRole = selectedWorkspace?.MembershipRole;
 
         if (workspace is null)
         {
@@ -257,7 +258,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         await SeedDevelopmentSavedViewsAsync(workspace.Id, projects, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new DevelopmentWorkspaceContext(workspace.Id, project.Id, isSharedOnly);
+        return new DevelopmentWorkspaceContext(workspace.Id, project.Id, isSharedOnly, membershipRole);
     }
 
     private async Task<SelectedWorkspace?> GetSelectedWorkspaceAsync(
@@ -278,12 +279,15 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
                         _dbContext.Workspaces,
                         membership => membership.WorkspaceId,
                         workspace => workspace.Id,
-                        (_, workspace) => workspace)
+                        (membership, workspace) => new { membership, workspace })
                     .SingleOrDefaultAsync(cancellationToken);
 
                 if (selectedWorkspace is not null)
                 {
-                    return new SelectedWorkspace(selectedWorkspace, IsSharedOnly: false);
+                    return new SelectedWorkspace(
+                        selectedWorkspace.workspace,
+                        IsSharedOnly: false,
+                        selectedWorkspace.membership.Role);
                 }
 
                 var hasSelectedSharedWorkspaceAccess = await _dbContext.TaskItemShares
@@ -304,7 +308,10 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
                     if (selectedSharedWorkspace is not null)
                     {
-                        return new SelectedWorkspace(selectedSharedWorkspace, IsSharedOnly: true);
+                        return new SelectedWorkspace(
+                            selectedSharedWorkspace,
+                            IsSharedOnly: true,
+                            MembershipRole: null);
                     }
                 }
             }
@@ -315,16 +322,19 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
                     _dbContext.Workspaces,
                     membership => membership.WorkspaceId,
                     workspace => workspace.Id,
-                    (_, workspace) => workspace)
+                    (membership, workspace) => new { membership, workspace })
                 .ToListAsync(cancellationToken);
 
             var firstWorkspace = userWorkspaces
-                .OrderBy(workspace => workspace.CreatedAt)
+                .OrderBy(item => item.workspace.CreatedAt)
                 .FirstOrDefault();
 
             if (firstWorkspace is not null)
             {
-                return new SelectedWorkspace(firstWorkspace, IsSharedOnly: false);
+                return new SelectedWorkspace(
+                    firstWorkspace.workspace,
+                    IsSharedOnly: false,
+                    firstWorkspace.membership.Role);
             }
 
             var sharedWorkspace = await _dbContext.TaskItemShares
@@ -343,7 +353,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
             return sharedWorkspace is null
                 ? null
-                : new SelectedWorkspace(sharedWorkspace, IsSharedOnly: true);
+                : new SelectedWorkspace(sharedWorkspace, IsSharedOnly: true, MembershipRole: null);
         }
 
         if (_currentWorkspaceSelection.WorkspaceId.HasValue)
@@ -355,7 +365,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
             if (selectedWorkspace is not null)
             {
-                return new SelectedWorkspace(selectedWorkspace, IsSharedOnly: false);
+                return new SelectedWorkspace(selectedWorkspace, IsSharedOnly: false, MembershipRole: null);
             }
         }
 
@@ -368,7 +378,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
         return developmentWorkspace is null
             ? null
-            : new SelectedWorkspace(developmentWorkspace, IsSharedOnly: false);
+            : new SelectedWorkspace(developmentWorkspace, IsSharedOnly: false, MembershipRole: null);
     }
 
     private async Task DeactivateDuplicateDevelopmentTemplatesAsync(
@@ -554,5 +564,6 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
     private sealed record SelectedWorkspace(
         Workspace Workspace,
-        bool IsSharedOnly);
+        bool IsSharedOnly,
+        WorkspaceMembershipRole? MembershipRole);
 }

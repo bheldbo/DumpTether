@@ -35,6 +35,7 @@ public sealed class TaskTemplatesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<TaskTemplateDetailResponse>> Create(
         CreateTaskTemplateRequest request,
         CancellationToken cancellationToken)
@@ -55,6 +56,7 @@ public sealed class TaskTemplatesController : ControllerBase
     }
 
     [HttpPatch("{id:guid}")]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<TaskTemplateDetailResponse>> Update(
         Guid id,
         UpdateTaskTemplateRequest request,
@@ -76,6 +78,7 @@ public sealed class TaskTemplatesController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<IActionResult> Delete(
         Guid id,
         CancellationToken cancellationToken)

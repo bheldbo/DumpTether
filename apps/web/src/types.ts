@@ -91,7 +91,7 @@ export interface WorkspaceResponse {
   pendingInvitationCount?: number;
 }
 
-export type WorkspaceMembershipRole = 'Owner' | 'Member' | 1 | 2;
+export type WorkspaceMembershipRole = 'Owner' | 'Member' | 'ReadOnly' | 'Guest' | 1 | 2 | 3;
 export type WorkspaceAccessKind = 'Membership' | 'TaskShare';
 
 export interface AuthUserResponse {
@@ -253,7 +253,7 @@ export interface SavedViewResponse {
   updatedAt: string;
 }
 
-export type TaskItemShareRole = 'Viewer' | 'Editor' | 1 | 2;
+export type TaskItemShareRole = 'Viewer' | 'Editor' | 'ReadOnly' | 'Member' | 1 | 2;
 
 export interface TaskItemShareResponse {
   id: string;

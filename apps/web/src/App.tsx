@@ -95,6 +95,7 @@ import type {
   SavedViewResponse,
   SavedViewSortField,
   TaskItemDetailResponse,
+  TaskItemShareRole,
   TaskItemShareResponse,
   TaskItemSummaryResponse,
   TaskShareInboxResponse,
@@ -102,6 +103,7 @@ import type {
   TaskTemplateDetailResponse,
   WorkspaceInvitationInboxResponse,
   WorkspaceInvitationResponse,
+  WorkspaceMembershipRole,
   WorkspaceMemberResponse,
   UpdateArchiveResolutionRequest,
   UpdateProjectRequest,
@@ -2778,13 +2780,15 @@ function TaskBoard({
         <ShareDialog
           existingTaskShares={[]}
           onClose={() => setBatchShareIsOpen(false)}
-          onCreate={async (email) =>
+          onCreate={async (email, role) =>
             await onCreateTaskShareLinks({
               email,
               taskItemIds: selectedTaskIds,
+              role: role as TaskItemShareRole,
             })}
           onRevokeTaskShare={undefined}
           pendingInvitations={[]}
+          roleMode="task"
           t={t}
           title={`${selectedTaskIds.length} ${t('selectedTasks')}`}
         />
@@ -3054,10 +3058,10 @@ function WorkspaceHeader({
           <ShareDialog
             existingTaskShares={[]}
             onClose={() => setInviteIsOpen(false)}
-            onCreate={async (email) => {
+            onCreate={async (email, role) => {
               const created = await onCreateWorkspaceInvitation({
                 email,
-                role: 2,
+                role: role as WorkspaceMembershipRole,
               });
 
               return {
@@ -3068,6 +3072,7 @@ function WorkspaceHeader({
             onRevokeTaskShare={undefined}
             onRevokeWorkspaceInvitation={onRevokeWorkspaceInvitation}
             pendingInvitations={pendingInvitations}
+            roleMode="workspace"
             t={t}
             title={workspace ? formatWorkspaceName(workspace.name, t) : t('workspaces')}
           />
@@ -3390,6 +3395,7 @@ function ShareDialog({
   onRevokeTaskShare,
   onRevokeWorkspaceInvitation,
   pendingInvitations,
+  roleMode,
   t,
   title,
 }: {
@@ -3397,14 +3403,17 @@ function ShareDialog({
   onClose: () => void;
   onCreate: (
     email: string,
+    role: string,
   ) => Promise<{ token: string | null; expiresAt: string }>;
   onRevokeTaskShare?: (shareId: string) => Promise<void>;
   onRevokeWorkspaceInvitation?: (id: string) => Promise<void>;
   pendingInvitations: WorkspaceInvitationResponse[];
+  roleMode: 'task' | 'workspace';
   t: Translate;
   title: string;
 }) {
   const [shareEmail, setShareEmail] = useState('');
+  const [shareRole, setShareRole] = useState('Member');
   const [createdLink, setCreatedLink] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3428,7 +3437,11 @@ function ShareDialog({
     setIsSubmitting(true);
 
     try {
-      const created = await onCreate(trimmedEmail);
+      const created = await onCreate(
+        trimmedEmail,
+        roleMode === 'task'
+          ? shareRole === 'ReadOnly' ? 'Viewer' : 'Editor'
+          : shareRole);
       if (created.token) {
         setCreatedLink(buildShareUrl(created.token));
       }
@@ -3481,6 +3494,15 @@ function ShareDialog({
             type="email"
             value={shareEmail}
           />
+          <select
+            aria-label={t('shareRole')}
+            className="share-role-select"
+            onChange={(event) => setShareRole(event.target.value)}
+            value={shareRole}
+          >
+            <option value="Member">{t('roleMember')}</option>
+            <option value="ReadOnly">{t('roleReadOnly')}</option>
+          </select>
           <button className="icon-button" disabled={!shareEmail.trim() || isSubmitting} type="submit">
             <Icon name="check" />
           </button>
@@ -3517,7 +3539,7 @@ function ShareDialog({
               >
                 <Icon name="mail" />
                 <span>{invitation.email}</span>
-                <small>{t('pendingInvites')}</small>
+                <small>{formatWorkspaceRole(invitation.role, t)} - {t('pendingInvites')}</small>
                 {onRevokeWorkspaceInvitation ? (
                   <button
                     className="tiny-icon-button"
@@ -3538,7 +3560,9 @@ function ShareDialog({
               >
                 <Icon name={share.acceptedAt ? 'user' : 'mail'} />
                 <span>{share.email}</span>
-                <small>{share.acceptedAt ? t('sharedWith') : t('pendingInvites')}</small>
+                <small>
+                  {formatTaskShareRole(share.role, t)} - {share.acceptedAt ? t('sharedWith') : t('pendingInvites')}
+                </small>
                 {onRevokeTaskShare ? (
                   <button
                     className="tiny-icon-button"
@@ -4431,13 +4455,14 @@ function TaskShareStrip({
         <ShareDialog
           existingTaskShares={taskItem.shares}
           onClose={() => setIsOpen(false)}
-          onCreate={async (email) =>
+          onCreate={async (email, role) =>
             await onCreateTaskShareLink(taskItem.id, {
               email,
-              role: 2,
+              role: role as TaskItemShareRole,
             })}
           onRevokeTaskShare={(shareId) => onRevokeTaskShare(taskItem.id, shareId)}
           pendingInvitations={[]}
+          roleMode="task"
           t={t}
           title={taskItem.title}
         />
@@ -6420,11 +6445,25 @@ function formatWorkspaceRole(
   role: CurrentUserResponse['workspaces'][number]['role'],
   t: Translate,
 ) {
-  return isOwnerRole(role) ? t('roleOwner') : t('roleMember');
+  if (isOwnerRole(role)) {
+    return t('roleOwner');
+  }
+
+  return isReadOnlyRole(role) ? t('roleReadOnly') : t('roleMember');
 }
 
 function isOwnerRole(role: CurrentUserResponse['workspaces'][number]['role']) {
   return role === 1 || role === 'Owner';
+}
+
+function isReadOnlyRole(role: CurrentUserResponse['workspaces'][number]['role']) {
+  return role === 3 || role === 'ReadOnly' || role === 'Guest';
+}
+
+function formatTaskShareRole(role: TaskItemShareRole, t: Translate) {
+  return role === 1 || role === 'Viewer' || role === 'ReadOnly'
+    ? t('roleReadOnly')
+    : t('roleMember');
 }
 
 function isTaskShareWorkspace(workspace: Pick<WorkspaceResponse, 'accessKind'>) {

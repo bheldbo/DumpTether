@@ -35,6 +35,7 @@ public sealed class SavedViewsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<SavedViewResponse>> Create(
         CreateSavedViewRequest request,
         CancellationToken cancellationToken)
@@ -55,6 +56,7 @@ public sealed class SavedViewsController : ControllerBase
     }
 
     [HttpPatch("{id:guid}")]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<SavedViewResponse>> Update(
         Guid id,
         UpdateSavedViewRequest request,
@@ -76,6 +78,7 @@ public sealed class SavedViewsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<IActionResult> Delete(
         Guid id,
         CancellationToken cancellationToken)

@@ -10,15 +10,17 @@ namespace DumpTether.Api;
 internal sealed class LiveUpdateHub : Hub
 {
     private readonly IAuthRepository _authRepository;
+    private readonly IClock _clock;
 
-    public LiveUpdateHub(IAuthRepository authRepository)
+    public LiveUpdateHub(IAuthRepository authRepository, IClock clock)
     {
         _authRepository = authRepository;
+        _clock = clock;
     }
 
     public override async Task OnConnectedAsync()
     {
-        var currentSession = GetCurrentSession();
+        var currentSession = await GetCurrentSessionAsync();
 
         if (currentSession is null)
         {
@@ -53,7 +55,7 @@ internal sealed class LiveUpdateHub : Hub
             return;
         }
 
-        var currentSession = GetCurrentSession();
+        var currentSession = await GetCurrentSessionAsync();
 
         if (currentSession is null)
         {
@@ -76,7 +78,7 @@ internal sealed class LiveUpdateHub : Hub
             Context.ConnectionAborted);
     }
 
-    private CurrentUserSession? GetCurrentSession()
+    private async Task<CurrentUserSession?> GetCurrentSessionAsync()
     {
         var user = Context.User;
         var rawUserId = user?.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -89,6 +91,19 @@ internal sealed class LiveUpdateHub : Hub
             string.IsNullOrWhiteSpace(email) ||
             string.IsNullOrWhiteSpace(displayName))
         {
+            return null;
+        }
+
+        var session = await _authRepository.GetSessionByIdAsync(
+            sessionId,
+            trackChanges: false,
+            Context.ConnectionAborted);
+
+        if (session is null ||
+            session.UserId != userId ||
+            !session.IsUsable(_clock.UtcNow))
+        {
+            Context.Abort();
             return null;
         }
 

@@ -62,6 +62,7 @@ internal sealed class TaskItemService : ITaskItemService
             throw new ValidationException("Task-share access cannot create tasks in this board.");
         }
 
+        EnsureCanWriteWorkspace(context);
         await EnsureTaskQuotaAsync(context.WorkspaceId, cancellationToken);
         var now = _clock.UtcNow;
         var taskTemplate = await ResolveTaskTemplateForCreateAsync(
@@ -346,7 +347,8 @@ internal sealed class TaskItemService : ITaskItemService
                 workspace.Workspace.Id == request.DestinationWorkspaceId);
 
         if (destinationWorkspace is null ||
-            destinationWorkspace.AccessKind != WorkspaceAccessKinds.Membership)
+            destinationWorkspace.AccessKind != WorkspaceAccessKinds.Membership ||
+            destinationWorkspace.Membership.Role == WorkspaceMembershipRole.ReadOnly)
         {
             throw new ValidationException("Destination board was not found.");
         }
@@ -732,6 +734,7 @@ internal sealed class TaskItemService : ITaskItemService
         {
             throw new ValidationException("Task-share access cannot share tasks in this board.");
         }
+        EnsureCanWriteWorkspace(context);
 
         var currentSession = await RequireCurrentSessionAsync(cancellationToken);
         var requestedTaskIds = (request.TaskItemIds ?? [])
@@ -1053,7 +1056,7 @@ internal sealed class TaskItemService : ITaskItemService
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
 
-        if (context.IsSharedOnly)
+        if (context.IsSharedOnly || !context.CanWriteWorkspace)
         {
             return null;
         }
@@ -1101,7 +1104,7 @@ internal sealed class TaskItemService : ITaskItemService
         CurrentUserSession? currentSession,
         TaskItem taskItem)
     {
-        if (!context.IsSharedOnly)
+        if (!context.IsSharedOnly && context.CanWriteWorkspace)
         {
             return true;
         }
@@ -1115,6 +1118,14 @@ internal sealed class TaskItemService : ITaskItemService
         return taskItem.Shares.Any(share =>
             share.Role == TaskItemShareRole.Editor &&
             share.MatchesUser(currentSession.UserId, normalizedEmail));
+    }
+
+    private static void EnsureCanWriteWorkspace(DevelopmentWorkspaceContext context)
+    {
+        if (!context.CanWriteWorkspace)
+        {
+            throw new ValidationException("Read-only board access cannot change tasks.");
+        }
     }
 
     private async Task<TaskItemQuery> BuildQueryAsync(

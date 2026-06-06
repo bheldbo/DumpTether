@@ -20,6 +20,7 @@ internal sealed class SessionCsrfProtectionMiddleware
     public async Task InvokeAsync(HttpContext context)
     {
         if (IsSafeMethod(context.Request.Method) ||
+            IsLiveUpdateTransport(context.Request.Path) ||
             !HasSessionCookie(context) ||
             HasBearerOrQueryToken(context))
         {
@@ -50,6 +51,9 @@ internal sealed class SessionCsrfProtectionMiddleware
 
     private static bool HasSessionCookie(HttpContext context) =>
         context.Request.Cookies.ContainsKey(SessionCookieName);
+
+    private static bool IsLiveUpdateTransport(PathString path) =>
+        path.StartsWithSegments("/api/live", StringComparison.OrdinalIgnoreCase);
 
     private static bool HasBearerOrQueryToken(HttpContext context)
     {

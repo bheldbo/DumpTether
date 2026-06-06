@@ -58,6 +58,7 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var name = NormalizeName(request.Name);
         await EnsureUniqueActiveNameAsync(
             context.WorkspaceId,
@@ -93,6 +94,7 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var template = await _taskTemplateRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -133,6 +135,7 @@ internal sealed class TaskTemplateService : ITaskTemplateService
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var template = await _taskTemplateRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -149,6 +152,14 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         await _taskTemplateRepository.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private static void EnsureCanWriteWorkspace(DevelopmentWorkspaceContext context)
+    {
+        if (!context.CanWriteWorkspace)
+        {
+            throw new ValidationException("Read-only board access cannot change templates.");
+        }
     }
 
     private static void ApplyFieldDefinitions(

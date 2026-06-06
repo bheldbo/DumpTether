@@ -26,6 +26,7 @@ public sealed class ProjectsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<ProjectResponse>> Create(
         CreateProjectRequest request,
         CancellationToken cancellationToken)
@@ -46,6 +47,7 @@ public sealed class ProjectsController : ControllerBase
     }
 
     [HttpPatch("{id:guid}")]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<ProjectResponse>> Update(
         Guid id,
         UpdateProjectRequest request,
@@ -68,6 +70,7 @@ public sealed class ProjectsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<ProjectArchiveResponse>> Delete(
         Guid id,
         CancellationToken cancellationToken)
@@ -77,6 +80,7 @@ public sealed class ProjectsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/archive-tasks")]
+    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
     public async Task<ActionResult<ProjectArchiveResponse>> ArchiveTasksAndDeactivate(
         Guid id,
         ArchiveProjectTasksRequest request,

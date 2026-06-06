@@ -52,6 +52,7 @@ internal sealed class SavedViewService : ISavedViewService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var name = NormalizeName(request.Name);
         var scope = NormalizeScope(request.Scope);
         var filter = SavedViewPayloads.NormalizeFilter(request.Filter);
@@ -97,6 +98,7 @@ internal sealed class SavedViewService : ISavedViewService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var savedView = await _savedViewRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -159,6 +161,7 @@ internal sealed class SavedViewService : ISavedViewService
         CancellationToken cancellationToken)
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var savedView = await _savedViewRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -174,6 +177,14 @@ internal sealed class SavedViewService : ISavedViewService
         await _savedViewRepository.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private static void EnsureCanWriteWorkspace(DevelopmentWorkspaceContext context)
+    {
+        if (!context.CanWriteWorkspace)
+        {
+            throw new ValidationException("Read-only board access cannot change saved filters.");
+        }
     }
 
     private async Task EnsureUniqueActiveNameAsync(

@@ -34,10 +34,12 @@ Application services still enforce workspace membership, owner/member boundaries
 - Production forces `Auth:RequireAuthentication=true`.
 - Development login is disabled outside development.
 - Protected controllers use the session policy.
-- SignalR live updates use the same session policy and authenticated user identity.
+- SignalR live updates use the same session policy, authenticated user identity, and hub-time session revalidation.
+- SignalR transport requests are exempt from the JSON CSRF middleware because the hub validates sessions separately.
 - Cookie-authenticated unsafe requests require a matching `DumpTether.Csrf` cookie and `X-DumpTether-CSRF` header.
 - Rate limiting exists for auth and task write endpoints.
 - The API adds conservative security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `X-Permitted-Cross-Domain-Policies`.
+- Auth failures with a presented bearer, query, or cookie token are logged by token source and path only; raw tokens are never logged.
 
 ## Roles
 
@@ -45,13 +47,13 @@ The intentional role set is small:
 
 - `Owner`: controls the board/workspace and can delete it.
 - `Member`: can participate in shared boards and shared tasks, but cannot delete owner resources.
-- `ReadOnly`/`Guest`: future permission level for limited access without write authority.
+- `ReadOnly`/`Guest`: an invited, authenticated user with read-only board or task access. This is not the same thing as anonymous guest login.
 
-The HTTP policy only proves that a request belongs to a valid session. Workspace and task permissions are still checked in the application layer because the allowed action depends on the target workspace, task, share, and ownership boundary.
+The HTTP policy proves that a request belongs to a valid session. Workspace-write endpoint policies also guard project/category, template, saved-filter, and archive-reason writes. Task writes remain checked in the application layer because the allowed action can depend on a task-level viewer/editor share as well as the workspace role.
 
 ## Remaining Hardening Work
 
-- Add role-specific endpoint policies once `ReadOnly`/`Guest` behavior is implemented.
-- Add audit-friendly logs for auth failures without logging tokens or secrets.
-- Disconnect or reject existing live-update connections promptly when sessions are revoked.
-- Add storage and malware-scan rules before attachments are implemented.
+- Add image-storage rules before image uploads are implemented.
+- Revisit file scanning only if DumpTether later accepts arbitrary documents.
+- Add a periodic server-side cleanup job for expired or revoked sessions.
+- Add deeper audit events for suspicious auth behavior once production observability exists.

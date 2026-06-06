@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using DumpTether.App.Auth;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 
 namespace DumpTether.Api;
 
@@ -26,6 +27,15 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Authe
 
         if (session is null)
         {
+            var tokenSource = GetTokenSource();
+            if (tokenSource is not null)
+            {
+                Logger.LogWarning(
+                    "Session authentication failed for {Path}. Token source: {TokenSource}.",
+                    Request.Path.Value,
+                    tokenSource);
+            }
+
             return AuthenticateResult.NoResult();
         }
 
@@ -40,5 +50,25 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Authe
         var principal = new ClaimsPrincipal(identity);
 
         return AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name));
+    }
+
+    private string? GetTokenSource()
+    {
+        var authorization = Request.Headers[HeaderNames.Authorization].FirstOrDefault();
+
+        if (!string.IsNullOrWhiteSpace(authorization) &&
+            authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return "bearer";
+        }
+
+        if (!string.IsNullOrWhiteSpace(Request.Query["access_token"].FirstOrDefault()))
+        {
+            return "query";
+        }
+
+        return Request.Cookies.ContainsKey(SessionCsrfProtectionMiddleware.SessionCookieName)
+            ? "cookie"
+            : null;
     }
 }

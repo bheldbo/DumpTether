@@ -148,6 +148,40 @@ public sealed class SharingApiTests
     }
 
     [Fact]
+    public async Task LiveUpdates_RevokedSession_WhenAuthRequired_CannotConnect()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient();
+        var login = await RegisterAndLoginAsync(
+            client,
+            "live-revoked@example.com",
+            "correct horse battery");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+            var session = await dbContext.UserSessions.SingleAsync(candidate =>
+                candidate.UserId == login.User.Id);
+            session.Revoke(DateTimeOffset.UtcNow);
+            await dbContext.SaveChangesAsync();
+        }
+
+        await using var connection = new HubConnectionBuilder()
+            .WithUrl(
+                new Uri(factory.Server.BaseAddress, "/api/live"),
+                options =>
+                {
+                    options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                    options.AccessTokenProvider = () => Task.FromResult<string?>(login.SessionToken);
+                    options.Headers.Add("Authorization", $"Bearer {login.SessionToken}");
+                    options.Transports = HttpTransportType.LongPolling;
+                })
+            .Build();
+
+        await Assert.ThrowsAnyAsync<Exception>(() => connection.StartAsync());
+    }
+
+    [Fact]
     public async Task WorkspaceInvitation_CreateAcceptsStringRole()
     {
         using var factory = new DumpTetherApiFactory();
@@ -359,6 +393,76 @@ public sealed class SharingApiTests
             "/api/tasks");
 
         Assert.Contains(ownerTasks!, taskItem => taskItem.Id == created!.Id);
+    }
+
+    [Fact]
+    public async Task WorkspaceMember_ReadOnlyCanReadButCannotWriteSharedBoard()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var readOnlyClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "readonly-owner@example.com",
+            "correct horse battery");
+        var readOnlyUser = await RegisterAndLoginAsync(
+            readOnlyClient,
+            "readonly-member@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+        var ownerTask = await CreateTaskAsync(ownerClient, "Read-only visible task");
+
+        var inviteResponse = await ownerClient.PostAsJsonAsync(
+            "/api/workspace/invitations",
+            new
+            {
+                email = readOnlyUser.User.Email,
+                role = "ReadOnly"
+            });
+        inviteResponse.EnsureSuccessStatusCode();
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<WorkspaceInvitationResponse>();
+        var acceptResponse = await readOnlyClient.PostAsJsonAsync(
+            "/api/workspace/invitations/accept",
+            new
+            {
+                token = invite!.Token
+            });
+        acceptResponse.EnsureSuccessStatusCode();
+
+        SetWorkspaceHeader(readOnlyClient, ownerWorkspaceId);
+        var visibleTasks = await GetRequiredJsonAsync<List<TaskItemSummaryResponse>>(
+            readOnlyClient,
+            "/api/tasks");
+        var visibleWorkspaces = await GetRequiredJsonAsync<List<WorkspaceResponse>>(
+            readOnlyClient,
+            "/api/workspaces");
+        var createTaskResponse = await readOnlyClient.PostAsJsonAsync(
+            "/api/tasks",
+            new
+            {
+                title = "Should not be created"
+            });
+        var updateTaskResponse = await readOnlyClient.PatchAsJsonAsync(
+            $"/api/tasks/{ownerTask.Id}",
+            new
+            {
+                title = "Should not be updated"
+            });
+        var createCategoryResponse = await readOnlyClient.PostAsJsonAsync(
+            "/api/projects",
+            new
+            {
+                name = "Should not be created"
+            });
+
+        var visibleWorkspace = Assert.Single(
+            visibleWorkspaces!,
+            workspace => workspace.Id == ownerWorkspaceId);
+        Assert.Equal("ReadOnly", visibleWorkspace.Role.ToString());
+        Assert.Contains(visibleTasks!, taskItem => taskItem.Id == ownerTask.Id);
+        Assert.Equal(HttpStatusCode.BadRequest, createTaskResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, updateTaskResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, createCategoryResponse.StatusCode);
     }
 
     [Fact]
@@ -960,6 +1064,45 @@ public sealed class SharingApiTests
 
         Assert.Equal(HttpStatusCode.NotFound, reshareResponse.StatusCode);
         updateResponse.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task TaskShare_ViewerCanReadButCannotEditSharedTask()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var viewerClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "viewer-share-owner@example.com",
+            "correct horse battery");
+        var viewer = await RegisterAndLoginAsync(
+            viewerClient,
+            "viewer-share-user@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+        var sharedTask = await CreateTaskAsync(ownerClient, "Viewer task share");
+
+        var shareResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{sharedTask.Id}/shares",
+            new
+            {
+                email = viewer.User.Email,
+                role = "Viewer"
+            });
+        shareResponse.EnsureSuccessStatusCode();
+
+        SetWorkspaceHeader(viewerClient, ownerWorkspaceId);
+        var detailResponse = await viewerClient.GetAsync($"/api/tasks/{sharedTask.Id}");
+        var updateResponse = await viewerClient.PatchAsJsonAsync(
+            $"/api/tasks/{sharedTask.Id}",
+            new
+            {
+                title = "Viewer should not edit"
+            });
+
+        detailResponse.EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.NotFound, updateResponse.StatusCode);
     }
 
     [Fact]

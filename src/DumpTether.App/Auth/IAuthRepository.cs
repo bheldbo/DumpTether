@@ -19,6 +19,11 @@ public interface IAuthRepository
         bool trackChanges,
         CancellationToken cancellationToken);
 
+    Task<UserSession?> GetSessionByIdAsync(
+        Guid id,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
     Task<EmailConfirmationToken?> GetEmailConfirmationTokenByHashAsync(
         string tokenHash,
         bool trackChanges,

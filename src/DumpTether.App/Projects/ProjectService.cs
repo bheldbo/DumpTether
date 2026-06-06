@@ -43,6 +43,7 @@ internal sealed class ProjectService : IProjectService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         await EnsureProjectNameIsAvailableAsync(
             context.WorkspaceId,
             request.Name,
@@ -69,6 +70,7 @@ internal sealed class ProjectService : IProjectService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var project = await _projectRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -127,6 +129,7 @@ internal sealed class ProjectService : IProjectService
         }
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var project = await _projectRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -165,6 +168,7 @@ internal sealed class ProjectService : IProjectService
         CancellationToken cancellationToken)
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        EnsureCanWriteWorkspace(context);
         var project = await _projectRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
@@ -198,6 +202,14 @@ internal sealed class ProjectService : IProjectService
         await _projectRepository.SaveChangesAsync(cancellationToken);
 
         return new ProjectArchiveResponse(project.Id, taskItems.Count);
+    }
+
+    private static void EnsureCanWriteWorkspace(DevelopmentWorkspaceContext context)
+    {
+        if (!context.CanWriteWorkspace)
+        {
+            throw new ValidationException("Read-only board access cannot change categories.");
+        }
     }
 
     private async Task EnsureProjectNameIsAvailableAsync(

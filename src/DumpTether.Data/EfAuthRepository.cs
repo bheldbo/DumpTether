@@ -61,6 +61,22 @@ internal sealed class EfAuthRepository : IAuthRepository
         return await query.SingleOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<UserSession?> GetSessionByIdAsync(
+        Guid id,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.UserSessions
+            .Where(session => session.Id == id);
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<EmailConfirmationToken?> GetEmailConfirmationTokenByHashAsync(
         string tokenHash,
         bool trackChanges,
