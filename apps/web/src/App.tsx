@@ -2673,18 +2673,6 @@ function TaskBoard({
                   {taskItem.status ? (
                     <TaskMetaChip icon="status" label={t('status')} value={taskItem.status} />
                   ) : null}
-                  {taskCategoryNames.map((categoryName) => {
-                    const categoryProject = projectByName.get(categoryName.toLowerCase()) ?? null;
-                    return (
-                      <TaskMetaChip
-                        icon="tag"
-                        key={categoryName}
-                        label={t('category')}
-                        style={getContextChipStyle(categoryProject?.color ?? null)}
-                        value={categoryName}
-                      />
-                    );
-                  })}
                   <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
                     <Icon name="clock" />
                     {formatRelativeDate(taskItem.lastTouchedAt)}
@@ -2703,8 +2691,23 @@ function TaskBoard({
                 <TaskBadges taskItem={taskItem} t={t} />
                 <span className="task-card-created">
                   {taskCategoryNames.length > 0 && !filters.projectId ? (
-                    <span title={`${t('category')}: ${taskCategoryNames.join(', ')}`}>
-                      {taskCategoryNames.join(', ')}
+                    <span
+                      className="task-card-category-markers"
+                      title={`${t('category')}: ${taskCategoryNames.join(', ')}`}
+                    >
+                      <Icon name="tag" />
+                      {taskCategoryNames.map((categoryName) => {
+                        const categoryProject = projectByName.get(categoryName.toLowerCase()) ?? null;
+
+                        return (
+                          <span
+                            aria-hidden="true"
+                            className="task-card-category-dot"
+                            key={categoryName}
+                            style={getContextChipStyle(categoryProject?.color ?? null)}
+                          />
+                        );
+                      })}
                     </span>
                   ) : null}
                   <span title={`${t('created')}: ${formatFullDate(taskItem.createdAt)}`}>

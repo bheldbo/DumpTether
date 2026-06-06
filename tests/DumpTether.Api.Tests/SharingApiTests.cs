@@ -65,9 +65,10 @@ public sealed class SharingApiTests
     }
 
     [Fact]
-    public async Task LiveUpdates_SharedWorkspaceMemberReceivesTaskCreatedEvent()
+    public async Task LiveUpdates_SharedWorkspaceTaskCreationPublishesTaskCreatedEvent()
     {
-        using var factory = new DumpTetherApiFactory();
+        var liveUpdates = new RecordingLiveUpdatePublisher();
+        using var factory = new DumpTetherApiFactory(liveUpdatePublisher: liveUpdates);
         using var ownerClient = factory.CreateClient();
         using var memberClient = factory.CreateClient();
         var owner = await RegisterAndLoginAsync(
@@ -97,32 +98,11 @@ public sealed class SharingApiTests
             });
         acceptResponse.EnsureSuccessStatusCode();
 
-        var received = new TaskCompletionSource<LiveUpdateMessage>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var connection = new HubConnectionBuilder()
-            .WithUrl(
-                new Uri(factory.Server.BaseAddress, "/api/live"),
-                options =>
-                {
-                    options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
-                    options.AccessTokenProvider = () => Task.FromResult<string?>(member.SessionToken);
-                    options.Headers.Add("Authorization", $"Bearer {member.SessionToken}");
-                    options.Transports = HttpTransportType.LongPolling;
-                })
-            .Build();
-
-        connection.On<LiveUpdateMessage>("LiveUpdate", message =>
-        {
-            if (message.EventName == LiveUpdateEvents.TaskCreated)
-            {
-                received.TrySetResult(message);
-            }
-        });
-        await connection.StartAsync();
-        await connection.InvokeAsync("JoinWorkspace", ownerWorkspaceId);
-
         var created = await CreateTaskAsync(ownerClient, "Live task from owner");
-        var message = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var message = await liveUpdates.WaitForAsync(
+            update => update.EventName == LiveUpdateEvents.TaskCreated &&
+                update.TaskItemId == created.Id,
+            TimeSpan.FromSeconds(5));
 
         Assert.Equal(LiveUpdateEvents.TaskCreated, message.EventName);
         Assert.Equal(ownerWorkspaceId, message.WorkspaceId);
@@ -1332,5 +1312,70 @@ public sealed class SharingApiTests
     {
         client.DefaultRequestHeaders.Remove("X-DumpTether-Workspace-Id");
         client.DefaultRequestHeaders.Add("X-DumpTether-Workspace-Id", workspaceId.ToString());
+    }
+
+    private sealed class RecordingLiveUpdatePublisher : ILiveUpdatePublisher
+    {
+        private readonly object _lock = new();
+        private readonly List<LiveUpdateMessage> _messages = [];
+        private readonly List<Waiter> _waiters = [];
+
+        public Task PublishAsync(
+            LiveUpdateMessage message,
+            CancellationToken cancellationToken)
+        {
+            lock (_lock)
+            {
+                _messages.Add(message);
+
+                foreach (var waiter in _waiters.ToList())
+                {
+                    if (waiter.Predicate(message))
+                    {
+                        waiter.Completion.TrySetResult(message);
+                        _waiters.Remove(waiter);
+                    }
+                }
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public async Task<LiveUpdateMessage> WaitForAsync(
+            Func<LiveUpdateMessage, bool> predicate,
+            TimeSpan timeout)
+        {
+            TaskCompletionSource<LiveUpdateMessage> completion;
+
+            lock (_lock)
+            {
+                var existing = _messages.FirstOrDefault(predicate);
+
+                if (existing is not null)
+                {
+                    return existing;
+                }
+
+                completion = new TaskCompletionSource<LiveUpdateMessage>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                _waiters.Add(new Waiter(predicate, completion));
+            }
+
+            try
+            {
+                return await completion.Task.WaitAsync(timeout);
+            }
+            finally
+            {
+                lock (_lock)
+                {
+                    _waiters.RemoveAll(waiter => waiter.Completion == completion);
+                }
+            }
+        }
+
+        private sealed record Waiter(
+            Func<LiveUpdateMessage, bool> Predicate,
+            TaskCompletionSource<LiveUpdateMessage> Completion);
     }
 }

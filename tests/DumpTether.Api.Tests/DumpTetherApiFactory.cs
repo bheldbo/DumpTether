@@ -1,3 +1,4 @@
+using DumpTether.App.LiveUpdates;
 using DumpTether.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -23,19 +24,22 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
     private readonly int _maxActiveTasksPerWorkspace;
     private readonly int _maxTotalTasksPerWorkspace;
     private readonly IReadOnlyDictionary<string, string?> _extraConfiguration;
+    private readonly ILiveUpdatePublisher? _liveUpdatePublisher;
 
     public DumpTetherApiFactory(
         bool requireAuthentication = false,
         bool enableDevelopmentLogin = false,
         int maxActiveTasksPerWorkspace = 1000,
         int maxTotalTasksPerWorkspace = 5000,
-        IReadOnlyDictionary<string, string?>? extraConfiguration = null)
+        IReadOnlyDictionary<string, string?>? extraConfiguration = null,
+        ILiveUpdatePublisher? liveUpdatePublisher = null)
     {
         _requireAuthentication = requireAuthentication;
         _enableDevelopmentLogin = enableDevelopmentLogin;
         _maxActiveTasksPerWorkspace = maxActiveTasksPerWorkspace;
         _maxTotalTasksPerWorkspace = maxTotalTasksPerWorkspace;
         _extraConfiguration = extraConfiguration ?? new Dictionary<string, string?>();
+        _liveUpdatePublisher = liveUpdatePublisher;
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
         Environment.SetEnvironmentVariable(ConnectionStringKey, TestConnectionString);
     }
@@ -76,6 +80,12 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<DumpTetherDbContext>(options =>
                 options.UseSqlite(_connection));
+
+            if (_liveUpdatePublisher is not null)
+            {
+                services.RemoveAll<ILiveUpdatePublisher>();
+                services.AddSingleton(_liveUpdatePublisher);
+            }
 
             using var serviceProvider = services.BuildServiceProvider();
             using var scope = serviceProvider.CreateScope();

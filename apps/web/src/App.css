@@ -1828,6 +1828,29 @@ label {
   margin-left: auto;
 }
 
+.task-card-category-markers {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: inherit;
+}
+
+.task-card-category-markers .icon {
+  width: 13px;
+  height: 13px;
+  opacity: 0.7;
+}
+
+.task-card-category-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border: 1px solid var(--task-note-chip-border, rgba(24, 33, 44, 0.18));
+  border-radius: 999px;
+  background: var(--context-chip-color, currentColor);
+}
+
 .follow-up-chip[data-tone="overdue"] {
   border-color: rgba(190, 58, 45, 0.28);
   background: rgba(254, 226, 226, 0.88);
