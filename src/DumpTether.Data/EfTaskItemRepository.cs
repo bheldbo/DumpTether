@@ -65,6 +65,37 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .ToList();
     }
 
+    public async Task<IReadOnlyDictionary<Guid, int>> CountByQueriesAsync(
+        IReadOnlyDictionary<Guid, TaskItemQuery> queries,
+        CancellationToken cancellationToken)
+    {
+        if (queries.Count == 0)
+        {
+            return new Dictionary<Guid, int>();
+        }
+
+        var counts = new Dictionary<Guid, int>();
+
+        foreach (var workspaceGroup in queries.GroupBy(query => query.Value.WorkspaceId))
+        {
+            var candidates = await _dbContext.TaskItems
+                .AsNoTracking()
+                .Include("_fieldValues")
+                .Include(taskItem => taskItem.Shares)
+                .Include("_timelineEntries")
+                .AsSplitQuery()
+                .Where(taskItem => taskItem.WorkspaceId == workspaceGroup.Key)
+                .ToListAsync(cancellationToken);
+
+            foreach (var item in workspaceGroup)
+            {
+                counts[item.Key] = candidates.Count(taskItem => MatchesQuery(taskItem, item.Value));
+            }
+        }
+
+        return counts;
+    }
+
     public async Task<IReadOnlyList<TaskItem>> ListByProjectAsync(
         Guid workspaceId,
         Guid projectId,
@@ -239,6 +270,46 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         }
 
         return await query.SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskItem>> ListByWorkspaceSharesForUserAsync(
+        Guid workspaceId,
+        Guid userId,
+        string normalizedEmail,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var taskIds = await _dbContext.TaskItemShares
+            .AsNoTracking()
+            .Where(share =>
+                share.WorkspaceId == workspaceId &&
+                share.RevokedAt == null &&
+                (share.SharedWithUserId == userId ||
+                    share.NormalizedEmail == normalizedEmail))
+            .Select(share => share.TaskItemId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        if (taskIds.Count == 0)
+        {
+            return [];
+        }
+
+        var query = _dbContext.TaskItems
+            .Include("_fieldValues")
+            .Include(taskItem => taskItem.Shares)
+            .Include("_timelineEntries")
+            .AsSplitQuery()
+            .Where(taskItem =>
+                taskItem.WorkspaceId == workspaceId &&
+                taskIds.Contains(taskItem.Id));
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<TaskItem>> ListByIdsAsync(

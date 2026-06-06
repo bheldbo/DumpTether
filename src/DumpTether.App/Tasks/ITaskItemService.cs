@@ -14,6 +14,10 @@ public interface ITaskItemService
         TaskItemListRequest request,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<TaskItemViewCountResponse>> CountByViewsAsync(
+        IReadOnlyList<Guid> viewIds,
+        CancellationToken cancellationToken);
+
     Task<TaskItemDetailResponse?> GetByIdAsync(
         Guid id,
         CancellationToken cancellationToken);
@@ -85,5 +89,9 @@ public interface ITaskItemService
 
     Task<bool> LeaveShareAsync(
         Guid shareId,
+        CancellationToken cancellationToken);
+
+    Task<int> LeaveWorkspaceSharesAsync(
+        Guid workspaceId,
         CancellationToken cancellationToken);
 }

@@ -286,23 +286,26 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
                     return new SelectedWorkspace(selectedWorkspace, IsSharedOnly: false);
                 }
 
-                var selectedSharedWorkspace = await _dbContext.TaskItemShares
-                    .Where(share =>
+                var hasSelectedSharedWorkspaceAccess = await _dbContext.TaskItemShares
+                    .AnyAsync(share =>
                         (share.SharedWithUserId == currentUserId.Value ||
                             share.NormalizedEmail == currentNormalizedEmail) &&
                         share.WorkspaceId == selectedWorkspaceId &&
                         share.RevokedAt == null &&
-                        (share.AcceptedAt != null || share.TokenHash == null))
-                    .Join(
-                        _dbContext.Workspaces,
-                        share => share.WorkspaceId,
-                        workspace => workspace.Id,
-                        (_, workspace) => workspace)
-                    .SingleOrDefaultAsync(cancellationToken);
+                        (share.AcceptedAt != null || share.TokenHash == null),
+                        cancellationToken);
 
-                if (selectedSharedWorkspace is not null)
+                if (hasSelectedSharedWorkspaceAccess)
                 {
-                    return new SelectedWorkspace(selectedSharedWorkspace, IsSharedOnly: true);
+                    var selectedSharedWorkspace = await _dbContext.Workspaces
+                        .SingleOrDefaultAsync(
+                            workspace => workspace.Id == selectedWorkspaceId,
+                            cancellationToken);
+
+                    if (selectedSharedWorkspace is not null)
+                    {
+                        return new SelectedWorkspace(selectedSharedWorkspace, IsSharedOnly: true);
+                    }
                 }
             }
 

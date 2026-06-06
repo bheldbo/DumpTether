@@ -114,6 +114,22 @@ public sealed class TaskItemsController : ControllerBase
         }
     }
 
+    [HttpGet("view-counts")]
+    public async Task<ActionResult<IReadOnlyList<TaskItemViewCountResponse>>> CountByViews(
+        [FromQuery] Guid[] viewIds,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.CountByViewsAsync(viewIds, cancellationToken);
+            return Ok(response);
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<TaskItemDetailResponse>> GetById(
         Guid id,
@@ -400,6 +416,29 @@ public sealed class TaskItemsController : ControllerBase
         {
             var left = await _taskItemService.LeaveShareAsync(shareId, cancellationToken);
             return left ? NoContent() : NotFound();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpDelete("/api/account/workspaces/{workspaceId:guid}/task-shares")]
+    public async Task<IActionResult> LeaveWorkspaceShares(
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var revokedCount = await _taskItemService.LeaveWorkspaceSharesAsync(
+                workspaceId,
+                cancellationToken);
+            return revokedCount == 0 ? NotFound() : NoContent();
         }
         catch (ArgumentException exception)
         {

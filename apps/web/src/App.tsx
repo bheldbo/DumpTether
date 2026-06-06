@@ -41,6 +41,7 @@ import {
   getWorkspace,
   leaveCurrentWorkspace,
   leaveTaskShare,
+  leaveWorkspaceTaskShares,
   listArchiveResolutions,
   listIncomingTaskShares,
   listIncomingWorkspaceInvitations,
@@ -50,6 +51,7 @@ import {
   listWorkspaceMembers,
   listTaskItems,
   listTaskTemplates,
+  listTaskViewCounts,
   listWorkspaces,
   loginUser,
   logoutUser,
@@ -282,10 +284,13 @@ function App() {
   );
   const [taskColorOptions, setTaskColorOptions] = useState<string[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
+  const [isRefreshingWorkspace, setIsRefreshingWorkspace] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const workspaceLoadAbortRef = useRef<AbortController | null>(null);
+  const workspaceLoadSequenceRef = useRef(0);
   const t = useCallback<Translate>((key) => translate(language, key), [language]);
   const statusOptions = useMemo(
     () => uniqueSorted([...configuredStatuses, ...knownStatuses]),
@@ -361,13 +366,48 @@ function App() {
     }
   }, []);
 
+  const applyWorkspaceSnapshot = useCallback((
+    snapshot: CachedWorkspaceSnapshot,
+    fallbackWorkspaceId: string | null,
+  ) => {
+    setWorkspaces(snapshot.workspaces);
+    setWorkspace(snapshot.workspace);
+    setSelectedWorkspaceId(snapshot.workspace?.id ?? fallbackWorkspaceId);
+    setSavedViews(snapshot.savedViews);
+    setProjects(snapshot.projects);
+    setArchiveResolutions(snapshot.archiveResolutions);
+    setWorkspaceMembers(snapshot.workspaceMembers ?? []);
+    setWorkspaceInvitations(snapshot.workspaceInvitations ?? []);
+    setTemplates(snapshot.templates);
+    setTaskColorOptions(snapshot.taskColorOptions);
+    setKnownStatuses(snapshot.knownStatuses);
+    setCurrentViewId(snapshot.currentViewId);
+    setTaskItems(snapshot.taskItems);
+    setViewCounts(snapshot.viewCounts);
+  }, []);
+
   const loadWorkspace = useCallback(
     async (
       preferredViewId: string | null = currentViewId,
       preferredWorkspaceId: string | null = selectedWorkspaceId,
-      options: { force?: boolean } = {},
+      options: { force?: boolean; silent?: boolean } = {},
     ) => {
-      setIsLoadingWorkspace(true);
+      const showLoading = !options.silent;
+      const loadSequence = workspaceLoadSequenceRef.current + 1;
+      workspaceLoadSequenceRef.current = loadSequence;
+      workspaceLoadAbortRef.current?.abort();
+
+      const controller = new AbortController();
+      workspaceLoadAbortRef.current = controller;
+      const isCurrentLoad = () =>
+        workspaceLoadSequenceRef.current === loadSequence &&
+        !controller.signal.aborted;
+      let cachedSnapshotWasUsed = false;
+
+      if (showLoading) {
+        setIsLoadingWorkspace(true);
+      }
+      setIsRefreshingWorkspace(false);
 
       try {
         const cacheIdentity = currentUser?.user.id ?? 'anonymous';
@@ -382,31 +422,35 @@ function App() {
         if (!options.force) {
           const cachedSnapshot = readCachedWorkspaceSnapshot(workspaceCacheKey);
           if (cachedSnapshot) {
-            setWorkspaces(cachedSnapshot.workspaces);
-            setWorkspace(cachedSnapshot.workspace);
-            setSelectedWorkspaceId(cachedSnapshot.workspace?.id ?? preferredWorkspaceId);
-            setSavedViews(cachedSnapshot.savedViews);
-            setProjects(cachedSnapshot.projects);
-            setArchiveResolutions(cachedSnapshot.archiveResolutions);
-            setWorkspaceMembers(cachedSnapshot.workspaceMembers ?? []);
-            setWorkspaceInvitations(cachedSnapshot.workspaceInvitations ?? []);
-            setTemplates(cachedSnapshot.templates);
-            setTaskColorOptions(cachedSnapshot.taskColorOptions);
-            setKnownStatuses(cachedSnapshot.knownStatuses);
-            setCurrentViewId(cachedSnapshot.currentViewId);
-            setTaskItems(cachedSnapshot.taskItems);
-            setViewCounts(cachedSnapshot.viewCounts);
-            setIsLoadingWorkspace(false);
+            applyWorkspaceSnapshot(cachedSnapshot, preferredWorkspaceId);
+            cachedSnapshotWasUsed = true;
+            if (showLoading) {
+              setIsLoadingWorkspace(false);
+            }
+            setIsRefreshingWorkspace(true);
           }
         }
 
-        setCurrentWorkspaceId(null);
-        const workspaceList = await listWorkspaces();
+        const workspaceList = await listWorkspaces({
+          signal: controller.signal,
+          workspaceId: null,
+        });
+        if (!isCurrentLoad()) {
+          return;
+        }
+
         const effectiveWorkspaceId =
           preferredWorkspaceId && workspaceList.some((candidate) => candidate.id === preferredWorkspaceId)
             ? preferredWorkspaceId
             : workspaceList[0]?.id ?? null;
+        const workspaceRequestOptions = {
+          workspaceId: effectiveWorkspaceId,
+          signal: controller.signal,
+        };
 
+        if (!isCurrentLoad()) {
+          return;
+        }
         setCurrentWorkspaceId(effectiveWorkspaceId);
         window.localStorage.setItem(workspaceStorageKey, effectiveWorkspaceId ?? '');
 
@@ -419,34 +463,51 @@ function App() {
           members,
           invitations,
         ] = await Promise.all([
-          getWorkspace(),
-          listSavedViews(),
-          listProjects(),
-          listArchiveResolutions(),
-          listTaskTemplates(),
-          listWorkspaceMembers().catch(() => []),
-          listWorkspaceInvitations().catch(() => []),
+          getWorkspace(workspaceRequestOptions),
+          listSavedViews(workspaceRequestOptions),
+          listProjects(workspaceRequestOptions),
+          listArchiveResolutions(workspaceRequestOptions),
+          listTaskTemplates(workspaceRequestOptions),
+          listWorkspaceMembers(workspaceRequestOptions).catch(() => []),
+          listWorkspaceInvitations(workspaceRequestOptions).catch(() => []),
         ]);
+        if (!isCurrentLoad()) {
+          return;
+        }
+
         const resolvedWorkspaceList = workspaceList.some((candidate) => candidate.id === workspaceInfo.id)
           ? workspaceList
-          : await listWorkspaces();
+          : await listWorkspaces({
+              signal: controller.signal,
+              workspaceId: null,
+            });
         const selectedViewId = pickSavedViewId(views, preferredViewId);
         const resolvedWorkspaceCacheKey = buildWorkspaceCacheKey(
           workspaceInfo.id,
           selectedViewId ?? 'default',
           cacheIdentity,
         );
-        const [templateDetails, selectedTasks, countEntries, allTasksForColors] = await Promise.all([
-          Promise.all(templateSummaries.map((template) => getTaskTemplate(template.id))),
-          selectedViewId ? listTaskItems({ viewId: selectedViewId }) : Promise.resolve([]),
-          Promise.all(
-            views.map(async (view) => {
-              const items = await listTaskItems({ viewId: view.id });
-              return [view.id, items.length] as const;
-            }),
+        const [templateDetails, selectedTasks, viewCountResponses, allTasksForColors] = await Promise.all([
+          Promise.all(templateSummaries.map((template) =>
+            getTaskTemplate(template.id, workspaceRequestOptions))),
+          selectedViewId
+            ? listTaskItems({ viewId: selectedViewId }, workspaceRequestOptions)
+            : Promise.resolve([]),
+          listTaskViewCounts(
+            views.map((view) => view.id),
+            workspaceRequestOptions,
           ),
-          listTaskItems({ archive: 'All' }),
+          listTaskItems({ archive: 'All' }, workspaceRequestOptions),
         ]);
+        if (!isCurrentLoad()) {
+          return;
+        }
+
+        const colorOptions = mergeColorOptions(getTaskColors(allTasksForColors));
+        const statuses = uniqueSorted(allTasksForColors.map((taskItem) => taskItem.status));
+        const counts = Object.fromEntries(
+          viewCountResponses.map((viewCount) => [viewCount.viewId, viewCount.count]),
+        );
 
         setWorkspaces(resolvedWorkspaceList);
         setWorkspace(workspaceInfo);
@@ -457,21 +518,21 @@ function App() {
         setWorkspaceMembers(members);
         setWorkspaceInvitations(invitations);
         setTemplates(templateDetails);
-        setTaskColorOptions(mergeColorOptions(getTaskColors(allTasksForColors)));
-        setKnownStatuses(uniqueSorted(allTasksForColors.map((taskItem) => taskItem.status)));
+        setTaskColorOptions(colorOptions);
+        setKnownStatuses(statuses);
         setCurrentViewId(selectedViewId);
         setTaskItems(selectedTasks);
-        setViewCounts(Object.fromEntries(countEntries));
+        setViewCounts(counts);
         const snapshot = {
           archiveResolutions: resolutions,
           currentViewId: selectedViewId,
-          knownStatuses: uniqueSorted(allTasksForColors.map((taskItem) => taskItem.status)),
+          knownStatuses: statuses,
           projects: projectList,
           savedViews: views,
-          taskColorOptions: mergeColorOptions(getTaskColors(allTasksForColors)),
+          taskColorOptions: colorOptions,
           taskItems: selectedTasks,
           templates: templateDetails,
-          viewCounts: Object.fromEntries(countEntries),
+          viewCounts: counts,
           workspace: workspaceInfo,
           workspaceInvitations: invitations,
           workspaceMembers: members,
@@ -486,17 +547,38 @@ function App() {
           setSelectedTask(null);
         }
       } catch (error) {
+        if (!isCurrentLoad() || isAbortError(error)) {
+          return;
+        }
+
         setErrorMessage(getErrorMessage(error));
       } finally {
-        setIsLoadingWorkspace(false);
+        if (isCurrentLoad()) {
+          if (showLoading && !cachedSnapshotWasUsed) {
+            setIsLoadingWorkspace(false);
+          }
+          setIsRefreshingWorkspace(false);
+        }
       }
     },
-    [currentUser, currentViewId, selectedTaskId, selectedWorkspaceId],
+    [
+      applyWorkspaceSnapshot,
+      currentUser,
+      currentViewId,
+      selectedTaskId,
+      selectedWorkspaceId,
+    ],
   );
 
   useEffect(() => {
     void loadAuth();
   }, [loadAuth]);
+
+  useEffect(() => {
+    return () => {
+      workspaceLoadAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (hasBootstrapped || isLoadingAuth) {
@@ -544,7 +626,7 @@ function App() {
       }
 
       reloadTimer = window.setTimeout(() => {
-        void loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
+        void loadWorkspace(currentViewId, selectedWorkspaceId, { force: true, silent: true });
       }, 250);
     };
 
@@ -570,7 +652,7 @@ function App() {
       }
 
       if (selectedTaskId && message.taskItemId === selectedTaskId) {
-        void getTaskItem(selectedTaskId)
+        void getTaskItem(selectedTaskId, { workspaceId: selectedWorkspaceId })
           .then((taskItem) => {
             setSelectedTask(taskItem);
           })
@@ -627,9 +709,13 @@ function App() {
     }
 
     let requestIsStale = false;
+    const controller = new AbortController();
     setIsLoadingDetail(true);
 
-    getTaskItem(selectedTaskId)
+    getTaskItem(selectedTaskId, {
+      workspaceId: selectedWorkspaceId,
+      signal: controller.signal,
+    })
       .then((taskItem) => {
         if (requestIsStale) {
           return;
@@ -650,7 +736,7 @@ function App() {
         setErrorMessage(null);
       })
       .catch((error) => {
-        if (!requestIsStale) {
+        if (!requestIsStale && !isAbortError(error)) {
           setErrorMessage(getErrorMessage(error));
         }
       })
@@ -662,6 +748,7 @@ function App() {
 
     return () => {
       requestIsStale = true;
+      controller.abort();
     };
   }, [mode, selectedTaskId, selectedWorkspaceId]);
 
@@ -859,8 +946,7 @@ function App() {
 
     try {
       if (workspaceToLeave && isTaskShareWorkspace(workspaceToLeave)) {
-        const sharesToLeave = incomingTaskShares.filter((share) => share.workspaceId === workspaceId);
-        await Promise.all(sharesToLeave.map((share) => leaveTaskShare(share.shareId)));
+        await leaveWorkspaceTaskShares(workspaceId);
         setIncomingTaskShares((currentShares) =>
           currentShares.filter((share) => share.workspaceId !== workspaceId),
         );
@@ -1556,6 +1642,7 @@ function App() {
             colorOptions={taskColorOptions}
             isLoading={isLoadingWorkspace}
             isLoadingDetail={isLoadingDetail}
+            isRefreshing={isRefreshingWorkspace}
             onAddTimelineEntry={handleAddTimelineEntry}
             onArchive={handleArchiveTaskItem}
             onArchiveTaskItems={handleArchiveTaskItems}
@@ -1775,7 +1862,14 @@ function Sidebar({
         style={getSidebarStyle(workspace?.color ?? null)}
       >
       <div className="brand">
-        <div className="brand-mark">DT</div>
+        <button
+          className="brand-mark"
+          onClick={sidebarIsCollapsed ? onToggleSidebar : undefined}
+          title={sidebarIsCollapsed ? t('expandSidebar') : undefined}
+          type="button"
+        >
+          DT
+        </button>
         <div className="brand-copy">
           <p className="brand-name">DumpTether</p>
           <p className="brand-subtitle">Personal task evidence</p>
@@ -2013,9 +2107,7 @@ function Sidebar({
         <button className="nav-item" onClick={onOpenSettings} type="button">
           <Icon name="settings" />
           <span className="nav-label">{t('settings')}</span>
-          <span className={`nav-count${accountNotificationCount > 0 ? ' notification-badge' : ''}`}>
-            {accountNotificationCount > 0 ? accountNotificationCount : language.toUpperCase()}
-          </span>
+          <span className="nav-count">{language.toUpperCase()}</span>
         </button>
         <button className="nav-item" onClick={onOpenAccount} type="button">
           <Icon name="user" />
@@ -2138,6 +2230,7 @@ function TaskBoard({
   currentUserEmail,
   isLoading,
   isLoadingDetail,
+  isRefreshing,
   onAddTimelineEntry,
   onArchive,
   onArchiveTaskItems,
@@ -2183,6 +2276,7 @@ function TaskBoard({
   currentUserEmail: string | null;
   isLoading: boolean;
   isLoadingDetail: boolean;
+  isRefreshing: boolean;
   onAddTimelineEntry: (note: string) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onArchiveTaskItems: (taskItemIds: string[], requestBody: ArchiveTaskItemRequest) => Promise<void>;
@@ -2238,11 +2332,10 @@ function TaskBoard({
   const currentUserOwnsWorkspace = currentWorkspaceMember
     ? isOwnerRole(currentWorkspaceMember.role)
     : !currentUserEmail;
-  const workspaceIsSharedAccess = isTaskShareWorkspace(workspace ?? { accessKind: 'Membership' }) ||
-    Boolean(currentWorkspaceMember && !isOwnerRole(currentWorkspaceMember.role));
-  const canManageSharing = currentUserOwnsWorkspace && !workspaceIsSharedAccess;
+  const workspaceIsTaskShareOnly = isTaskShareWorkspace(workspace ?? { accessKind: 'Membership' });
+  const canManageSharing = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
   const canCreateTask = currentView?.filter.archive !== 'Archived' &&
-    !workspaceIsSharedAccess;
+    !workspaceIsTaskShareOnly;
   const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
   const [pendingDeletedNoteIds, setPendingDeletedNoteIds] = useState<string[]>([]);
   const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
@@ -2408,6 +2501,12 @@ function TaskBoard({
           projects={projects}
           t={t}
         />
+      ) : null}
+
+      {isRefreshing && !focusModeIsEnabled ? (
+        <p className="board-refreshing" role="status">
+          {t('updatingTasks')}
+        </p>
       ) : null}
 
       <div className="task-grid" aria-busy={isLoading}>
@@ -2822,9 +2921,16 @@ function WorkspaceHeader({
             </form>
           ) : (
             <>
-              <h1 id="task-board-title">
-                {workspace ? formatWorkspaceName(workspace.name, t) : 'DumpTether'}
-              </h1>
+              <button
+                className="heading-edit-trigger"
+                onClick={() => setWorkspaceIsEditing(true)}
+                title={t('editBoard')}
+                type="button"
+              >
+                <h1 id="task-board-title">
+                  {workspace ? formatWorkspaceName(workspace.name, t) : 'DumpTether'}
+                </h1>
+              </button>
               <button
                 className="icon-button header-edit-button"
                 onClick={() => setWorkspaceIsEditing(true)}
@@ -4471,7 +4577,17 @@ function TaskHeaderEditor({
             value={title}
           />
         ) : (
-          <h2>{taskItem.title}</h2>
+          <button
+            className="heading-edit-trigger task-heading-trigger"
+            onClick={(event) => {
+              event.stopPropagation();
+              setEditingField('title');
+            }}
+            title={t('editTask')}
+            type="button"
+          >
+            <h2>{taskItem.title}</h2>
+          </button>
         )}
         <button
           className="icon-button header-edit-button"
@@ -4722,7 +4838,13 @@ function ColorPickerPopover({
   };
 
   return (
-    <div className="color-popover" data-placement={placement} ref={popoverRef}>
+    <div
+      className="color-popover"
+      data-placement={placement}
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      ref={popoverRef}
+    >
       <button
         aria-expanded={isOpen}
         aria-label={label}
@@ -4747,7 +4869,10 @@ function ColorPickerPopover({
                 className="color-swatch"
                 data-selected={draftColor.toUpperCase() === choice}
                 key={choice}
-                onClick={() => setDraftColor(choice)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDraftColor(choice);
+                }}
                 style={{ backgroundColor: choice }}
                 type="button"
               />
@@ -4778,7 +4903,10 @@ function ColorPickerPopover({
             <button
               className="tiny-icon-button"
               disabled={!isHexColor(draftColor)}
-              onClick={commitColor}
+              onClick={(event) => {
+                event.stopPropagation();
+                commitColor();
+              }}
               title={t('saved')}
               type="button"
             >
@@ -4786,7 +4914,10 @@ function ColorPickerPopover({
             </button>
             <button
               className="tiny-icon-button"
-              onClick={cancelColor}
+              onClick={(event) => {
+                event.stopPropagation();
+                cancelColor();
+              }}
               title={t('cancel')}
               type="button"
             >
@@ -4796,7 +4927,8 @@ function ColorPickerPopover({
           {color ? (
             <button
               className="clear-color-button"
-              onClick={() => {
+              onClick={(event) => {
+                event.stopPropagation();
                 onChange('');
                 setIsOpen(false);
               }}
@@ -6285,7 +6417,7 @@ function Icon({ name }: { name: IconName }) {
     tag: 'M20 10 14 4H5v9l6 6 9-9ZM8 8h.01',
     templates: 'M4 5h7v7H4V5Zm9 0h7v7h-7V5ZM4 14h7v5H4v-5Zm9 0h7v5h-7v-5Z',
     trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
-    undo: 'M9 7H4v5m0 0 5-5m-5 5h10a6 6 0 1 1-4.2 10.2',
+    undo: 'M9 7 4 12l5 5M4 12h10a5 5 0 1 1-3.5 8.5',
     user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0',
     users: 'M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 8a7 7 0 0 1 12 0M17 11a3 3 0 1 0 0-6M15 20a5 5 0 0 1 7-4.5',
     waiting: 'M6 4h12M8 4v5l4 3 4-3V4M8 20v-5l4-3 4 3v5M6 20h12',
@@ -6366,7 +6498,14 @@ function buildWorkspaceCacheKey(workspaceId: string, viewId: string, userId: str
   return `dumptether.cache.${userId}.${workspaceId}.${viewId}`;
 }
 
+const workspaceSnapshotMemoryCache = new Map<string, CachedWorkspaceSnapshot>();
+
 function readCachedWorkspaceSnapshot(key: string): CachedWorkspaceSnapshot | null {
+  const memorySnapshot = workspaceSnapshotMemoryCache.get(key);
+  if (memorySnapshot) {
+    return memorySnapshot;
+  }
+
   const storedValue = window.sessionStorage.getItem(key);
 
   if (!storedValue) {
@@ -6377,13 +6516,16 @@ function readCachedWorkspaceSnapshot(key: string): CachedWorkspaceSnapshot | nul
     const parsed = JSON.parse(storedValue) as CachedWorkspaceSnapshot & {
       cachedAt?: string;
     };
+    workspaceSnapshotMemoryCache.set(key, parsed);
     return parsed;
   } catch {
+    window.sessionStorage.removeItem(key);
     return null;
   }
 }
 
 function writeCachedWorkspaceSnapshot(key: string, snapshot: CachedWorkspaceSnapshot) {
+  workspaceSnapshotMemoryCache.set(key, snapshot);
   window.sessionStorage.setItem(
     key,
     JSON.stringify({
@@ -6391,6 +6533,10 @@ function writeCachedWorkspaceSnapshot(key: string, snapshot: CachedWorkspaceSnap
       cachedAt: new Date().toISOString(),
     }),
   );
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === 'AbortError';
 }
 
 function updateUrl(mode: WorkspaceMode, viewId: string | null) {

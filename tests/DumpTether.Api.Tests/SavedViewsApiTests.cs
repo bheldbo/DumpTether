@@ -279,6 +279,40 @@ public sealed class SavedViewsApiTests
         Assert.DoesNotContain(taskItems, taskItem => taskItem.Title == "View should skip me");
     }
 
+    [Fact]
+    public async Task GetTaskViewCounts_ReturnsCountsForSavedViews()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var waiting = await CreateTaskItemAsync(client, "Count waiting task");
+        await CreateTaskItemAsync(client, "Count active task");
+        await PatchTaskItemAsync(
+            client,
+            waiting.Id,
+            new { status = "Waiting" });
+        var waitingView = await CreateSavedViewAsync(
+            client,
+            new
+            {
+                name = "Count waiting",
+                filter = new { status = "Waiting" }
+            });
+        var activeView = await CreateSavedViewAsync(
+            client,
+            new
+            {
+                name = "Count active",
+                filter = new { archive = "Active" }
+            });
+
+        var counts = await client.GetFromJsonAsync<List<TaskItemViewCountResponse>>(
+            $"/api/tasks/view-counts?viewIds={waitingView.Id}&viewIds={activeView.Id}");
+
+        Assert.NotNull(counts);
+        Assert.Equal(1, counts.Single(count => count.ViewId == waitingView.Id).Count);
+        Assert.Equal(2, counts.Single(count => count.ViewId == activeView.Id).Count);
+    }
+
     private static async Task<SavedViewResponse> CreateSavedViewAsync(
         HttpClient client,
         object request)

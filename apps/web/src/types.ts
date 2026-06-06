@@ -26,6 +26,11 @@ export interface TaskItemDetailResponse extends TaskItemSummaryResponse {
   timelineEntries: TaskTimelineEntryResponse[];
 }
 
+export interface TaskItemViewCountResponse {
+  viewId: string;
+  count: number;
+}
+
 export interface FieldValueResponse {
   id: string;
   fieldDefinitionId: string;

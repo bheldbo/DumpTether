@@ -43,6 +43,10 @@ public sealed record TaskItemDetailResponse(
     IReadOnlyList<FieldValueResponse> FieldValues,
     IReadOnlyList<TaskTimelineEntryResponse> TimelineEntries);
 
+public sealed record TaskItemViewCountResponse(
+    Guid ViewId,
+    int Count);
+
 public sealed record TaskItemShareResponse(
     Guid Id,
     string Email,

@@ -31,6 +31,7 @@ import type {
   TaskItemListQuery,
   TaskItemDetailResponse,
   TaskItemSummaryResponse,
+  TaskItemViewCountResponse,
   UpdateTaskItemRequest,
   UpdateTaskTimelineEntryRequest,
   UpdateArchiveResolutionRequest,
@@ -55,6 +56,11 @@ const guestSessionTokenStorageKey = 'dumptether.guestSessionToken';
 let currentWorkspaceId: string | null = null;
 let currentSessionToken: string | null = readStoredSessionToken();
 let sessionIsTemporary = readStoredTemporarySessionFlag();
+
+interface ApiRequestOptions {
+  workspaceId?: string | null;
+  signal?: AbortSignal;
+}
 
 export function setCurrentWorkspaceId(workspaceId: string | null) {
   currentWorkspaceId = workspaceId;
@@ -98,14 +104,22 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  options: ApiRequestOptions = {},
+): Promise<T> {
+  const requestWorkspaceId = options.workspaceId === undefined
+    ? currentWorkspaceId
+    : options.workspaceId;
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     credentials: 'include',
+    signal: init?.signal ?? options.signal,
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(currentSessionToken ? { Authorization: `Bearer ${currentSessionToken}` } : {}),
-      ...(currentWorkspaceId ? { 'X-DumpTether-Workspace-Id': currentWorkspaceId } : {}),
+      ...(requestWorkspaceId ? { 'X-DumpTether-Workspace-Id': requestWorkspaceId } : {}),
       ...init?.headers,
     },
   });
@@ -213,6 +227,7 @@ export function checkHealth(): Promise<{ status: string; service: string }> {
 
 export function listTaskItems(
   query: TaskItemListQuery = {},
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemSummaryResponse[]> {
   const searchParams = new URLSearchParams();
 
@@ -225,11 +240,34 @@ export function listTaskItems(
   const queryString = searchParams.toString();
   return request<TaskItemSummaryResponse[]>(
     `/api/tasks${queryString ? `?${queryString}` : ''}`,
+    undefined,
+    options,
   );
 }
 
-export function getTaskItem(id: string): Promise<TaskItemDetailResponse> {
-  return request<TaskItemDetailResponse>(`/api/tasks/${id}`);
+export function listTaskViewCounts(
+  viewIds: string[],
+  options: ApiRequestOptions = {},
+): Promise<TaskItemViewCountResponse[]> {
+  const searchParams = new URLSearchParams();
+
+  viewIds
+    .filter(Boolean)
+    .forEach((viewId) => searchParams.append('viewIds', viewId));
+
+  const queryString = searchParams.toString();
+  return request<TaskItemViewCountResponse[]>(
+    `/api/tasks/view-counts${queryString ? `?${queryString}` : ''}`,
+    undefined,
+    options,
+  );
+}
+
+export function getTaskItem(
+  id: string,
+  options: ApiRequestOptions = {},
+): Promise<TaskItemDetailResponse> {
+  return request<TaskItemDetailResponse>(`/api/tasks/${id}`, undefined, options);
 }
 
 export function createTaskItem(
@@ -290,8 +328,10 @@ export function reopenTaskItem(
   });
 }
 
-export function listArchiveResolutions(): Promise<ArchiveResolutionResponse[]> {
-  return request<ArchiveResolutionResponse[]>('/api/archive-resolutions');
+export function listArchiveResolutions(
+  options: ApiRequestOptions = {},
+): Promise<ArchiveResolutionResponse[]> {
+  return request<ArchiveResolutionResponse[]>('/api/archive-resolutions', undefined, options);
 }
 
 export function createArchiveResolution(
@@ -319,8 +359,8 @@ export function deleteArchiveResolution(id: string): Promise<void> {
   });
 }
 
-export function listProjects(): Promise<ProjectResponse[]> {
-  return request<ProjectResponse[]>('/api/projects');
+export function listProjects(options: ApiRequestOptions = {}): Promise<ProjectResponse[]> {
+  return request<ProjectResponse[]>('/api/projects', undefined, options);
 }
 
 export function createProject(
@@ -358,12 +398,12 @@ export function deleteProject(id: string): Promise<ProjectArchiveResponse> {
   });
 }
 
-export function getWorkspace(): Promise<WorkspaceResponse> {
-  return request<WorkspaceResponse>('/api/workspace');
+export function getWorkspace(options: ApiRequestOptions = {}): Promise<WorkspaceResponse> {
+  return request<WorkspaceResponse>('/api/workspace', undefined, options);
 }
 
-export function listWorkspaces(): Promise<WorkspaceResponse[]> {
-  return request<WorkspaceResponse[]>('/api/workspaces');
+export function listWorkspaces(options: ApiRequestOptions = {}): Promise<WorkspaceResponse[]> {
+  return request<WorkspaceResponse[]>('/api/workspaces', undefined, options);
 }
 
 export function createWorkspace(
@@ -400,12 +440,16 @@ export function deleteWorkspace(id: string): Promise<void> {
   });
 }
 
-export function listWorkspaceMembers(): Promise<WorkspaceMemberResponse[]> {
-  return request<WorkspaceMemberResponse[]>('/api/workspace/members');
+export function listWorkspaceMembers(
+  options: ApiRequestOptions = {},
+): Promise<WorkspaceMemberResponse[]> {
+  return request<WorkspaceMemberResponse[]>('/api/workspace/members', undefined, options);
 }
 
-export function listWorkspaceInvitations(): Promise<WorkspaceInvitationResponse[]> {
-  return request<WorkspaceInvitationResponse[]>('/api/workspace/invitations');
+export function listWorkspaceInvitations(
+  options: ApiRequestOptions = {},
+): Promise<WorkspaceInvitationResponse[]> {
+  return request<WorkspaceInvitationResponse[]>('/api/workspace/invitations', undefined, options);
 }
 
 export function createWorkspaceInvitation(
@@ -471,8 +515,8 @@ export function revokeWorkspaceInvitation(id: string): Promise<void> {
   });
 }
 
-export function listSavedViews(): Promise<SavedViewResponse[]> {
-  return request<SavedViewResponse[]>('/api/views');
+export function listSavedViews(options: ApiRequestOptions = {}): Promise<SavedViewResponse[]> {
+  return request<SavedViewResponse[]>('/api/views', undefined, options);
 }
 
 export function getSavedView(id: string): Promise<SavedViewResponse> {
@@ -566,6 +610,12 @@ export function leaveTaskShare(shareId: string): Promise<void> {
   });
 }
 
+export function leaveWorkspaceTaskShares(workspaceId: string): Promise<void> {
+  return request<void>(`/api/account/workspaces/${workspaceId}/task-shares`, {
+    method: 'DELETE',
+  });
+}
+
 export function updateSavedView(
   id: string,
   requestBody: UpdateSavedViewRequest,
@@ -582,12 +632,17 @@ export function deleteSavedView(id: string): Promise<void> {
   });
 }
 
-export function listTaskTemplates(): Promise<TaskTemplateSummaryResponse[]> {
-  return request<TaskTemplateSummaryResponse[]>('/api/templates');
+export function listTaskTemplates(
+  options: ApiRequestOptions = {},
+): Promise<TaskTemplateSummaryResponse[]> {
+  return request<TaskTemplateSummaryResponse[]>('/api/templates', undefined, options);
 }
 
-export function getTaskTemplate(id: string): Promise<TaskTemplateDetailResponse> {
-  return request<TaskTemplateDetailResponse>(`/api/templates/${id}`);
+export function getTaskTemplate(
+  id: string,
+  options: ApiRequestOptions = {},
+): Promise<TaskTemplateDetailResponse> {
+  return request<TaskTemplateDetailResponse>(`/api/templates/${id}`, undefined, options);
 }
 
 export function createTaskTemplate(

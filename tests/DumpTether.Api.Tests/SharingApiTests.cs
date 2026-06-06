@@ -296,6 +296,55 @@ public sealed class SharingApiTests
     }
 
     [Fact]
+    public async Task WorkspaceMember_CanCreateTaskInSharedBoard()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var memberClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "shared-create-owner@example.com",
+            "correct horse battery");
+        var member = await RegisterAndLoginAsync(
+            memberClient,
+            "shared-create-member@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+
+        var inviteResponse = await ownerClient.PostAsJsonAsync(
+            "/api/workspace/invitations",
+            new
+            {
+                email = member.User.Email
+            });
+        inviteResponse.EnsureSuccessStatusCode();
+        var invite = await inviteResponse.Content.ReadFromJsonAsync<WorkspaceInvitationResponse>();
+        var acceptResponse = await memberClient.PostAsJsonAsync(
+            "/api/workspace/invitations/accept",
+            new
+            {
+                token = invite!.Token
+            });
+        acceptResponse.EnsureSuccessStatusCode();
+
+        SetWorkspaceHeader(memberClient, ownerWorkspaceId);
+        var createResponse = await memberClient.PostAsJsonAsync(
+            "/api/tasks",
+            new
+            {
+                title = "Created by shared board member"
+            });
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>();
+
+        SetWorkspaceHeader(ownerClient, ownerWorkspaceId);
+        var ownerTasks = await ownerClient.GetFromJsonAsync<List<TaskItemSummaryResponse>>(
+            "/api/tasks");
+
+        Assert.Contains(ownerTasks!, taskItem => taskItem.Id == created!.Id);
+    }
+
+    [Fact]
     public async Task Workspace_OwnerCanDeleteBoardAndScopedData()
     {
         using var factory = new DumpTetherApiFactory();
@@ -712,6 +761,67 @@ public sealed class SharingApiTests
 
         Assert.Empty(remainingShares!);
         Assert.DoesNotContain(workspaces!, workspace => workspace.Id == ownerWorkspaceId);
+    }
+
+    [Fact]
+    public async Task TaskShare_AcceptedWorkspaceSharesCanBeLeftTogether()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var sharedClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "leave-workspace-shares-owner@example.com",
+            "correct horse battery");
+        var sharedUser = await RegisterAndLoginAsync(
+            sharedClient,
+            "leave-workspace-shares-user@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+        var firstTask = await CreateTaskAsync(ownerClient, "First accepted shared task");
+        var secondTask = await CreateTaskAsync(ownerClient, "Second accepted shared task");
+
+        var shareResponse = await ownerClient.PostAsJsonAsync(
+            "/api/tasks/share-links",
+            new
+            {
+                taskItemIds = new[] { firstTask.Id, secondTask.Id },
+                email = sharedUser.User.Email
+            });
+        shareResponse.EnsureSuccessStatusCode();
+        var link = (await shareResponse.Content.ReadFromJsonAsync<TaskShareLinkResponse>())!;
+        var acceptResponse = await sharedClient.PostAsJsonAsync(
+            "/api/share-links/accept",
+            new
+            {
+                token = link.Token
+            });
+        acceptResponse.EnsureSuccessStatusCode();
+
+        SetWorkspaceHeader(sharedClient, ownerWorkspaceId);
+        var visibleBeforeLeaveResponse = await sharedClient.GetAsync(
+            "/api/tasks");
+        var visibleBeforeLeaveBody = await visibleBeforeLeaveResponse.Content.ReadAsStringAsync();
+        Assert.True(
+            visibleBeforeLeaveResponse.IsSuccessStatusCode,
+            visibleBeforeLeaveBody);
+        var visibleBeforeLeave = await visibleBeforeLeaveResponse.Content
+            .ReadFromJsonAsync<List<TaskItemSummaryResponse>>();
+
+        var leaveResponse = await sharedClient.DeleteAsync(
+            $"/api/account/workspaces/{ownerWorkspaceId}/task-shares");
+        leaveResponse.EnsureSuccessStatusCode();
+
+        var workspaces = await GetRequiredJsonAsync<List<WorkspaceResponse>>(
+            sharedClient,
+            "/api/workspaces");
+        SetWorkspaceHeader(sharedClient, ownerWorkspaceId);
+        var firstDetailAfterLeave = await sharedClient.GetAsync($"/api/tasks/{firstTask.Id}");
+
+        Assert.Contains(visibleBeforeLeave!, taskItem => taskItem.Id == firstTask.Id);
+        Assert.Contains(visibleBeforeLeave!, taskItem => taskItem.Id == secondTask.Id);
+        Assert.DoesNotContain(workspaces!, workspace => workspace.Id == ownerWorkspaceId);
+        Assert.Equal(HttpStatusCode.NotFound, firstDetailAfterLeave.StatusCode);
     }
 
     [Fact]

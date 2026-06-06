@@ -16,6 +16,10 @@ public interface ITaskItemRepository
         TaskItemQuery query,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyDictionary<Guid, int>> CountByQueriesAsync(
+        IReadOnlyDictionary<Guid, TaskItemQuery> queries,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<TaskItem>> ListByProjectAsync(
         Guid workspaceId,
         Guid projectId,
@@ -42,6 +46,13 @@ public interface ITaskItemRepository
 
     Task<TaskItem?> GetByShareIdAsync(
         Guid shareId,
+        Guid userId,
+        string normalizedEmail,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<TaskItem>> ListByWorkspaceSharesForUserAsync(
+        Guid workspaceId,
         Guid userId,
         string normalizedEmail,
         bool trackChanges,

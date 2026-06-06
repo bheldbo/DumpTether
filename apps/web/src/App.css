@@ -68,6 +68,7 @@ label {
 .app-shell {
   min-height: 100vh;
   display: grid;
+  align-items: start;
   grid-template-columns: var(--sidebar-width, 284px) minmax(0, 1fr);
   background: #edf1f4;
 }
@@ -77,8 +78,12 @@ label {
 }
 
 .sidebar {
-  position: relative;
+  position: sticky;
+  top: 0;
   min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -101,15 +106,22 @@ label {
 }
 
 .brand-mark {
+  border: 0;
   width: 42px;
   height: 42px;
   display: grid;
   place-items: center;
+  padding: 0;
   border-radius: 8px;
   background: var(--sidebar-workspace-color, #184c48);
   color: var(--sidebar-workspace-text, #ffffff);
   font-size: 0.82rem;
   font-weight: 780;
+  cursor: default;
+}
+
+.app-shell[data-sidebar-collapsed="true"] .brand-mark {
+  cursor: pointer;
 }
 
 .brand-name,
@@ -155,6 +167,22 @@ label {
   display: grid;
   place-items: center;
   padding: 0;
+}
+
+.heading-edit-trigger {
+  min-width: 0;
+  display: inline-grid;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+.heading-edit-trigger h1,
+.heading-edit-trigger h2 {
+  pointer-events: none;
 }
 
 .sidebar-toggle {
@@ -502,7 +530,14 @@ label {
 .app-shell[data-sidebar-collapsed="true"] .brand-copy,
 .app-shell[data-sidebar-collapsed="true"] .sidebar-section-label,
 .app-shell[data-sidebar-collapsed="true"] .nav-label,
-.app-shell[data-sidebar-collapsed="true"] .nav-count {
+.app-shell[data-sidebar-collapsed="true"] .nav-count,
+.app-shell[data-sidebar-collapsed="true"] .view-nav,
+.app-shell[data-sidebar-collapsed="true"] .sidebar-actions,
+.app-shell[data-sidebar-collapsed="true"] .sidebar-separator,
+.app-shell[data-sidebar-collapsed="true"] .workspace-row-actions,
+.app-shell[data-sidebar-collapsed="true"] .shared-workspace-badge,
+.app-shell[data-sidebar-collapsed="true"] .owner-workspace-badge,
+.app-shell[data-sidebar-collapsed="true"] .sidebar-footer {
   display: none;
 }
 
@@ -1331,17 +1366,34 @@ label {
 .draft-task-header .task-header-fields .draft-template-chip {
   min-width: min(210px, 100%);
   padding-right: 5px;
+  position: relative;
 }
 
 .draft-template-chip select {
+  appearance: none;
   min-width: 120px;
   min-height: 26px;
   padding: 0 22px 0 0;
   border: 0;
+  border-radius: 999px;
   background: transparent;
   color: inherit;
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.draft-template-chip::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.68;
+  pointer-events: none;
+  transform: translateY(-65%) rotate(45deg);
 }
 
 .draft-template-chip select:focus {
@@ -1459,6 +1511,18 @@ label {
 .create-fields {
   grid-column: 1 / -1;
   padding-top: 4px;
+}
+
+.board-refreshing {
+  justify-self: end;
+  margin: -6px 4px -8px;
+  padding: 4px 9px;
+  border: 1px solid rgba(35, 48, 62, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: #667586;
+  font-size: 0.74rem;
+  font-weight: 740;
 }
 
 .task-grid {
@@ -1913,9 +1977,9 @@ label {
   align-items: center;
 }
 
-.task-header-fields input,
-.task-header-fields select,
-.task-header-fields span,
+.task-header-fields > input,
+.task-header-fields > select,
+.task-header-fields > span,
 .task-meta-chip {
   width: auto;
   min-width: 116px;
@@ -1996,23 +2060,23 @@ label {
   min-width: 142px;
 }
 
-.task-header-fields select {
+.task-header-fields > select {
   width: auto;
   min-width: 160px;
   max-width: min(260px, 72vw);
   background: rgba(255, 255, 255, 0.78);
 }
 
-.task-header-fields input {
+.task-header-fields > input {
   border-color: #cfd9e3;
   background: rgba(255, 255, 255, 0.76);
 }
 
-.task-header-fields input[type="date"] {
+.task-header-fields > input[type="date"] {
   min-width: 144px;
 }
 
-.task-header-fields span {
+.task-header-fields > span {
   display: inline-flex;
   align-items: center;
   border: 1px solid #dbe3eb;
@@ -2034,14 +2098,17 @@ label {
   gap: 6px;
   padding: 5px 5px 5px 9px;
   color: #405064;
+  position: relative;
 }
 
 .draft-task-header .task-header-fields .draft-template-chip select {
+  appearance: none;
   width: auto;
   min-width: 120px;
   min-height: 24px;
   padding: 0 22px 0 0;
   border: 0;
+  border-radius: 999px;
   background: transparent;
   color: inherit;
   font-size: 0.82rem;
@@ -2290,7 +2357,8 @@ label {
   min-height: 28px;
   display: flex;
   justify-content: flex-end;
-  align-items: flex-start;
+  align-items: center;
+  align-self: center;
 }
 
 .note-delete-button,
@@ -2327,7 +2395,14 @@ label {
 }
 
 .note-undo-button {
+  display: inline-grid;
+  place-items: center;
   color: #315955;
+}
+
+.note-undo-button .icon {
+  width: 15px;
+  height: 15px;
 }
 
 .note-entry time {

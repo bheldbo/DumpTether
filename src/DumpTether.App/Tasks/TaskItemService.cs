@@ -152,6 +152,45 @@ internal sealed class TaskItemService : ITaskItemService
         return taskItems.Select(MapSummary).ToList();
     }
 
+    public async Task<IReadOnlyList<TaskItemViewCountResponse>> CountByViewsAsync(
+        IReadOnlyList<Guid> viewIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(viewIds);
+
+        var normalizedViewIds = viewIds
+            .Where(viewId => viewId != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (normalizedViewIds.Length == 0)
+        {
+            return [];
+        }
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var queries = new Dictionary<Guid, TaskItemQuery>();
+
+        foreach (var viewId in normalizedViewIds)
+        {
+            queries[viewId] = await BuildQueryAsync(
+                context.WorkspaceId,
+                context.IsSharedOnly,
+                new TaskItemListRequest(ViewId: viewId),
+                cancellationToken);
+        }
+
+        var counts = await _taskItemRepository.CountByQueriesAsync(
+            queries,
+            cancellationToken);
+
+        return normalizedViewIds
+            .Select(viewId => new TaskItemViewCountResponse(
+                viewId,
+                counts.TryGetValue(viewId, out var count) ? count : 0))
+            .ToList();
+    }
+
     public async Task<TaskItemDetailResponse?> GetByIdAsync(
         Guid id,
         CancellationToken cancellationToken)
@@ -889,6 +928,63 @@ internal sealed class TaskItemService : ITaskItemService
             currentSession);
 
         return true;
+    }
+
+    public async Task<int> LeaveWorkspaceSharesAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        if (workspaceId == Guid.Empty)
+        {
+            throw new ArgumentException("Workspace id is required.", nameof(workspaceId));
+        }
+
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        var normalizedEmail = AppUser.NormalizeEmail(currentSession.Email);
+        var taskItems = await _taskItemRepository.ListByWorkspaceSharesForUserAsync(
+            workspaceId,
+            currentSession.UserId,
+            normalizedEmail,
+            trackChanges: true,
+            cancellationToken);
+        var revokedAt = _clock.UtcNow;
+        var revokedCount = 0;
+
+        foreach (var taskItem in taskItems)
+        {
+            var shareIds = taskItem.Shares
+                .Where(share =>
+                    share.RevokedAt is null &&
+                    (share.SharedWithUserId == currentSession.UserId ||
+                        share.NormalizedEmail == normalizedEmail))
+                .Select(share => share.Id)
+                .ToList();
+
+            foreach (var shareId in shareIds)
+            {
+                taskItem.RevokeShare(shareId, revokedAt);
+                revokedCount++;
+            }
+        }
+
+        if (revokedCount == 0)
+        {
+            return 0;
+        }
+
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        foreach (var taskItem in taskItems)
+        {
+            await PublishTaskEventAsync(
+                LiveUpdateEvents.TaskUpdated,
+                taskItem,
+                taskItem.LastTouchedAt,
+                cancellationToken,
+                currentSession);
+        }
+
+        return revokedCount;
     }
 
     private async Task PublishTaskEventAsync(
