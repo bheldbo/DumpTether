@@ -1,9 +1,11 @@
 using DumpTether.App.ArchiveResolutions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DumpTether.Api.Controllers;
 
 [ApiController]
+[Authorize(Policy = AuthPolicies.SessionRequired)]
 [Route("api/archive-resolutions")]
 public sealed class ArchiveResolutionsController : ControllerBase
 {

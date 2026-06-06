@@ -4,6 +4,7 @@ using System.Security.Claims;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
@@ -263,6 +264,7 @@ public sealed class AuthController : ControllerBase
         }
     }
 
+    [Authorize(Policy = AuthPolicies.SessionRequired)]
     [HttpPost("logout")]
     public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
@@ -277,6 +279,7 @@ public sealed class AuthController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Policy = AuthPolicies.SessionRequired)]
     [HttpGet("me")]
     public async Task<ActionResult<CurrentUserResponse>> GetCurrent(CancellationToken cancellationToken)
     {

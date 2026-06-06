@@ -1,10 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Projects;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DumpTether.Api.Controllers;
 
 [ApiController]
+[Authorize(Policy = AuthPolicies.SessionRequired)]
 [Route("api/projects")]
 public sealed class ProjectsController : ControllerBase
 {

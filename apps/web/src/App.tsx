@@ -1796,7 +1796,9 @@ function Sidebar({
     useState<WorkspaceResponse | null>(null);
   const [pendingWorkspaceLeaveId, setPendingWorkspaceLeaveId] = useState<string | null>(null);
   const [workspaceIsSubmitting, setWorkspaceIsSubmitting] = useState(false);
+  const workspaceCreateFormRef = useRef<HTMLFormElement>(null);
   const workspaceInputRef = useRef<HTMLInputElement>(null);
+  const workspaceCreateToggleRef = useRef<HTMLButtonElement>(null);
   const workspaceMembershipsById = useMemo(
     () => new Map(currentUser?.workspaces.map((workspaceItem) => [workspaceItem.id, workspaceItem]) ?? []),
     [currentUser],
@@ -1810,6 +1812,46 @@ function Sidebar({
     if (workspaceCreateIsOpen) {
       workspaceInputRef.current?.focus();
     }
+  }, [workspaceCreateIsOpen]);
+
+  useEffect(() => {
+    if (!workspaceCreateIsOpen) {
+      return undefined;
+    }
+
+    const closeWorkspaceCreate = () => {
+      setWorkspaceCreateIsOpen(false);
+      setWorkspaceDraft('');
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (
+        workspaceCreateFormRef.current?.contains(target) ||
+        workspaceCreateToggleRef.current?.contains(target)
+      ) {
+        return;
+      }
+
+      closeWorkspaceCreate();
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeWorkspaceCreate();
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [workspaceCreateIsOpen]);
 
   const submitWorkspace = async (event: FormEvent<HTMLFormElement>) => {
@@ -1897,6 +1939,7 @@ function Sidebar({
         <button
           className="tiny-icon-button"
           onClick={() => setWorkspaceCreateIsOpen((isOpen) => !isOpen)}
+          ref={workspaceCreateToggleRef}
           title={t('newWorkspace')}
           type="button"
         >
@@ -2047,7 +2090,11 @@ function Sidebar({
           );
         })}
         {workspaceCreateIsOpen ? (
-          <form className="sidebar-inline-form" onSubmit={submitWorkspace}>
+          <form
+            className="sidebar-inline-form"
+            onSubmit={submitWorkspace}
+            ref={workspaceCreateFormRef}
+          >
             <input
               aria-label={t('newWorkspace')}
               onChange={(event) => setWorkspaceDraft(event.target.value)}
@@ -2063,6 +2110,17 @@ function Sidebar({
               type="submit"
             >
               <Icon name="check" />
+            </button>
+            <button
+              className="icon-button"
+              onClick={() => {
+                setWorkspaceDraft('');
+                setWorkspaceCreateIsOpen(false);
+              }}
+              title={t('cancel')}
+              type="button"
+            >
+              <Icon name="close" />
             </button>
           </form>
         ) : null}

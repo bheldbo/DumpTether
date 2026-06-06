@@ -1,12 +1,14 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
 namespace DumpTether.Api.Controllers;
 
 [ApiController]
+[Authorize(Policy = AuthPolicies.SessionRequired)]
 [Route("api/share-links")]
 public sealed class ShareLinksController : ControllerBase
 {

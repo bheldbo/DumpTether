@@ -6,6 +6,8 @@ using DumpTether.App.LiveUpdates;
 using DumpTether.Data;
 using DumpTether.App.Usage;
 using DumpTether.App.Workspaces;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,7 +41,16 @@ builder.Services.AddDumpTetherData(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();
 builder.Services.AddScoped<ICurrentWorkspaceSelection, CurrentWorkspaceSelection>();
-ConfigureExternalAuthentication(builder.Services, builder.Configuration, builder.Environment);
+ConfigureAuthentication(builder.Services, builder.Configuration, builder.Environment);
+builder.Services.AddSingleton<IAuthorizationHandler, SessionRequiredAuthorizationHandler>();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AuthPolicies.SessionRequired, policy =>
+    {
+        policy.AddAuthenticationSchemes(AuthSchemes.Session);
+        policy.Requirements.Add(new SessionRequiredRequirement());
+    });
+});
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("auth", context =>
@@ -94,6 +105,7 @@ app.MapGet("/health", () => Results.Ok(new
 
 app.UseRateLimiter();
 app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 app.MapHub<LiveUpdateHub>("/api/live");
 
@@ -111,14 +123,21 @@ static string GetRateLimitKey(HttpContext context)
     return context.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
 }
 
-static void ConfigureExternalAuthentication(
+static void ConfigureAuthentication(
     IServiceCollection services,
     IConfiguration configuration,
     IWebHostEnvironment environment)
 {
     var oauthOptions = configuration.GetSection("OAuth").Get<OAuthOptions>() ?? new OAuthOptions();
     var authenticationBuilder = services
-        .AddAuthentication()
+        .AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = AuthSchemes.Session;
+            options.DefaultChallengeScheme = AuthSchemes.Session;
+        })
+        .AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(
+            AuthSchemes.Session,
+            _ => { })
         .AddCookie(AuthSchemes.ExternalCookie, options =>
         {
             options.Cookie.Name = "DumpTether.External";

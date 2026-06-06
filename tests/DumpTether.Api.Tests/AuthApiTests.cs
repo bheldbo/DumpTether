@@ -244,6 +244,17 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task UnauthenticatedTemplateQuery_WhenAuthRequired_ReturnsUnauthorized()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/templates");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task PostDevelopmentLogin_WhenEnabled_CreatesNormalSession()
     {
         using var factory = new DumpTetherApiFactory(

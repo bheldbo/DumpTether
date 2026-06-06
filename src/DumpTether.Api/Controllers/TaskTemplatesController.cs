@@ -1,10 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Templates;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DumpTether.Api.Controllers;
 
 [ApiController]
+[Authorize(Policy = AuthPolicies.SessionRequired)]
 [Route("api/templates")]
 public sealed class TaskTemplatesController : ControllerBase
 {
