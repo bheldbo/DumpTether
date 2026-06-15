@@ -19,6 +19,11 @@ public sealed record FieldDefinitionResponse(
     string Key,
     string Name,
     string Type,
+    string Scope,
     bool Required,
     int SortOrder,
-    IReadOnlyList<string> Options);
+    IReadOnlyList<string> Options,
+    int LayoutRow,
+    int LayoutColumn,
+    int LayoutRowSpan,
+    int LayoutColumnSpan);

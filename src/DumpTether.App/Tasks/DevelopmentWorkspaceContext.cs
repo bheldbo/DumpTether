@@ -10,4 +10,8 @@ public sealed record DevelopmentWorkspaceContext(
 {
     public bool CanWriteWorkspace =>
         !IsSharedOnly && MembershipRole != WorkspaceMembershipRole.ReadOnly;
+
+    public bool CanDeleteWorkspaceData =>
+        !IsSharedOnly &&
+        (MembershipRole is null || MembershipRole == WorkspaceMembershipRole.Owner);
 }

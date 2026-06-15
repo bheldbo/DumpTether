@@ -20,6 +20,11 @@ public sealed record UpsertFieldDefinitionRequest(
     string Name,
     [Required]
     string Type,
+    string? Scope,
     bool Required,
     int SortOrder,
-    IReadOnlyList<string>? Options = null);
+    IReadOnlyList<string>? Options = null,
+    int? LayoutRow = null,
+    int? LayoutColumn = null,
+    int? LayoutRowSpan = null,
+    int? LayoutColumnSpan = null);

@@ -75,9 +75,14 @@ internal sealed class TaskTemplateService : ITaskTemplateService
                 field.Key,
                 field.Name,
                 field.Type,
+                field.Scope,
                 field.Required,
                 field.SortOrder,
-                field.OptionsJson);
+                field.OptionsJson,
+                field.LayoutRow,
+                field.LayoutColumn,
+                field.LayoutRowSpan,
+                field.LayoutColumnSpan);
         }
 
         await _taskTemplateRepository.AddAsync(template, cancellationToken);
@@ -186,9 +191,14 @@ internal sealed class TaskTemplateService : ITaskTemplateService
                     requestedField.Key,
                     requestedField.Name,
                     requestedField.Type,
+                    requestedField.Scope,
                     requestedField.Required,
                     requestedField.SortOrder,
-                    requestedField.OptionsJson);
+                    requestedField.OptionsJson,
+                    requestedField.LayoutRow,
+                    requestedField.LayoutColumn,
+                    requestedField.LayoutRowSpan,
+                    requestedField.LayoutColumnSpan);
 
                 requestedExistingIds.Add(existingField.Id);
                 continue;
@@ -198,9 +208,14 @@ internal sealed class TaskTemplateService : ITaskTemplateService
                 requestedField.Key,
                 requestedField.Name,
                 requestedField.Type,
+                requestedField.Scope,
                 requestedField.Required,
                 requestedField.SortOrder,
-                requestedField.OptionsJson);
+                requestedField.OptionsJson,
+                requestedField.LayoutRow,
+                requestedField.LayoutColumn,
+                requestedField.LayoutRowSpan,
+                requestedField.LayoutColumnSpan);
         }
 
         foreach (var activeField in activeFields.Values)
@@ -249,9 +264,9 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             .Select((field, index) => NormalizeField(field, index))
             .ToList();
         var duplicateKey = normalizedFields
-            .GroupBy(field => field.Key, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(field => new FieldKey(field.Scope, field.Key.ToLowerInvariant()))
             .FirstOrDefault(group => group.Count() > 1)
-            ?.Key;
+            ?.Key.Key;
 
         if (duplicateKey is not null)
         {
@@ -280,19 +295,45 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             throw new ValidationException($"Unsupported field type '{request.Type}'.");
         }
 
+        var scope = NormalizeScope(request.Scope);
         var name = request.Name.Trim();
         var options = NormalizeOptions(type, request.Options);
+        var layoutRow = NormalizeLayoutValue(
+            request.LayoutRow,
+            defaultValue: 1,
+            maxValue: 12,
+            label: "layout row");
+        var layoutColumn = NormalizeLayoutValue(
+            request.LayoutColumn,
+            defaultValue: 1,
+            maxValue: 12,
+            label: "layout column");
+        var layoutRowSpan = NormalizeLayoutValue(
+            request.LayoutRowSpan,
+            defaultValue: 1,
+            maxValue: 6,
+            label: "layout row span");
+        var layoutColumnSpan = NormalizeLayoutValue(
+            request.LayoutColumnSpan,
+            defaultValue: type == FieldDefinitionType.LongText ? 2 : 1,
+            maxValue: 12,
+            label: "layout column span");
 
         return new NormalizedFieldDefinition(
             request.Id == Guid.Empty ? null : request.Id,
             GenerateKey(name),
             name,
             type,
+            scope,
             request.Required,
             request.SortOrder >= 0 ? request.SortOrder : fallbackSortOrder,
             options.Count == 0
                 ? null
-                : JsonSerializer.Serialize(options, JsonSerializerOptions));
+                : JsonSerializer.Serialize(options, JsonSerializerOptions),
+            layoutRow,
+            layoutColumn,
+            layoutRowSpan,
+            layoutColumnSpan);
     }
 
     private static IReadOnlyList<string> NormalizeOptions(
@@ -352,7 +393,8 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             template.UpdatedAt,
             template.FieldDefinitions
                 .Where(field => field.IsActive)
-                .OrderBy(field => field.SortOrder)
+                .OrderBy(field => field.Scope)
+                .ThenBy(field => field.SortOrder)
                 .ThenBy(field => field.Label)
                 .Select(MapField)
                 .ToList());
@@ -365,9 +407,14 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             fieldDefinition.Key,
             fieldDefinition.Label,
             fieldDefinition.Type.ToString(),
+            fieldDefinition.Scope.ToString(),
             fieldDefinition.IsRequired,
             fieldDefinition.SortOrder,
-            ParseOptions(fieldDefinition.OptionsJson));
+            ParseOptions(fieldDefinition.OptionsJson),
+            fieldDefinition.LayoutRow,
+            fieldDefinition.LayoutColumn,
+            fieldDefinition.LayoutRowSpan,
+            fieldDefinition.LayoutColumnSpan);
     }
 
     internal static IReadOnlyList<string> ParseOptions(string? optionsJson)
@@ -395,7 +442,49 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         string Key,
         string Name,
         FieldDefinitionType Type,
+        FieldDefinitionScope Scope,
         bool Required,
         int SortOrder,
-        string? OptionsJson);
+        string? OptionsJson,
+        int LayoutRow,
+        int LayoutColumn,
+        int LayoutRowSpan,
+        int LayoutColumnSpan);
+
+    private sealed record FieldKey(FieldDefinitionScope Scope, string Key);
+
+    private static FieldDefinitionScope NormalizeScope(string? scope)
+    {
+        if (string.IsNullOrWhiteSpace(scope))
+        {
+            return FieldDefinitionScope.Header;
+        }
+
+        if (!Enum.TryParse<FieldDefinitionScope>(
+                scope,
+                ignoreCase: true,
+                out var parsedScope) ||
+            !Enum.IsDefined(parsedScope))
+        {
+            throw new ValidationException($"Unsupported field scope '{scope}'.");
+        }
+
+        return parsedScope;
+    }
+
+    private static int NormalizeLayoutValue(
+        int? value,
+        int defaultValue,
+        int maxValue,
+        string label)
+    {
+        var normalizedValue = value ?? defaultValue;
+
+        if (normalizedValue < 1 || normalizedValue > maxValue)
+        {
+            throw new ValidationException($"Field {label} must be between 1 and {maxValue}.");
+        }
+
+        return normalizedValue;
+    }
 }

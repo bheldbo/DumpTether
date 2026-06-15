@@ -36,8 +36,11 @@ export function startLiveUpdates(
   connection.on('LiveUpdate', onUpdate);
   connection.onreconnecting((error) => onConnectionLost(error));
   connection.onclose((error) => onConnectionLost(error));
+  let stopWasRequested = false;
   const startPromise = connection.start().catch((error: Error) => {
-    onConnectionLost(error);
+    if (!stopWasRequested) {
+      onConnectionLost(error);
+    }
   });
 
   return {
@@ -56,8 +59,18 @@ export function startLiveUpdates(
       }
     },
     async stop() {
+      stopWasRequested = true;
       connection.off('LiveUpdate', onUpdate);
-      await connection.stop();
+
+      try {
+        await startPromise;
+
+        if (connection.state !== signalR.HubConnectionState.Disconnected) {
+          await connection.stop();
+        }
+      } catch {
+        // The connection may be mid-start during React effect cleanup.
+      }
     },
   };
 }

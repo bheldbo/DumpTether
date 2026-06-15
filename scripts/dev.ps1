@@ -249,6 +249,20 @@ function Stop-Database {
     }
 }
 
+function Stop-ExistingApiProcesses {
+    $apiOutputRoot = Join-Path $repoRoot "src\DumpTether.Api\bin"
+    $apiProcesses = Get-Process -Name "DumpTether.Api" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Path -and
+            $_.Path.StartsWith($apiOutputRoot, [System.StringComparison]::OrdinalIgnoreCase)
+        }
+
+    foreach ($process in $apiProcesses) {
+        Write-Host "Stopping existing DumpTether.Api process $($process.Id) so build/run can replace locked files."
+        Stop-Process -Id $process.Id -Force
+    }
+}
+
 function Invoke-Migrations {
     Invoke-AtRepoRoot {
         Set-DumpTetherRuntimeEnvironment
@@ -265,6 +279,7 @@ function Invoke-Migrations {
 }
 
 function Start-Api {
+    Stop-ExistingApiProcesses
     Set-DumpTetherRuntimeEnvironment
     dotnet run --project $apiProject --no-launch-profile
 }

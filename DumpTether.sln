@@ -19,6 +19,36 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DumpTether.Api.Tests", "tests\DumpTether.Api.Tests\DumpTether.Api.Tests.csproj", "{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "apps", "apps", "{FF9AC7E0-29BC-4F15-8F45-D008C44FEB63}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "web", "web", "{3CA94FAE-6468-4FC3-8EA0-C012191BA8E6}"
+	ProjectSection(SolutionItems) = preProject
+		apps\web\.env.example = apps\web\.env.example
+		apps\web\eslint.config.js = apps\web\eslint.config.js
+		apps\web\index.html = apps\web\index.html
+		apps\web\package-lock.json = apps\web\package-lock.json
+		apps\web\package.json = apps\web\package.json
+		apps\web\tsconfig.app.json = apps\web\tsconfig.app.json
+		apps\web\tsconfig.json = apps\web\tsconfig.json
+		apps\web\tsconfig.node.json = apps\web\tsconfig.node.json
+		apps\web\vite.config.ts = apps\web\vite.config.ts
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "web-src", "web-src", "{19B23972-54B2-4ACC-8846-9EA926FE5863}"
+	ProjectSection(SolutionItems) = preProject
+		apps\web\src\api.ts = apps\web\src\api.ts
+		apps\web\src\App.css = apps\web\src\App.css
+		apps\web\src\App.tsx = apps\web\src\App.tsx
+		apps\web\src\fieldRenderers.tsx = apps\web\src\fieldRenderers.tsx
+		apps\web\src\fieldValues.ts = apps\web\src\fieldValues.ts
+		apps\web\src\liveUpdates.ts = apps\web\src\liveUpdates.ts
+		apps\web\src\localization.ts = apps\web\src\localization.ts
+		apps\web\src\main.tsx = apps\web\src\main.tsx
+		apps\web\src\templateLayout.ts = apps\web\src\templateLayout.ts
+		apps\web\src\types.ts = apps\web\src\types.ts
+		apps\web\src\vite-env.d.ts = apps\web\src\vite-env.d.ts
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -108,5 +138,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{0CF3BE81-B60E-4B80-B8E0-36603825CDA7} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{3CA94FAE-6468-4FC3-8EA0-C012191BA8E6} = {FF9AC7E0-29BC-4F15-8F45-D008C44FEB63}
+		{19B23972-54B2-4ACC-8846-9EA926FE5863} = {3CA94FAE-6468-4FC3-8EA0-C012191BA8E6}
 	EndGlobalSection
 EndGlobal

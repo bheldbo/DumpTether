@@ -147,4 +147,20 @@ public sealed class TaskItemShare
     {
         RevokedAt ??= revokedAt;
     }
+
+    public bool ChangeRole(TaskItemShareRole role)
+    {
+        if (!Enum.IsDefined(role))
+        {
+            throw new ArgumentException("Task share role is not valid.", nameof(role));
+        }
+
+        if (Role == role)
+        {
+            return false;
+        }
+
+        Role = role;
+        return true;
+    }
 }

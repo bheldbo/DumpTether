@@ -56,6 +56,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .Include("_fieldValues")
             .Include(taskItem => taskItem.Shares)
             .Include("_timelineEntries")
+            .Include("_timelineEntries.FieldValues")
             .AsSplitQuery()
             .Where(taskItem => taskItem.WorkspaceId == query.WorkspaceId)
             .ToListAsync(cancellationToken);
@@ -83,6 +84,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
                 .Include("_fieldValues")
                 .Include(taskItem => taskItem.Shares)
                 .Include("_timelineEntries")
+                .Include("_timelineEntries.FieldValues")
                 .AsSplitQuery()
                 .Where(taskItem => taskItem.WorkspaceId == workspaceGroup.Key)
                 .ToListAsync(cancellationToken);
@@ -176,6 +178,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .Include("_fieldValues")
             .Include(taskItem => taskItem.Shares)
             .Include("_timelineEntries")
+            .Include("_timelineEntries.FieldValues")
             .AsSplitQuery()
             .Where(taskItem =>
                 taskItem.Id == id &&
@@ -259,6 +262,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .Include("_fieldValues")
             .Include(taskItem => taskItem.Shares)
             .Include("_timelineEntries")
+            .Include("_timelineEntries.FieldValues")
             .AsSplitQuery()
             .Where(taskItem =>
                 taskItem.Id == share.TaskItemId &&
@@ -299,6 +303,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .Include("_fieldValues")
             .Include(taskItem => taskItem.Shares)
             .Include("_timelineEntries")
+            .Include("_timelineEntries.FieldValues")
             .AsSplitQuery()
             .Where(taskItem =>
                 taskItem.WorkspaceId == workspaceId &&
@@ -332,6 +337,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .Include("_fieldValues")
             .Include(taskItem => taskItem.Shares)
             .Include("_timelineEntries")
+            .Include("_timelineEntries.FieldValues")
             .AsSplitQuery()
             .Where(taskItem =>
                 taskItem.WorkspaceId == workspaceId &&
@@ -343,6 +349,70 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         }
 
         return await query.ToListAsync(cancellationToken);
+    }
+
+    public async Task<int> DeleteArchivedAsync(
+        Guid workspaceId,
+        IReadOnlyList<Guid> ids,
+        CancellationToken cancellationToken)
+    {
+        var filteredIds = ids
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (filteredIds.Length == 0)
+        {
+            return 0;
+        }
+
+        var taskIds = await _dbContext.TaskItems
+            .Where(taskItem =>
+                taskItem.WorkspaceId == workspaceId &&
+                taskItem.ArchivedAt != null &&
+                filteredIds.Contains(taskItem.Id))
+            .Select(taskItem => taskItem.Id)
+            .ToListAsync(cancellationToken);
+
+        if (taskIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var timelineEntryIds = await _dbContext.TaskTimelineEntries
+            .Where(entry => taskIds.Contains(entry.TaskItemId))
+            .Select(entry => entry.Id)
+            .ToListAsync(cancellationToken);
+
+        _dbContext.FieldValues.RemoveRange(
+            await _dbContext.FieldValues
+                .Where(fieldValue => taskIds.Contains(fieldValue.TaskItemId))
+                .ToListAsync(cancellationToken));
+
+        if (timelineEntryIds.Count > 0)
+        {
+            _dbContext.TaskTimelineEntryFieldValues.RemoveRange(
+                await _dbContext.TaskTimelineEntryFieldValues
+                    .Where(fieldValue => timelineEntryIds.Contains(fieldValue.TaskTimelineEntryId))
+                    .ToListAsync(cancellationToken));
+        }
+
+        _dbContext.TaskTimelineEntries.RemoveRange(
+            await _dbContext.TaskTimelineEntries
+                .Where(entry => taskIds.Contains(entry.TaskItemId))
+                .ToListAsync(cancellationToken));
+
+        _dbContext.TaskItemShares.RemoveRange(
+            await _dbContext.TaskItemShares
+                .Where(share => taskIds.Contains(share.TaskItemId))
+                .ToListAsync(cancellationToken));
+
+        _dbContext.TaskItems.RemoveRange(
+            await _dbContext.TaskItems
+                .Where(taskItem => taskIds.Contains(taskItem.Id))
+                .ToListAsync(cancellationToken));
+
+        return taskIds.Count;
     }
 
     public async Task<IReadOnlyList<TaskItem>> ListByShareTokenHashAsync(
@@ -366,6 +436,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .Include("_fieldValues")
             .Include(taskItem => taskItem.Shares)
             .Include("_timelineEntries")
+            .Include("_timelineEntries.FieldValues")
             .AsSplitQuery()
             .Where(taskItem => shareTaskIds.Contains(taskItem.Id));
 

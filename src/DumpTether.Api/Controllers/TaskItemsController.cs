@@ -297,6 +297,56 @@ public sealed class TaskItemsController : ControllerBase
         }
     }
 
+    [EnableRateLimiting("task-writes")]
+    [HttpPost("reopen")]
+    public async Task<ActionResult<TaskItemBatchResponse>> ReopenMany(
+        ReopenTaskItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.ReopenAsync(request, cancellationToken);
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpPost("permanent-delete")]
+    public async Task<ActionResult<TaskItemBatchResponse>> DeleteArchived(
+        DeleteTaskItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.DeleteArchivedAsync(request, cancellationToken);
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
     [HttpGet("{id:guid}/shares")]
     public async Task<ActionResult<IReadOnlyList<TaskItemShareResponse>>> ListShares(
         Guid id,
@@ -391,6 +441,37 @@ public sealed class TaskItemsController : ControllerBase
             var response = await _taskItemService.RevokeShareAsync(
                 id,
                 shareId,
+                cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpPatch("{id:guid}/shares/{shareId:guid}")]
+    public async Task<ActionResult<TaskItemDetailResponse>> UpdateShareRole(
+        Guid id,
+        Guid shareId,
+        UpdateTaskShareRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.UpdateShareRoleAsync(
+                id,
+                shareId,
+                request,
                 cancellationToken);
             return response is null ? NotFound() : Ok(response);
         }

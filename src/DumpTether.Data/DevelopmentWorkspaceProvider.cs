@@ -242,11 +242,16 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
                         GenerateKey(field.Name),
                         field.Name,
                         field.Type,
+                        FieldDefinitionScope.Header,
                         isRequired: false,
                         sortOrder: index,
-                        field.Options.Count == 0
+                        optionsJson: field.Options.Count == 0
                             ? null
-                            : JsonSerializer.Serialize(field.Options));
+                            : JsonSerializer.Serialize(field.Options),
+                        layoutRow: field.LayoutRow,
+                        layoutColumn: field.LayoutColumn,
+                        layoutRowSpan: field.LayoutRowSpan,
+                        layoutColumnSpan: field.LayoutColumnSpan);
                 }
 
                 await _dbContext.TaskTemplates.AddAsync(taskTemplate, cancellationToken);
@@ -534,10 +539,36 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     private sealed record DevelopmentFieldDefinition(
         string Name,
         FieldDefinitionType Type,
-        IReadOnlyList<string> Options)
+        IReadOnlyList<string> Options,
+        int LayoutRow,
+        int LayoutColumn,
+        int LayoutRowSpan,
+        int LayoutColumnSpan)
     {
         public DevelopmentFieldDefinition(string name, FieldDefinitionType type)
-            : this(name, type, [])
+            : this(
+                name,
+                type,
+                [],
+                1,
+                1,
+                1,
+                type == FieldDefinitionType.LongText ? 2 : 1)
+        {
+        }
+
+        public DevelopmentFieldDefinition(
+            string name,
+            FieldDefinitionType type,
+            IReadOnlyList<string> options)
+            : this(
+                name,
+                type,
+                options,
+                1,
+                1,
+                1,
+                type == FieldDefinitionType.LongText ? 2 : 1)
         {
         }
     }

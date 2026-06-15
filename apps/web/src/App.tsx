@@ -1,14 +1,21 @@
 import {
   type CSSProperties,
+  type DragEvent,
   FormEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { Icon, type IconName } from './components/Icon';
+import { ColorOptionPicker } from './components/ColorOptionPicker';
+import { ModalFrame } from './components/ModalFrame';
+import { TaskFilterBar } from './components/TaskFilterBar';
+import { ToastStack } from './components/ToastStack';
 import {
   addTaskTimelineEntry,
   acceptShareLink,
@@ -27,6 +34,7 @@ import {
   createWorkspaceInvitation,
   deleteArchiveResolution,
   deleteProject,
+  deleteTaskItemsPermanently,
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
   deleteWorkspace,
@@ -56,6 +64,7 @@ import {
   loginUser,
   logoutUser,
   reopenTaskItem,
+  reopenTaskItems,
   registerUser,
   removeWorkspaceMember,
   revokeTaskShare,
@@ -64,17 +73,48 @@ import {
   isTemporarySession,
   updateArchiveResolution,
   updateProject,
+  updateTaskShareRole,
   updateTaskItem,
   updateTaskTimelineEntry,
   updateTaskTemplate,
   updateWorkspace,
   updateWorkspaceById,
+  updateWorkspaceMemberRole,
 } from './api';
 import './App.css';
 import { FieldEditorList, FieldValueList } from './fieldRenderers';
 import { toFieldValueMap } from './fieldValues';
 import { startLiveUpdates, type LiveUpdateMessage } from './liveUpdates';
 import { type Language, type Translate, translate } from './localization';
+import {
+  FIELD_LAYOUT_MAX_COLUMNS,
+  getEditableTemplateFieldGridStyle,
+  getTemplateLayoutGridStyle,
+  normalizeTemplateLayoutFields,
+} from './templateLayout';
+import {
+  applyTaskWallFilters,
+  buildTaskFilterOptions,
+  colorChoices,
+  emptyTaskWallFilters,
+  getContextChipStyle,
+  getFollowUpTone,
+  getPrimaryProjectIdForCategories,
+  getProjectsForTaskCategories,
+  getSidebarStyle,
+  getTaskBadges,
+  getTaskCardStyle,
+  getTaskColors,
+  getTaskState,
+  getWorkspaceHeaderStyle,
+  isHexColor,
+  joinTaskCategories,
+  mergeColorOptions,
+  splitTaskCategories,
+  taskWallFiltersAreActive,
+  type TaskWallFilters,
+  uniqueSorted,
+} from './taskUtils';
 import type {
   AuthClientOptionsResponse,
   ArchiveResolutionResponse,
@@ -85,13 +125,15 @@ import type {
   CreateTaskShareLinkRequest,
   CreateTaskItemRequest,
   CreateWorkspaceInvitationRequest,
+  FieldDefinitionResponse,
+  FieldDefinitionScope,
   FieldDefinitionType,
   FieldValueMap,
+  FieldValuePrimitive,
   LoginUserRequest,
   ProjectResponse,
   RegisterUserRequest,
   RegisterUserResponse,
-  SavedViewFollowUpFilter,
   SavedViewResponse,
   SavedViewSortField,
   TaskItemDetailResponse,
@@ -107,8 +149,10 @@ import type {
   WorkspaceMemberResponse,
   UpdateArchiveResolutionRequest,
   UpdateProjectRequest,
+  UpdateTaskShareRequest,
   UpdateTaskItemRequest,
   UpdateWorkspaceRequest,
+  UpdateWorkspaceMemberRequest,
   UpsertFieldDefinitionRequest,
   WorkspaceResponse,
 } from './types';
@@ -116,61 +160,19 @@ import type {
 type WorkspaceMode = 'tasks' | 'templates';
 type SettingsSectionKey = 'general' | 'statuses' | 'archive' | 'cleanup';
 
-type IconName =
-  | 'archive'
-  | 'arrowDown'
-  | 'arrowUp'
-  | 'back'
-  | 'check'
-  | 'calendarX'
-  | 'cloud'
-  | 'clock'
-  | 'close'
-  | 'crown'
-  | 'edit'
-  | 'filterOff'
-  | 'inbox'
-  | 'list'
-  | 'login'
-  | 'logout'
-  | 'mail'
-  | 'note'
-  | 'palette'
-  | 'panel'
-  | 'plus'
-  | 'refresh'
-  | 'search'
-  | 'settings'
-  | 'shield'
-  | 'status'
-  | 'tag'
-  | 'templates'
-  | 'trash'
-  | 'undo'
-  | 'user'
-  | 'users'
-  | 'waiting';
-
 interface EditableTemplateField {
   clientId: string;
   id?: string;
   name: string;
   type: FieldDefinitionType;
+  scope: FieldDefinitionScope;
   required: boolean;
   sortOrder: number;
   optionsText: string;
-}
-
-interface TaskWallFilters {
-  text: string;
-  status: string;
-  category: string;
-  color: string;
-  projectId: string;
-  notTouchedDays: string;
-  followUp: '' | SavedViewFollowUpFilter;
-  sharedWith: string;
-  sharedWithMe: boolean;
+  layoutRow: number;
+  layoutColumn: number;
+  layoutRowSpan: number;
+  layoutColumnSpan: number;
 }
 
 const fieldTypes: FieldDefinitionType[] = [
@@ -179,23 +181,6 @@ const fieldTypes: FieldDefinitionType[] = [
   'Date',
   'Checkbox',
   'Select',
-];
-
-const followUpFilters: SavedViewFollowUpFilter[] = [
-  'Any',
-  'Overdue',
-  'Today',
-  'ThisWeek',
-];
-const staleAfterDays = 14;
-const colorChoices = [
-  '#FDE68A',
-  '#FCA5A5',
-  '#93C5FD',
-  '#86EFAC',
-  '#C4B5FD',
-  '#FDBA74',
-  '#CBD5E1',
 ];
 const languageStorageKey = 'dumptether.language';
 const workspaceStorageKey = 'dumptether.workspace';
@@ -280,6 +265,12 @@ function App() {
   const [lastPingedAt, setLastPingedAt] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [language, setLanguage] = useState<Language>(getInitialLanguage);
+  const toastSequenceRef = useRef(0);
+  const recentToastRef = useRef<{
+    message: string;
+    tone: ToastTone;
+    shownAt: number;
+  } | null>(null);
   const liveConnectionToastAtRef = useRef(0);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     getInitialWorkspaceId,
@@ -306,15 +297,39 @@ function App() {
   );
 
   const showToast = useCallback((message: string, tone: ToastMessage['tone'] = 'info') => {
-    const id = Date.now();
+    const now = Date.now();
+
+    if (
+      recentToastRef.current &&
+      recentToastRef.current.message === message &&
+      recentToastRef.current.tone === tone &&
+      now - recentToastRef.current.shownAt < 1500
+    ) {
+      return;
+    }
+
+    recentToastRef.current = { message, tone, shownAt: now };
+    toastSequenceRef.current += 1;
+    const id = now + toastSequenceRef.current;
+    const duration = tone === 'error' ? 12000 : 5200;
     setToasts((currentToasts) => [
-      ...currentToasts.slice(-2),
+      ...currentToasts.slice(-3),
       { id, message, tone },
     ]);
     window.setTimeout(() => {
       setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== id));
-    }, 5200);
+    }, duration);
   }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== id));
+  }, []);
+
+  useEffect(() => {
+    if (errorMessage) {
+      showToast(errorMessage, 'error');
+    }
+  }, [errorMessage, showToast]);
 
   const pingBackend = useCallback(async (showOfflineToast = false) => {
     const pingedAt = new Date().toISOString();
@@ -490,8 +505,19 @@ function App() {
           cacheIdentity,
         );
         const [templateDetails, selectedTasks, viewCountResponses, allTasksForColors] = await Promise.all([
-          Promise.all(templateSummaries.map((template) =>
-            getTaskTemplate(template.id, workspaceRequestOptions))),
+          Promise.all(templateSummaries.map(async (template) => {
+            try {
+              return await getTaskTemplate(template.id, workspaceRequestOptions);
+            } catch (error) {
+              if (isAbortError(error)) {
+                throw error;
+              }
+
+              return null;
+            }
+          })).then((details) =>
+            details.filter((template): template is TaskTemplateDetailResponse =>
+              template !== null)),
           selectedViewId
             ? listTaskItems({ viewId: selectedViewId }, workspaceRequestOptions)
             : Promise.resolve([]),
@@ -615,7 +641,7 @@ function App() {
   }, [pingBackend]);
 
   useEffect(() => {
-    if (!currentUser || temporarySessionIsActive) {
+    if (!currentUser || temporarySessionIsActive || !selectedWorkspaceId) {
       return undefined;
     }
 
@@ -943,6 +969,27 @@ function App() {
     }
   };
 
+  const handleUpdateWorkspaceMemberRole = async (
+    userId: string,
+    requestBody: UpdateWorkspaceMemberRequest,
+  ) => {
+    try {
+      const updated = await updateWorkspaceMemberRole(userId, requestBody);
+      setWorkspaceMembers((currentMembers) =>
+        currentMembers.map((member) =>
+          member.userId === updated.userId ? updated : member,
+        ),
+      );
+      setErrorMessage(null);
+      return updated;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
   const handleLeaveWorkspaceAccess = async (workspaceId: string) => {
     const workspaceToLeave = workspaces.find((candidate) => candidate.id === workspaceId);
 
@@ -1099,21 +1146,41 @@ function App() {
   };
 
   const handleOpenTemplates = () => {
-    setMode('templates');
+    const nextMode: WorkspaceMode = mode === 'templates' ? 'tasks' : 'templates';
+
+    setMode(nextMode);
     setSelectedTaskId(null);
-    updateUrl('templates', null);
+    updateUrl(nextMode, nextMode === 'templates' ? null : currentViewId);
+  };
+
+  const handleToggleSettings = () => {
+    setAccountIsOpen(false);
+    setSettingsIsOpen((isOpen) => !isOpen);
+  };
+
+  const handleToggleAccount = () => {
+    setSettingsIsOpen(false);
+    setAccountIsOpen((isOpen) => !isOpen);
   };
 
   const handleCreateTaskItem = async (
     title: string,
     options: Partial<CreateTaskItemRequest> = {},
   ) => {
+    if (!workspace?.id) {
+      const message = t('createBoardBeforeTasks');
+      showToast(message, 'error');
+      return null;
+    }
+
     try {
       const created = await createTaskItem({
         title,
         projectId: options.projectId ?? null,
         category: options.category ?? null,
         taskTemplateId: options.taskTemplateId ?? null,
+      }, {
+        workspaceId: workspace.id,
       });
       setMode('tasks');
       setSelectedTaskId(null);
@@ -1127,7 +1194,8 @@ function App() {
       }
       return created;
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      showToast(message, 'error');
       return null;
     }
   };
@@ -1238,6 +1306,31 @@ function App() {
     }
   };
 
+  const handleUpdateTaskShareRole = async (
+    taskItemId: string,
+    shareId: string,
+    requestBody: UpdateTaskShareRequest,
+  ) => {
+    try {
+      const updated = await updateTaskShareRole(taskItemId, shareId, requestBody);
+      setSelectedTask((currentTask) =>
+        currentTask?.id === updated.id ? updated : currentTask,
+      );
+      setTaskItems((currentItems) =>
+        currentItems.map((taskItem) =>
+          taskItem.id === updated.id ? updated : taskItem,
+        ),
+      );
+      setErrorMessage(null);
+      return updated;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
   const handleUpdateTaskItems = async (
     taskItemIds: string[],
     requestBody: UpdateTaskItemRequest,
@@ -1259,13 +1352,19 @@ function App() {
     await handleUpdateTaskItem({ fieldValues });
   };
 
-  const handleAddTimelineEntry = async (note: string) => {
+  const handleAddTimelineEntry = async (
+    note: string,
+    fieldValues?: FieldValueMap,
+  ) => {
     if (!selectedTask) {
       return;
     }
 
     try {
-      const updated = await addTaskTimelineEntry(selectedTask.id, { note });
+      const updated = await addTaskTimelineEntry(selectedTask.id, {
+        note,
+        ...(fieldValues ? { fieldValues } : {}),
+      });
       setSelectedTask(updated);
       setTaskItems((currentItems) =>
         currentItems.map((taskItem) =>
@@ -1277,13 +1376,20 @@ function App() {
     }
   };
 
-  const handleUpdateTimelineEntry = async (entryId: string, note: string) => {
+  const handleUpdateTimelineEntry = async (
+    entryId: string,
+    note: string | null,
+    fieldValues?: FieldValueMap,
+  ) => {
     if (!selectedTask) {
       return;
     }
 
     try {
-      const updated = await updateTaskTimelineEntry(selectedTask.id, entryId, { note });
+      const updated = await updateTaskTimelineEntry(selectedTask.id, entryId, {
+        note,
+        ...(fieldValues ? { fieldValues } : {}),
+      });
       setSelectedTask(updated);
       setTaskItems((currentItems) =>
         currentItems.map((taskItem) =>
@@ -1408,22 +1514,87 @@ function App() {
     }
   };
 
+  const handleReopenTaskItems = async (taskItemIds: string[], note?: string) => {
+    if (taskItemIds.length === 0) {
+      return;
+    }
+
+    try {
+      await reopenTaskItems({
+        taskItemIds,
+        note: note?.trim() || null,
+      });
+      setSelectedTaskId(null);
+      setSelectedTask(null);
+      await loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
+      showToast(t('tasksUnarchived'));
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleDeleteTaskItemsPermanently = async (taskItemIds: string[]) => {
+    if (taskItemIds.length === 0) {
+      return;
+    }
+
+    try {
+      await deleteTaskItemsPermanently({ taskItemIds });
+      setSelectedTaskId(null);
+      setSelectedTask(null);
+      await loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
+      showToast(t('tasksDeletedPermanently'));
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
   const handleSaveTemplate = async (
     id: string | null,
     name: string,
     fields: UpsertFieldDefinitionRequest[],
-  ) => {
+  ): Promise<TaskTemplateDetailResponse | null> => {
     try {
-      if (id) {
-        await updateTaskTemplate(id, { name, fields });
-      } else {
-        await createTaskTemplate({ name, fields });
-      }
+      const savedTemplate = id
+        ? await updateTaskTemplate(id, { name, fields })
+        : await createTaskTemplate({ name, fields });
 
-      await loadWorkspace(currentViewId);
+      setTemplates((currentTemplates) => {
+        const existingIndex = currentTemplates.findIndex(
+          (template) => template.id === savedTemplate.id,
+        );
+
+        if (existingIndex >= 0) {
+          return currentTemplates.map((template) =>
+            template.id === savedTemplate.id ? savedTemplate : template);
+        }
+
+        return [...currentTemplates, savedTemplate]
+          .sort((first, second) => first.name.localeCompare(second.name));
+      });
+
+      setSelectedTask((currentTask) =>
+        currentTask?.taskTemplateId === savedTemplate.id
+          ? { ...currentTask, template: savedTemplate }
+          : currentTask);
+
+      void loadWorkspace(currentViewId, selectedWorkspaceId, {
+        force: true,
+        silent: true,
+      });
       setErrorMessage(null);
+      return savedTemplate;
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+      return null;
     }
   };
 
@@ -1581,8 +1752,8 @@ function App() {
         onCreateWorkspace={handleCreateWorkspace}
         onDeleteWorkspace={handleDeleteWorkspace}
         onLeaveWorkspaceAccess={handleLeaveWorkspaceAccess}
-        onOpenAccount={() => setAccountIsOpen(true)}
-        onOpenSettings={() => setSettingsIsOpen(true)}
+        onOpenAccount={handleToggleAccount}
+        onOpenSettings={handleToggleSettings}
         onOpenTemplates={handleOpenTemplates}
         onRefresh={() => void loadWorkspace(currentViewId, selectedWorkspaceId, { force: true })}
         onResizeStart={handleStartSidebarResize}
@@ -1602,13 +1773,6 @@ function App() {
       />
 
       <section className="workspace" aria-label="Task workspace">
-        {errorMessage ? (
-          <div className="error-banner" role="alert">
-            <strong>Something needs attention.</strong>
-            <span>{errorMessage}</span>
-          </div>
-        ) : null}
-
         {isLoadingAuth ? (
           <section className="auth-gate" aria-label={t('account')}>
             <p className="detail-kicker">DumpTether</p>
@@ -1659,6 +1823,8 @@ function App() {
             onDeleteProject={handleDeleteProject}
             onOpenArchiveDialog={() => setArchiveDialogIsOpen(true)}
             onReopen={handleReopenTaskItem}
+            onReopenTaskItems={handleReopenTaskItems}
+            onDeleteTaskItemsPermanently={handleDeleteTaskItemsPermanently}
             onRevokeTaskShare={handleRevokeTaskShare}
             onRevokeWorkspaceInvitation={handleRevokeWorkspaceInvitation}
             onRemoveWorkspaceMember={handleRemoveWorkspaceMember}
@@ -1670,11 +1836,13 @@ function App() {
               setSelectedTask(null);
             }}
             onUpdateFieldValues={handleUpdateFieldValues}
+            onUpdateTaskShareRole={handleUpdateTaskShareRole}
             onUpdateTaskItems={handleUpdateTaskItems}
             onUpdateTaskItem={handleUpdateTaskItem}
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
             onUpdateProject={handleUpdateProject}
             onUpdateWorkspace={handleUpdateWorkspace}
+            onUpdateWorkspaceMemberRole={handleUpdateWorkspaceMemberRole}
             onShowToast={showToast}
             projects={projects}
             selectedTask={selectedTask}
@@ -1725,7 +1893,7 @@ function App() {
           t={t}
         />
       ) : null}
-      <ToastStack toasts={toasts} />
+      <ToastStack onDismiss={dismissToast} toasts={toasts} />
     </main>
   );
 }
@@ -2238,7 +2406,7 @@ function DeleteWorkspaceDialog({
   const [isDeleting, setIsDeleting] = useState(false);
 
   return (
-    <div className="dialog-backdrop" role="presentation">
+    <ModalFrame onClose={onClose}>
       <section
         aria-labelledby="delete-workspace-title"
         aria-modal="true"
@@ -2278,7 +2446,7 @@ function DeleteWorkspaceDialog({
           </button>
         </div>
       </section>
-    </div>
+    </ModalFrame>
   );
 }
 
@@ -2305,6 +2473,8 @@ function TaskBoard({
   onDeleteTimelineEntry,
   onOpenArchiveDialog,
   onReopen,
+  onReopenTaskItems,
+  onDeleteTaskItemsPermanently,
   onRemoveWorkspaceMember,
   onRevokeTaskShare,
   onRevokeWorkspaceInvitation,
@@ -2312,10 +2482,12 @@ function TaskBoard({
   onSelectTaskItem,
   onUpdateFieldValues,
   onUpdateProject,
+  onUpdateTaskShareRole,
   onUpdateTaskItems,
   onUpdateTaskItem,
   onUpdateTimelineEntry,
   onUpdateWorkspace,
+  onUpdateWorkspaceMemberRole,
   onShowToast,
   projects,
   selectedTask,
@@ -2337,7 +2509,7 @@ function TaskBoard({
   isLoading: boolean;
   isLoadingDetail: boolean;
   isRefreshing: boolean;
-  onAddTimelineEntry: (note: string) => Promise<void>;
+  onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onArchiveTaskItems: (taskItemIds: string[], requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onCloseArchiveDialog: () => void;
@@ -2361,6 +2533,8 @@ function TaskBoard({
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
+  onReopenTaskItems: (taskItemIds: string[], note?: string) => Promise<void>;
+  onDeleteTaskItemsPermanently: (taskItemIds: string[]) => Promise<void>;
   onRemoveWorkspaceMember: (userId: string) => Promise<void>;
   onRevokeTaskShare: (taskItemId: string, shareId: string) => Promise<void>;
   onRevokeWorkspaceInvitation: (id: string) => Promise<void>;
@@ -2368,10 +2542,23 @@ function TaskBoard({
   onSelectTaskItem: (id: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
+  onUpdateTaskShareRole: (
+    taskItemId: string,
+    shareId: string,
+    requestBody: UpdateTaskShareRequest,
+  ) => Promise<TaskItemDetailResponse>;
   onUpdateTaskItems: (taskItemIds: string[], requestBody: UpdateTaskItemRequest) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
-  onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+  onUpdateTimelineEntry: (
+    entryId: string,
+    note: string | null,
+    fieldValues?: FieldValueMap,
+  ) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
+  onUpdateWorkspaceMemberRole: (
+    userId: string,
+    requestBody: UpdateWorkspaceMemberRequest,
+  ) => Promise<WorkspaceMemberResponse>;
   onShowToast: (message: string, tone?: ToastTone) => void;
   projects: ProjectResponse[];
   selectedTask: TaskItemDetailResponse | null;
@@ -2396,9 +2583,15 @@ function TaskBoard({
   const currentUserHasReadOnlyWorkspaceAccess = currentWorkspaceMember
     ? isReadOnlyRole(currentWorkspaceMember.role)
     : false;
+  const hasWorkspace = Boolean(workspace?.id);
   const canManageSharing = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
   const canManageWorkspaceMetadata = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
-  const canCreateTask = currentView?.filter.archive !== 'Archived' &&
+  const archiveViewIsActive = currentView?.filter.archive === 'Archived';
+  const canCreateTask = hasWorkspace &&
+    !archiveViewIsActive &&
+    !workspaceIsTaskShareOnly &&
+    !currentUserHasReadOnlyWorkspaceAccess;
+  const canUseBatchActions = hasWorkspace &&
     !workspaceIsTaskShareOnly &&
     !currentUserHasReadOnlyWorkspaceAccess;
   const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
@@ -2406,7 +2599,11 @@ function TaskBoard({
   const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [batchArchiveIsOpen, setBatchArchiveIsOpen] = useState(false);
+  const [batchReopenIsOpen, setBatchReopenIsOpen] = useState(false);
+  const [batchPermanentDeleteIsOpen, setBatchPermanentDeleteIsOpen] = useState(false);
   const [batchShareIsOpen, setBatchShareIsOpen] = useState(false);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressHandledRef = useRef(false);
   const visibleTaskItems = useMemo(
     () => applyTaskWallFilters(taskItems, filters, currentUserEmail, projects),
     [currentUserEmail, filters, projects, taskItems],
@@ -2438,20 +2635,51 @@ function TaskBoard({
     );
   }, [visibleTaskItems]);
 
-  const toggleSelectedTask = (taskItemId: string) => {
+  const toggleSelectedTask = useCallback((taskItemId: string) => {
     setSelectedTaskIds((currentIds) =>
       currentIds.includes(taskItemId)
         ? currentIds.filter((currentId) => currentId !== taskItemId)
         : [...currentIds, taskItemId],
     );
-  };
+  }, []);
 
-  const closeEditMode = () => {
+  const closeEditMode = useCallback(() => {
     setEditModeIsEnabled(false);
     setSelectedTaskIds([]);
     setBatchArchiveIsOpen(false);
+    setBatchReopenIsOpen(false);
+    setBatchPermanentDeleteIsOpen(false);
     setBatchShareIsOpen(false);
-  };
+  }, []);
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const startTaskLongPress = useCallback((
+    event: ReactPointerEvent<HTMLButtonElement>,
+    taskItemId: string,
+  ) => {
+    if (event.pointerType === 'mouse' || editModeIsEnabled || focusModeIsEnabled) {
+      return;
+    }
+
+    clearLongPressTimer();
+    longPressHandledRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      setEditModeIsEnabled(true);
+      setSelectedTaskIds((currentIds) =>
+        currentIds.includes(taskItemId) ? currentIds : [...currentIds, taskItemId],
+      );
+      longPressHandledRef.current = true;
+      longPressTimerRef.current = null;
+    }, 420);
+  }, [clearLongPressTimer, editModeIsEnabled, focusModeIsEnabled]);
+
+  useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
 
   const closeFocusedTask = useCallback(async () => {
     const idsToDelete = pendingDeletedNoteIds;
@@ -2466,6 +2694,11 @@ function TaskBoard({
   }, [onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
 
   const openCreateTask = useCallback(() => {
+    if (!hasWorkspace) {
+      onShowToast(t('createBoardBeforeTasks'), 'error');
+      return;
+    }
+
     if (!canCreateTask) {
       onShowToast(t('boardAccessCannotCreateTasks'), 'error');
       return;
@@ -2476,7 +2709,7 @@ function TaskBoard({
     }
 
     setDraftTaskIsOpen(true);
-  }, [canCreateTask, draftTaskIsOpen, focusedTaskItem, onShowToast, t]);
+  }, [canCreateTask, draftTaskIsOpen, focusedTaskItem, hasWorkspace, onShowToast, t]);
 
   useEffect(() => {
     if (!selectedTaskId || archiveDialogIsOpen) {
@@ -2509,9 +2742,12 @@ function TaskBoard({
 
       if (event.altKey && event.key.toLowerCase() === 'x') {
         event.preventDefault();
-        if (visibleTaskItems.length > 0) {
-          setEditModeIsEnabled((isEnabled) => !isEnabled);
-          window.dispatchEvent(new CustomEvent('dumptether:open-actions'));
+        if (canUseBatchActions && visibleTaskItems.length > 0) {
+          if (editModeIsEnabled) {
+            closeEditMode();
+          } else {
+            setEditModeIsEnabled(true);
+          }
         }
       }
     };
@@ -2519,7 +2755,7 @@ function TaskBoard({
     window.addEventListener('keydown', handleKeyDown);
 
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [openCreateTask, visibleTaskItems.length]);
+  }, [canUseBatchActions, closeEditMode, editModeIsEnabled, openCreateTask, visibleTaskItems.length]);
 
   return (
     <section
@@ -2542,6 +2778,7 @@ function TaskBoard({
           onCreateWorkspaceInvitation={onCreateWorkspaceInvitation}
           onRemoveWorkspaceMember={onRemoveWorkspaceMember}
           onRevokeWorkspaceInvitation={onRevokeWorkspaceInvitation}
+          onUpdateWorkspaceMemberRole={onUpdateWorkspaceMemberRole}
           colorOptions={colorOptions}
           invitations={workspaceInvitations}
           members={workspaceMembers}
@@ -2564,7 +2801,6 @@ function TaskBoard({
             ...filterOptions,
             statuses: uniqueSorted([...filterOptions.statuses, ...statusOptions]),
           }}
-          projects={projects}
           t={t}
         />
       ) : null}
@@ -2579,7 +2815,9 @@ function TaskBoard({
         {isLoading ? <p className="empty-copy">{t('loadingTasks')}</p> : null}
         {!isLoading && displayedTaskItems.length === 0 ? (
           <p className="empty-copy board-empty">
-            {filtersAreActive
+            {!hasWorkspace
+              ? t('noBoardSelected')
+              : filtersAreActive
               ? t('noTasksMatch')
               : t('noTasks')}
           </p>
@@ -2629,6 +2867,11 @@ function TaskBoard({
                 aria-pressed={editModeIsEnabled ? isSelectedForEdit : undefined}
                 className="task-card-button"
                 onClick={() => {
+                  if (longPressHandledRef.current) {
+                    longPressHandledRef.current = false;
+                    return;
+                  }
+
                   if (editModeIsEnabled) {
                     toggleSelectedTask(taskItem.id);
                     return;
@@ -2640,6 +2883,10 @@ function TaskBoard({
                     onSelectTaskItem(taskItem.id);
                   }
                 }}
+                onPointerCancel={clearLongPressTimer}
+                onPointerDown={(event) => startTaskLongPress(event, taskItem.id)}
+                onPointerLeave={clearLongPressTimer}
+                onPointerUp={clearLongPressTimer}
                 title={isExpanded ? t('backToWall') : taskItem.title}
                 type="button"
               >
@@ -2741,6 +2988,7 @@ function TaskBoard({
                       onUpdateFieldValues={onUpdateFieldValues}
                       onCreateTaskShareLink={onCreateTaskShareLink}
                       onRevokeTaskShare={onRevokeTaskShare}
+                      onUpdateTaskShareRole={onUpdateTaskShareRole}
                       onUpdateTaskItem={onUpdateTaskItem}
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
                       colorOptions={colorOptions}
@@ -2758,8 +3006,12 @@ function TaskBoard({
           );
         })}
       </div>
-      {!isLoading && canCreateTask && !focusModeIsEnabled ? (
+      {!isLoading &&
+      (canCreateTask || (canUseBatchActions && visibleTaskItems.length > 0)) &&
+      !focusModeIsEnabled ? (
         <FloatingBoardActions
+          archiveModeIsActive={archiveViewIsActive}
+          canCreateTask={canCreateTask}
           editModeIsEnabled={editModeIsEnabled}
           taskCount={visibleTaskItems.length}
           colorOptions={colorOptions}
@@ -2774,11 +3026,14 @@ function TaskBoard({
           }}
           onOpenCreateTask={openCreateTask}
           onOpenBatchArchive={() => setBatchArchiveIsOpen(true)}
+          onOpenBatchReopen={() => setBatchReopenIsOpen(true)}
+          onOpenBatchPermanentDelete={() => setBatchPermanentDeleteIsOpen(true)}
           onOpenBatchShare={() => setBatchShareIsOpen(true)}
           onToggleEditMode={() =>
             editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
           selectedTaskCount={selectedTaskIds.length}
           canManageSharing={canManageSharing}
+          canPermanentlyDelete={currentUserOwnsWorkspace && !workspaceIsTaskShareOnly}
           projects={projects}
           statusOptions={statusOptions}
           t={t}
@@ -2814,6 +3069,28 @@ function TaskBoard({
           taskTitle={`${selectedTaskIds.length} ${t('selectedTasks')}`}
         />
       ) : null}
+      {batchReopenIsOpen ? (
+        <ReopenDialog
+          onClose={() => setBatchReopenIsOpen(false)}
+          onReopen={async (note) => {
+            await onReopenTaskItems(selectedTaskIds, note);
+            closeEditMode();
+          }}
+          t={t}
+          taskTitle={`${selectedTaskIds.length} ${t('selectedTasks')}`}
+        />
+      ) : null}
+      {batchPermanentDeleteIsOpen ? (
+        <PermanentDeleteDialog
+          count={selectedTaskIds.length}
+          onClose={() => setBatchPermanentDeleteIsOpen(false)}
+          onDelete={async () => {
+            await onDeleteTaskItemsPermanently(selectedTaskIds);
+            closeEditMode();
+          }}
+          t={t}
+        />
+      ) : null}
     </section>
   );
 }
@@ -2833,6 +3110,7 @@ function WorkspaceHeader({
   onSelectProjectFilter,
   onUpdateProject,
   onUpdateWorkspace,
+  onUpdateWorkspaceMemberRole,
   projects,
   selectedProjectId,
   t,
@@ -2854,6 +3132,10 @@ function WorkspaceHeader({
   onSelectProjectFilter: (projectId: string) => void;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
+  onUpdateWorkspaceMemberRole: (
+    userId: string,
+    requestBody: UpdateWorkspaceMemberRequest,
+  ) => Promise<WorkspaceMemberResponse>;
   projects: ProjectResponse[];
   selectedProjectId: string;
   t: Translate;
@@ -2870,6 +3152,7 @@ function WorkspaceHeader({
   const [newProjectColor, setNewProjectColor] = useState('');
   const [projectIsSubmitting, setProjectIsSubmitting] = useState(false);
   const [inviteIsOpen, setInviteIsOpen] = useState(false);
+  const [focusedMemberId, setFocusedMemberId] = useState<string | null>(null);
   const [pendingRemoveMemberId, setPendingRemoveMemberId] = useState<string | null>(null);
   const [pendingDeleteProject, setPendingDeleteProject] = useState<ProjectResponse | null>(null);
   const pendingInvitations = invitations.filter(
@@ -3047,6 +3330,12 @@ function WorkspaceHeader({
                 await onRemoveWorkspaceMember(member.userId);
                 setPendingRemoveMemberId(null);
               }}
+              onOpenManage={() => {
+                if (canManageSharing && !isOwnerRole(member.role)) {
+                  setFocusedMemberId(member.userId);
+                  setInviteIsOpen(true);
+                }
+              }}
               onRequestRemove={() => setPendingRemoveMemberId(member.userId)}
               t={t}
             />
@@ -3097,12 +3386,16 @@ function WorkspaceHeader({
                 token: created.token ?? '',
               };
             }}
+            onRemoveWorkspaceMember={onRemoveWorkspaceMember}
             onRevokeTaskShare={undefined}
             onRevokeWorkspaceInvitation={onRevokeWorkspaceInvitation}
+            onUpdateWorkspaceMemberRole={onUpdateWorkspaceMemberRole}
+            workspaceMembers={members}
             pendingInvitations={pendingInvitations}
             roleMode="workspace"
             t={t}
             title={workspace ? formatWorkspaceName(workspace.name, t) : t('workspaces')}
+            focusedWorkspaceMemberId={focusedMemberId}
           />
         ) : null}
         <div className="project-tag-strip" aria-label={t('projectTags')}>
@@ -3287,7 +3580,7 @@ function DeleteProjectDialog({
   const [isDeleting, setIsDeleting] = useState(false);
 
   return (
-    <div className="dialog-backdrop" role="presentation">
+    <ModalFrame onClose={onClose}>
       <section
         aria-labelledby="delete-project-title"
         aria-modal="true"
@@ -3327,7 +3620,7 @@ function DeleteProjectDialog({
           </button>
         </div>
       </section>
-    </div>
+    </ModalFrame>
   );
 }
 
@@ -3362,6 +3655,7 @@ function WorkspaceMemberChip({
   member,
   onCancelRemove,
   onConfirmRemove,
+  onOpenManage,
   onRequestRemove,
   t,
 }: {
@@ -3369,6 +3663,7 @@ function WorkspaceMemberChip({
   member: WorkspaceMemberResponse;
   onCancelRemove: () => void;
   onConfirmRemove: () => Promise<void>;
+  onOpenManage: () => void;
   onRequestRemove: () => void;
   t: Translate;
 }) {
@@ -3379,6 +3674,21 @@ function WorkspaceMemberChip({
     <span
       className={`member-chip member-chip-manageable${isOwner ? ' member-chip-owner' : ''}`}
       data-confirming={isConfirming}
+      onClick={(event) => {
+        if (event.target instanceof HTMLElement && event.target.closest('.member-chip-remove, .member-chip-confirm')) {
+          return;
+        }
+
+        onOpenManage();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpenManage();
+        }
+      }}
+      role={canRemove ? 'button' : undefined}
+      tabIndex={canRemove ? 0 : undefined}
       title={isOwner ? `${member.email} - ${t('roleOwner')}` : member.email}
     >
       <Icon name={isOwner ? 'crown' : 'user'} />
@@ -3420,27 +3730,45 @@ function WorkspaceMemberChip({
 
 function ShareDialog({
   existingTaskShares,
+  focusedTaskShareId = null,
+  focusedWorkspaceMemberId = null,
   onClose,
   onCreate,
+  onRemoveWorkspaceMember,
   onRevokeTaskShare,
   onRevokeWorkspaceInvitation,
+  onUpdateTaskShareRole,
+  onUpdateWorkspaceMemberRole,
   pendingInvitations,
   roleMode,
   t,
   title,
+  workspaceMembers = [],
 }: {
   existingTaskShares: TaskItemShareResponse[];
+  focusedTaskShareId?: string | null;
+  focusedWorkspaceMemberId?: string | null;
   onClose: () => void;
   onCreate: (
     email: string,
     role: string,
   ) => Promise<{ token: string | null; expiresAt: string }>;
+  onRemoveWorkspaceMember?: (userId: string) => Promise<void>;
   onRevokeTaskShare?: (shareId: string) => Promise<void>;
   onRevokeWorkspaceInvitation?: (id: string) => Promise<void>;
+  onUpdateTaskShareRole?: (
+    shareId: string,
+    requestBody: UpdateTaskShareRequest,
+  ) => Promise<unknown>;
+  onUpdateWorkspaceMemberRole?: (
+    userId: string,
+    requestBody: UpdateWorkspaceMemberRequest,
+  ) => Promise<unknown>;
   pendingInvitations: WorkspaceInvitationResponse[];
   roleMode: 'task' | 'workspace';
   t: Translate;
   title: string;
+  workspaceMembers?: WorkspaceMemberResponse[];
 }) {
   const [shareEmail, setShareEmail] = useState('');
   const [shareRole, setShareRole] = useState('Member');
@@ -3449,6 +3777,7 @@ function ShareDialog({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const visibleTaskShares = existingTaskShares.filter((share) => !share.revokedAt);
+  const visibleWorkspaceMembers = workspaceMembers;
 
   const copyShareUrl = async (value: string) => {
     await copyTextToClipboard(value);
@@ -3484,24 +3813,45 @@ function ShareDialog({
     }
   };
 
+  const updateWorkspaceMemberRole = async (
+    userId: string,
+    role: WorkspaceMembershipRole,
+  ) => {
+    if (!onUpdateWorkspaceMemberRole) {
+      return;
+    }
+
+    setError(null);
+    try {
+      await onUpdateWorkspaceMemberRole(userId, { role });
+    } catch (updateError) {
+      setError(getErrorMessage(updateError));
+    }
+  };
+
+  const updateTaskShareRole = async (
+    shareId: string,
+    role: 'Member' | 'ReadOnly',
+  ) => {
+    if (!onUpdateTaskShareRole) {
+      return;
+    }
+
+    const nextRole = role === 'ReadOnly' ? 'Viewer' : 'Editor';
+    setError(null);
+    try {
+      await onUpdateTaskShareRole(shareId, { role: nextRole as TaskItemShareRole });
+    } catch (updateError) {
+      setError(getErrorMessage(updateError));
+    }
+  };
+
   return (
-    <div
-      className="dialog-backdrop share-dialog-backdrop"
-      onClick={(event) => {
-        event.stopPropagation();
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-      onPointerDown={(event) => event.stopPropagation()}
-      role="presentation"
-    >
+    <ModalFrame className="dialog-backdrop share-dialog-backdrop" onClose={onClose}>
       <section
         aria-labelledby="share-dialog-title"
         aria-modal="true"
         className="workspace-invite-dialog share-dialog"
-        onClick={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
         role="dialog"
       >
         <div className="dialog-header">
@@ -3559,8 +3909,52 @@ function ShareDialog({
 
         {error ? <p className="form-error">{error}</p> : null}
 
-        {pendingInvitations.length > 0 || visibleTaskShares.length > 0 ? (
+        {visibleWorkspaceMembers.length > 0 ||
+        pendingInvitations.length > 0 ||
+        visibleTaskShares.length > 0 ? (
           <div className="pending-invite-list share-dialog-list">
+            {visibleWorkspaceMembers.map((member) => {
+              const isOwner = isOwnerRole(member.role);
+
+              return (
+                <div
+                  className="share-person-row"
+                  data-focused={focusedWorkspaceMemberId === member.userId}
+                  key={member.userId}
+                >
+                  <Icon name={isOwner ? 'crown' : 'user'} />
+                  <span className="share-person-copy">
+                    <strong>{member.displayName || member.email}</strong>
+                    <small>{member.email}</small>
+                  </span>
+                  <select
+                    aria-label={t('shareRole')}
+                    className="share-role-select"
+                    disabled={isOwner || !onUpdateWorkspaceMemberRole}
+                    onChange={(event) =>
+                      void updateWorkspaceMemberRole(
+                        member.userId,
+                        event.target.value as WorkspaceMembershipRole,
+                      )}
+                    value={isReadOnlyRole(member.role) ? 'ReadOnly' : isOwner ? 'Owner' : 'Member'}
+                  >
+                    {isOwner ? <option value="Owner">{t('roleOwner')}</option> : null}
+                    <option value="Member">{t('roleMember')}</option>
+                    <option value="ReadOnly">{t('roleReadOnly')}</option>
+                  </select>
+                  {!isOwner && onRemoveWorkspaceMember ? (
+                    <button
+                      className="tiny-icon-button"
+                      onClick={() => void onRemoveWorkspaceMember(member.userId)}
+                      title={t('removeMember')}
+                      type="button"
+                    >
+                      <Icon name="close" />
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
             {pendingInvitations.map((invitation) => (
               <span
                 className="pending-invite-chip"
@@ -3583,16 +3977,31 @@ function ShareDialog({
               </span>
             ))}
             {visibleTaskShares.map((share) => (
-              <span
-                className="share-chip"
+              <div
+                className="share-person-row"
+                data-focused={focusedTaskShareId === share.id}
                 key={share.id}
                 title={`${share.email}${share.expiresAt ? ` - ${formatDateTime(share.expiresAt)}` : ''}`}
               >
                 <Icon name={share.acceptedAt ? 'user' : 'mail'} />
-                <span>{share.email}</span>
-                <small>
-                  {formatTaskShareRole(share.role, t)} - {share.acceptedAt ? t('sharedWith') : t('pendingInvites')}
-                </small>
+                <span className="share-person-copy">
+                  <strong>{share.email}</strong>
+                  <small>{share.acceptedAt ? t('sharedWith') : t('pendingInvites')}</small>
+                </span>
+                <select
+                  aria-label={t('shareRole')}
+                  className="share-role-select"
+                  disabled={!onUpdateTaskShareRole}
+                  onChange={(event) =>
+                    void updateTaskShareRole(
+                      share.id,
+                      event.target.value as 'Member' | 'ReadOnly',
+                    )}
+                  value={isReadOnlyTaskShareRole(share.role) ? 'ReadOnly' : 'Member'}
+                >
+                  <option value="Member">{t('roleMember')}</option>
+                  <option value="ReadOnly">{t('roleReadOnly')}</option>
+                </select>
                 {onRevokeTaskShare ? (
                   <button
                     className="tiny-icon-button"
@@ -3603,25 +4012,30 @@ function ShareDialog({
                     <Icon name="close" />
                   </button>
                 ) : null}
-              </span>
+              </div>
             ))}
           </div>
         ) : (
           <p className="context-muted share-dialog-empty">{t('notShared')}</p>
         )}
       </section>
-    </div>
+    </ModalFrame>
   );
 }
 
 function FloatingBoardActions({
+  archiveModeIsActive,
+  canCreateTask,
   canManageSharing,
+  canPermanentlyDelete,
   colorOptions,
   editModeIsEnabled,
   onBatchUpdate,
   onCopyTaskItemsToWorkspace,
   onOpenCreateTask,
   onOpenBatchArchive,
+  onOpenBatchReopen,
+  onOpenBatchPermanentDelete,
   onOpenBatchShare,
   onToggleEditMode,
   projects,
@@ -3631,13 +4045,18 @@ function FloatingBoardActions({
   t,
   workspaces,
 }: {
+  archiveModeIsActive: boolean;
+  canCreateTask: boolean;
   canManageSharing: boolean;
+  canPermanentlyDelete: boolean;
   colorOptions: string[];
   editModeIsEnabled: boolean;
   onBatchUpdate: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   onCopyTaskItemsToWorkspace: (workspaceId: string) => Promise<void>;
   onOpenCreateTask: () => void;
   onOpenBatchArchive: () => void;
+  onOpenBatchReopen: () => void;
+  onOpenBatchPermanentDelete: () => void;
   onOpenBatchShare: () => void;
   onToggleEditMode: () => void;
   projects: ProjectResponse[];
@@ -3682,48 +4101,84 @@ function FloatingBoardActions({
   }, [editModeIsEnabled, isOpen]);
 
   return (
-    <div className="floating-board-actions" ref={menuRef}>
+    <div className="floating-board-actions" data-edit-mode={editModeIsEnabled} ref={menuRef}>
       <button
         className="quick-create-fab"
         data-active={isOpen}
         onClick={() => setIsOpen((open) => !open)}
-        title={t('newTask')}
+        title={editModeIsEnabled
+          ? `${selectedTaskCount} ${t('selectedTasks')}`
+          : archiveModeIsActive ? t('archiveActions') : t('newTask')}
         type="button"
       >
-        <Icon name="plus" />
-        <span>{t('newTask')}</span>
+        <Icon name={editModeIsEnabled ? 'check' : 'plus'} />
+        <span>{editModeIsEnabled
+          ? `${selectedTaskCount} ${t('selectedTasks')}`
+          : archiveModeIsActive ? t('archiveActions') : t('newTask')}</span>
       </button>
 
       {isOpen ? (
         <div className="quick-action-menu">
-          <button
-            onClick={() => {
-              setIsOpen(false);
-              onOpenCreateTask();
-            }}
-            type="button"
-          >
-            <Icon name="plus" />
-            <span>{t('addTask')}</span>
-            <kbd>Alt+N</kbd>
-          </button>
+          {canCreateTask ? (
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                onOpenCreateTask();
+              }}
+              type="button"
+            >
+              <Icon name="plus" />
+              <span>{t('addTask')}</span>
+              <kbd>Alt+N</kbd>
+            </button>
+          ) : null}
           {editModeIsEnabled ? (
             <>
               <span className="quick-action-menu-label">
                 {selectedTaskCount} {t('selectedTasks')}
               </span>
-              <button
-                disabled={selectedTaskCount === 0}
-                onClick={() => {
-                  onOpenBatchArchive();
-                  setIsOpen(false);
-                }}
-                type="button"
-              >
-                <Icon name="archive" />
-                <span>{t('archiveSelected')}</span>
-              </button>
-              {canManageSharing ? (
+              {archiveModeIsActive ? (
+                <>
+                  <button
+                    disabled={selectedTaskCount === 0}
+                    onClick={() => {
+                      onOpenBatchReopen();
+                      setIsOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <Icon name="undo" />
+                    <span>{t('unarchiveSelected')}</span>
+                  </button>
+                  {canPermanentlyDelete ? (
+                    <button
+                      className="danger-action"
+                      disabled={selectedTaskCount === 0}
+                      onClick={() => {
+                        onOpenBatchPermanentDelete();
+                        setIsOpen(false);
+                      }}
+                      type="button"
+                    >
+                      <Icon name="trash" />
+                      <span>{t('deletePermanently')}</span>
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <button
+                  disabled={selectedTaskCount === 0}
+                  onClick={() => {
+                    onOpenBatchArchive();
+                    setIsOpen(false);
+                  }}
+                  type="button"
+                >
+                  <Icon name="archive" />
+                  <span>{t('archiveSelected')}</span>
+                </button>
+              )}
+              {canManageSharing && !archiveModeIsActive ? (
                 <button
                   disabled={selectedTaskCount === 0}
                   onClick={() => {
@@ -3755,69 +4210,73 @@ function FloatingBoardActions({
                     </option>
                   ))}
                 </select>
-                <select
-                  aria-label={t('changeStatus')}
-                  disabled={selectedTaskCount === 0}
-                  onChange={(event) => {
-                    if (event.target.value) {
-                      void onBatchUpdate({ status: event.target.value });
-                      setIsOpen(false);
-                    }
-                  }}
-                  value=""
-                >
-                  <option value="">{t('changeStatus')}</option>
-                  {statusOptions.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label={t('changeCategory')}
-                  disabled={selectedTaskCount === 0}
-                  onChange={(event) => {
-                    const project = projects.find((candidate) => candidate.id === event.target.value);
-                    if (project) {
-                      void onBatchUpdate({
-                        projectId: project.id,
-                        category: project.name,
-                      });
-                      setIsOpen(false);
-                    }
-                  }}
-                  value=""
-                >
-                  <option value="">{t('changeCategory')}</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-                <ColorOptionPicker
-                  emptyLabel={t('noTaskColors')}
-                  label={t('changeColor')}
-                  onChange={(color) => {
-                    void onBatchUpdate({ color: color || null });
-                    setIsOpen(false);
-                  }}
-                  options={colorOptions}
-                  value=""
-                  zeroLabel={t('changeColor')}
-                />
-                <input
-                  aria-label={t('changeDueDate')}
-                  disabled={selectedTaskCount === 0}
-                  onChange={(event) => {
-                    const followUpAt = event.target.value
-                      ? new Date(`${event.target.value}T12:00:00`).toISOString()
-                      : null;
-                    void onBatchUpdate({ followUpAt });
-                    setIsOpen(false);
-                  }}
-                  type="date"
-                />
+                {!archiveModeIsActive ? (
+                  <>
+                    <select
+                      aria-label={t('changeStatus')}
+                      disabled={selectedTaskCount === 0}
+                      onChange={(event) => {
+                        if (event.target.value) {
+                          void onBatchUpdate({ status: event.target.value });
+                          setIsOpen(false);
+                        }
+                      }}
+                      value=""
+                    >
+                      <option value="">{t('changeStatus')}</option>
+                      {statusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label={t('changeCategory')}
+                      disabled={selectedTaskCount === 0}
+                      onChange={(event) => {
+                        const project = projects.find((candidate) => candidate.id === event.target.value);
+                        if (project) {
+                          void onBatchUpdate({
+                            projectId: project.id,
+                            category: project.name,
+                          });
+                          setIsOpen(false);
+                        }
+                      }}
+                      value=""
+                    >
+                      <option value="">{t('changeCategory')}</option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ColorOptionPicker
+                      emptyLabel={t('noTaskColors')}
+                      label={t('changeColor')}
+                      onChange={(color) => {
+                        void onBatchUpdate({ color: color || null });
+                        setIsOpen(false);
+                      }}
+                      options={colorOptions}
+                      value=""
+                      zeroLabel={t('changeColor')}
+                    />
+                    <input
+                      aria-label={t('changeDueDate')}
+                      disabled={selectedTaskCount === 0}
+                      onChange={(event) => {
+                        const followUpAt = event.target.value
+                          ? new Date(`${event.target.value}T12:00:00`).toISOString()
+                          : null;
+                        void onBatchUpdate({ followUpAt });
+                        setIsOpen(false);
+                      }}
+                      type="date"
+                    />
+                  </>
+                ) : null}
               </div>
               <button
                 className="ghost-button"
@@ -3836,7 +4295,7 @@ function FloatingBoardActions({
               <button
                 onClick={() => {
                   onToggleEditMode();
-                  setIsOpen(true);
+                  setIsOpen(false);
                 }}
                 type="button"
               >
@@ -4013,232 +4472,6 @@ function DraftTaskCard({
   );
 }
 
-function TaskFilterBar({
-  filters,
-  filtersAreActive,
-  onChange,
-  onReset,
-  options,
-  projects,
-  t,
-}: {
-  filters: TaskWallFilters;
-  filtersAreActive: boolean;
-  onChange: (filters: TaskWallFilters) => void;
-  onReset: () => void;
-  options: {
-    statuses: string[];
-    categories: string[];
-    colors: string[];
-  };
-  projects: ProjectResponse[];
-  t: Translate;
-}) {
-  const updateFilter = (update: Partial<TaskWallFilters>) => {
-    onChange({ ...filters, ...update });
-  };
-
-  return (
-    <div className="filter-bar" aria-label="Temporary task filters">
-      <label className="filter-search">
-        <span className="sr-only">Search tasks</span>
-        <input
-          onChange={(event) => updateFilter({ text: event.target.value })}
-          placeholder={t('filterWall')}
-          type="search"
-          value={filters.text}
-        />
-      </label>
-
-      <select
-        aria-label="Filter by status"
-        onChange={(event) => updateFilter({ status: event.target.value })}
-        value={filters.status}
-      >
-        <option value="">{t('anyStatus')}</option>
-        {options.statuses.map((status) => (
-          <option key={status} value={status}>
-            {status}
-          </option>
-        ))}
-      </select>
-
-      <ColorOptionPicker
-        emptyLabel={t('noTaskColors')}
-        label={t('color')}
-        onChange={(color) => updateFilter({ color })}
-        options={options.colors}
-        value={filters.color}
-        zeroLabel={t('anyColor')}
-      />
-
-      <select
-        aria-label="Filter by category"
-        onChange={(event) => updateFilter({ category: event.target.value, projectId: '' })}
-        value={filters.category}
-      >
-        <option value="">{t('anyCategory')}</option>
-        {projects.map((project) => (
-          <option key={project.id} value={project.name}>
-            {project.name}
-          </option>
-        ))}
-        {options.categories
-          .filter((category) => !projects.some((project) =>
-            project.name.toLowerCase() === category.toLowerCase()))
-          .map((category) => (
-            <option key={category} value={category}>
-              {category}
-            </option>
-          ))}
-      </select>
-
-      <select
-        aria-label="Filter by follow-up"
-        onChange={(event) =>
-          updateFilter({ followUp: event.target.value as '' | SavedViewFollowUpFilter })
-        }
-        value={filters.followUp}
-      >
-        <option value="">{t('anyFollowUp')}</option>
-        {followUpFilters.map((filter) => (
-          <option key={filter} value={filter}>
-            {formatFollowUpFilter(filter)}
-          </option>
-        ))}
-      </select>
-
-      <input
-        aria-label="Not touched for days"
-        min={1}
-        onChange={(event) => updateFilter({ notTouchedDays: event.target.value })}
-        placeholder={t('notTouchedDays')}
-        type="number"
-        value={filters.notTouchedDays}
-      />
-
-      <input
-        aria-label={t('sharedWith')}
-        onChange={(event) => updateFilter({ sharedWith: event.target.value })}
-        placeholder={t('sharedWith')}
-        type="search"
-        value={filters.sharedWith}
-      />
-
-      {filtersAreActive ? (
-        <button
-          className="icon-button reset-filters-button"
-          onClick={onReset}
-          title={t('removeFilters')}
-          type="button"
-        >
-          <Icon name="filterOff" />
-          <span className="sr-only">{t('removeFilters')}</span>
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function ColorOptionPicker({
-  emptyLabel,
-  label,
-  onChange,
-  options,
-  value,
-  zeroLabel,
-}: {
-  emptyLabel: string;
-  label: string;
-  onChange: (color: string) => void;
-  options: string[];
-  value: string;
-  zeroLabel: string;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const pickerRef = useRef<HTMLDivElement>(null);
-  const selectedColor = options.find((color) => color === value) ?? '';
-
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (
-        pickerRef.current &&
-        event.target instanceof Node &&
-        !pickerRef.current.contains(event.target)
-      ) {
-        setIsOpen(false);
-      }
-    };
-
-    window.addEventListener('pointerdown', handlePointerDown);
-
-    return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [isOpen]);
-
-  const chooseColor = (color: string) => {
-    onChange(color);
-    setIsOpen(false);
-  };
-
-  return (
-    <div className="color-option-picker" ref={pickerRef}>
-      <button
-        aria-expanded={isOpen}
-        aria-label={label}
-        className="color-option-trigger"
-        onClick={() => setIsOpen((open) => !open)}
-        type="button"
-      >
-        {selectedColor ? (
-          <>
-            <span className="color-option-swatch" style={{ backgroundColor: selectedColor }} />
-            <span className="color-option-code">{selectedColor}</span>
-          </>
-        ) : (
-          <>
-            <span className="color-option-empty" />
-            <span>{zeroLabel}</span>
-          </>
-        )}
-      </button>
-
-      {isOpen ? (
-        <div className="color-option-menu" role="listbox">
-          <button
-            className="color-option-button"
-            data-selected={!value}
-            onClick={() => chooseColor('')}
-            type="button"
-          >
-            <span className="color-option-empty" />
-            <span>{zeroLabel}</span>
-          </button>
-          {options.map((color) => (
-            <button
-              className="color-option-button"
-              data-selected={value.toUpperCase() === color}
-              key={color}
-              onClick={() => chooseColor(color)}
-              title={color}
-              type="button"
-            >
-              <span className="color-option-swatch" style={{ backgroundColor: color }} />
-              <span className="color-option-code">{color}</span>
-            </button>
-          ))}
-          {options.length === 0 ? (
-            <span className="color-option-empty-text">{emptyLabel}</span>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function TaskDetail({
   archiveDialogIsOpen,
   archiveResolutions,
@@ -4256,6 +4489,7 @@ function TaskDetail({
   onUndoDeleteTimelineEntry,
   onUpdateFieldValues,
   onUpdateTaskItem,
+  onUpdateTaskShareRole,
   onUpdateTimelineEntry,
   pendingDeletedNoteIds,
   projects,
@@ -4267,7 +4501,7 @@ function TaskDetail({
   archiveResolutions: ArchiveResolutionResponse[];
   canManageSharing: boolean;
   colorOptions: string[];
-  onAddTimelineEntry: (note: string) => Promise<void>;
+  onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onClose: () => Promise<void>;
   onCloseArchiveDialog: () => void;
@@ -4282,7 +4516,16 @@ function TaskDetail({
   onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
-  onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+  onUpdateTaskShareRole: (
+    taskItemId: string,
+    shareId: string,
+    requestBody: UpdateTaskShareRequest,
+  ) => Promise<TaskItemDetailResponse>;
+  onUpdateTimelineEntry: (
+    entryId: string,
+    note: string | null,
+    fieldValues?: FieldValueMap,
+  ) => Promise<void>;
   pendingDeletedNoteIds: string[];
   projects: ProjectResponse[];
   statusOptions: string[];
@@ -4292,17 +4535,67 @@ function TaskDetail({
   const [reopenNote, setReopenNote] = useState('');
   const [fieldDraft, setFieldDraft] = useState<FieldValueMap>({});
   const [isSavingFields, setIsSavingFields] = useState(false);
+  const fieldSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedFieldDraftRef = useRef('');
+  const headerFields = useMemo(
+    () => taskItem.template?.fields.filter((field) => field.scope === 'Header') ?? [],
+    [taskItem.template],
+  );
+  const entryFields = useMemo(
+    () => taskItem.template?.fields.filter((field) => field.scope === 'Entry') ?? [],
+    [taskItem.template],
+  );
 
   useEffect(() => {
     setReopenNote('');
-    setFieldDraft(toFieldValueMap(taskItem.fieldValues));
-  }, [taskItem]);
+    const nextFieldDraft = toFieldValueMap(taskItem.fieldValues);
+    setFieldDraft(nextFieldDraft);
+    lastSavedFieldDraftRef.current = JSON.stringify(
+      withDefaultFieldValues(headerFields, nextFieldDraft),
+    );
+  }, [taskItem, headerFields]);
 
-  const fieldValuesCanBeEdited = !taskItem.archivedAt && Boolean(taskItem.template);
+  const headerFieldsCanBeEdited = !taskItem.archivedAt && headerFields.length > 0;
+
+  useEffect(() => {
+    if (!headerFieldsCanBeEdited) {
+      return undefined;
+    }
+
+    const nextFieldValues = withDefaultFieldValues(headerFields, fieldDraft);
+    const serializedValues = JSON.stringify(nextFieldValues);
+
+    if (serializedValues === lastSavedFieldDraftRef.current) {
+      return undefined;
+    }
+
+    if (fieldSaveTimerRef.current) {
+      clearTimeout(fieldSaveTimerRef.current);
+    }
+
+    fieldSaveTimerRef.current = setTimeout(() => {
+      setIsSavingFields(true);
+      void onUpdateFieldValues(nextFieldValues)
+        .then(() => {
+          lastSavedFieldDraftRef.current = serializedValues;
+        })
+        .finally(() => {
+          setIsSavingFields(false);
+        });
+    }, 500);
+
+    return () => {
+      if (fieldSaveTimerRef.current) {
+        clearTimeout(fieldSaveTimerRef.current);
+      }
+    };
+  }, [fieldDraft, headerFields, headerFieldsCanBeEdited, onUpdateFieldValues]);
   const closeFromHeader = (event: MouseEvent<HTMLDivElement>) => {
     if (
       event.target instanceof HTMLElement &&
-              event.target.closest('button, input, select, textarea, label, .color-popover, .task-share-popover, .share-dialog')
+      event.target.closest(
+        'button, input, select, textarea, label, .color-popover, .task-share-popover, .share-dialog, .task-header-fields, .task-meta-chip, .member-chip, .share-chip, .pending-invite-chip, .category-multi-select',
+      )
     ) {
       return;
     }
@@ -4374,6 +4667,7 @@ function TaskDetail({
             <TaskShareStrip
               onCreateTaskShareLink={onCreateTaskShareLink}
               onRevokeTaskShare={onRevokeTaskShare}
+              onUpdateTaskShareRole={onUpdateTaskShareRole}
               t={t}
               taskItem={taskItem}
             />
@@ -4381,33 +4675,26 @@ function TaskDetail({
         ) : null}
       </div>
 
-      <details className="detail-section fields-details">
-        <summary className="section-heading">
+      {headerFields.length > 0 ? (
+      <section className="detail-section fields-details task-header-fields-section">
+        <div className="section-heading">
           <span>
-            <h3 id="fields-title">{t('fieldsForFiltering')}</h3>
-            <small>{t('fieldsHelp')}</small>
+            <h3 id="fields-title">{t('taskFields')}</h3>
           </span>
-          {fieldValuesCanBeEdited ? (
-            <button
-              disabled={isSavingFields}
-              onClick={async () => {
-                setIsSavingFields(true);
-                await onUpdateFieldValues(
-                  withDefaultFieldValues(taskItem.template!, fieldDraft),
-                );
-                setIsSavingFields(false);
-              }}
-              type="button"
-            >
-              <Icon name="check" />
-              <span>{t('saveFields')}</span>
-            </button>
+          {isSavingFields ? (
+            <span
+              aria-label={t('saving')}
+              className="fields-saving saving-copy"
+              data-state="saving"
+              role="status"
+              title={t('saving')}
+            />
           ) : null}
-        </summary>
+        </div>
 
-        {fieldValuesCanBeEdited ? (
+        {headerFieldsCanBeEdited ? (
           <FieldEditorList
-            fields={taskItem.template!.fields}
+            fields={headerFields}
             onChange={(fieldId, value) =>
               setFieldDraft((currentValues) => ({
                 ...currentValues,
@@ -4417,11 +4704,13 @@ function TaskDetail({
             values={fieldDraft}
           />
         ) : (
-          <FieldValueList fieldValues={taskItem.fieldValues} template={taskItem.template} />
+          <FieldValueList fields={headerFields} fieldValues={taskItem.fieldValues} />
         )}
-      </details>
+      </section>
+      ) : null}
 
       <TimelinePanel
+        entryFields={entryFields}
         onAddTimelineEntry={onAddTimelineEntry}
         onQueueDeleteTimelineEntry={onQueueDeleteTimelineEntry}
         onUndoDeleteTimelineEntry={onUndoDeleteTimelineEntry}
@@ -4447,6 +4736,7 @@ function TaskDetail({
 function TaskShareStrip({
   onCreateTaskShareLink,
   onRevokeTaskShare,
+  onUpdateTaskShareRole,
   t,
   taskItem,
 }: {
@@ -4455,11 +4745,18 @@ function TaskShareStrip({
     requestBody: CreateTaskShareRequest,
   ) => Promise<TaskShareLinkResponse>;
   onRevokeTaskShare: (taskItemId: string, shareId: string) => Promise<void>;
+  onUpdateTaskShareRole: (
+    taskItemId: string,
+    shareId: string,
+    requestBody: UpdateTaskShareRequest,
+  ) => Promise<TaskItemDetailResponse>;
   t: Translate;
   taskItem: TaskItemDetailResponse;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [focusedTaskShareId, setFocusedTaskShareId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const visibleShares = taskItem.shares.filter((share) => !share.revokedAt);
 
   return (
     <div
@@ -4468,22 +4765,54 @@ function TaskShareStrip({
       onPointerDown={(event) => event.stopPropagation()}
       ref={menuRef}
     >
-      <button
-        className="secondary-action task-share-trigger"
-        onClick={(event) => {
-          event.stopPropagation();
-          setIsOpen((open) => !open);
-        }}
-        title={t('shareTask')}
-        type="button"
-      >
-        <Icon name="users" />
-        <span>{taskItem.shares.length > 0 ? taskItem.shares.length : t('shareTask')}</span>
-      </button>
+      <div className="member-chip-strip task-share-strip" aria-label={t('sharing')}>
+        {visibleShares.slice(0, 3).map((share) => (
+          <button
+            className="member-chip share-person-chip"
+            key={share.id}
+            onClick={(event) => {
+              event.stopPropagation();
+              setFocusedTaskShareId(share.id);
+              setIsOpen(true);
+            }}
+            title={`${share.email} - ${formatTaskShareRole(share.role, t)}`}
+            type="button"
+          >
+            <Icon name={share.acceptedAt ? 'user' : 'mail'} />
+            <span>{share.email}</span>
+          </button>
+        ))}
+        {visibleShares.length > 3 ? (
+          <button
+            className="member-chip"
+            onClick={(event) => {
+              event.stopPropagation();
+              setFocusedTaskShareId(null);
+              setIsOpen(true);
+            }}
+            type="button"
+          >
+            +{visibleShares.length - 3}
+          </button>
+        ) : null}
+        <button
+          className="tiny-icon-button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setFocusedTaskShareId(null);
+            setIsOpen((open) => !open);
+          }}
+          title={t('shareTask')}
+          type="button"
+        >
+          <Icon name="plus" />
+        </button>
+      </div>
 
       {isOpen ? (
         <ShareDialog
           existingTaskShares={taskItem.shares}
+          focusedTaskShareId={focusedTaskShareId}
           onClose={() => setIsOpen(false)}
           onCreate={async (email, role) =>
             await onCreateTaskShareLink(taskItem.id, {
@@ -4491,6 +4820,8 @@ function TaskShareStrip({
               role: role as TaskItemShareRole,
             })}
           onRevokeTaskShare={(shareId) => onRevokeTaskShare(taskItem.id, shareId)}
+          onUpdateTaskShareRole={(shareId, requestBody) =>
+            onUpdateTaskShareRole(taskItem.id, shareId, requestBody)}
           pendingInvitations={[]}
           roleMode="task"
           t={t}
@@ -4524,6 +4855,7 @@ function TaskHeaderEditor({
   const [editingField, setEditingField] = useState<
     'title' | 'status' | 'category' | 'followUp' | null
   >(null);
+  const editingFieldRef = useRef<typeof editingField>(null);
   const selectedCategoryNames = splitTaskCategories(category);
   const displayedProjects = getProjectsForTaskCategories(taskItem.category ?? category, projects);
   const displayedProject = taskItem.projectId
@@ -4551,13 +4883,23 @@ function TaskHeaderEditor({
     setEditingField(null);
   }, [taskItem.id]);
 
+  useEffect(() => {
+    editingFieldRef.current = editingField;
+  }, [editingField]);
+
+  const clearEditingField = (field?: typeof editingField) => {
+    if (!field || editingFieldRef.current === field) {
+      setEditingField(null);
+    }
+  };
+
   const saveChanges = async (overrides: Partial<{
     title: string;
     status: string;
     category: string;
     projectId: string | null;
     followUpDate: string;
-  }> = {}, options: { keepEditing?: boolean } = {}) => {
+  }> = {}, options: { field?: typeof editingField; keepEditing?: boolean } = {}) => {
     if (taskItem.archivedAt) {
       return;
     }
@@ -4591,7 +4933,7 @@ function TaskHeaderEditor({
 
     if (!hasChanges) {
       if (!options.keepEditing) {
-        setEditingField(null);
+        clearEditingField(options.field);
       }
       return;
     }
@@ -4613,7 +4955,7 @@ function TaskHeaderEditor({
       setCategoryProjectId(nextProjectId ?? '');
       setFollowUpDate(nextFollowUpDate);
       if (!options.keepEditing) {
-        setEditingField(null);
+        clearEditingField(options.field);
       }
     } catch {
       setSaveState('error');
@@ -4682,7 +5024,7 @@ function TaskHeaderEditor({
             aria-label={t('editTask')}
             className="task-title-input"
             disabled={isSubmitting}
-            onBlur={() => void saveChanges()}
+            onBlur={() => void saveChanges({}, { field: 'title' })}
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={handleTextKeyDown}
             required
@@ -4724,10 +5066,10 @@ function TaskHeaderEditor({
             aria-label={t('status')}
             autoFocus
             disabled={isSubmitting}
-            onBlur={() => void saveChanges()}
+            onBlur={() => void saveChanges({}, { field: 'status' })}
             onChange={(event) => {
               setStatus(event.target.value);
-              void saveChanges({ status: event.target.value });
+              void saveChanges({ status: event.target.value }, { field: 'status' });
             }}
             value={status}
           >
@@ -4741,7 +5083,10 @@ function TaskHeaderEditor({
         ) : (
           <button
             className="task-meta-chip"
-            onClick={() => setEditingField('status')}
+            onClick={(event) => {
+              event.stopPropagation();
+              setEditingField('status');
+            }}
             type="button"
           >
             {t('status')}: {taskItem.status ?? t('noStatus')}
@@ -4750,7 +5095,8 @@ function TaskHeaderEditor({
         {editingField === 'category' ? (
           <CategoryMultiSelect
             disabled={isSubmitting}
-            onChange={(nextCategories) => {
+            onCancel={() => setEditingField(null)}
+            onCommit={(nextCategories) => {
               const nextCategory = joinTaskCategories(nextCategories) ?? '';
               const nextProjectId = getPrimaryProjectIdForCategories(nextCategory, projects);
               setCategory(nextCategory);
@@ -4760,10 +5106,9 @@ function TaskHeaderEditor({
                   category: nextCategory,
                   projectId: nextProjectId,
                 },
-                { keepEditing: true },
+                { field: 'category' },
               );
             }}
-            onClose={() => setEditingField(null)}
             projects={projects}
             selectedCategories={selectedCategoryNames}
             t={t}
@@ -4771,7 +5116,10 @@ function TaskHeaderEditor({
         ) : (
           <button
             className="task-meta-chip"
-            onClick={() => setEditingField('category')}
+            onClick={(event) => {
+              event.stopPropagation();
+              setEditingField('category');
+            }}
             style={getContextChipStyle(displayedProject?.color ?? null)}
             type="button"
           >
@@ -4783,10 +5131,10 @@ function TaskHeaderEditor({
             aria-label={t('followUpDate')}
             autoFocus
             disabled={isSubmitting}
-            onBlur={() => void saveChanges()}
+            onBlur={() => void saveChanges({}, { field: 'followUp' })}
             onChange={(event) => {
               setFollowUpDate(event.target.value);
-              void saveChanges({ followUpDate: event.target.value });
+              void saveChanges({ followUpDate: event.target.value }, { field: 'followUp' });
             }}
             type="date"
             value={followUpDate}
@@ -4795,20 +5143,23 @@ function TaskHeaderEditor({
           <button
             className="task-meta-chip follow-up-chip"
             data-tone={getFollowUpTone(taskItem.followUpAt)}
-            onClick={() => setEditingField('followUp')}
+            onClick={(event) => {
+              event.stopPropagation();
+              setEditingField('followUp');
+            }}
             type="button"
           >
             {t('followUpDate')}: {taskItem.followUpAt ? formatFullDate(taskItem.followUpAt) : t('noFollowUp')}
           </button>
         )}
         {saveState !== 'idle' ? (
-          <span className="saving-copy" data-state={saveState}>
-            {saveState === 'saving'
-              ? t('saving')
-              : saveState === 'saved'
-                ? t('saved')
-                : t('saveFailed')}
-          </span>
+          <span
+            aria-label={saveState === 'error' ? t('saveFailed') : t('saved')}
+            className="saving-copy"
+            data-state={saveState}
+            role="status"
+            title={saveState === 'error' ? t('saveFailed') : t('saved')}
+          />
         ) : null}
       </div>
     </div>
@@ -4817,36 +5168,73 @@ function TaskHeaderEditor({
 
 function CategoryMultiSelect({
   disabled,
-  onChange,
-  onClose,
+  onCancel,
+  onCommit,
   projects,
   selectedCategories,
   t,
 }: {
   disabled: boolean;
-  onChange: (categories: string[]) => void;
-  onClose: () => void;
+  onCancel: () => void;
+  onCommit: (categories: string[]) => void;
   projects: ProjectResponse[];
   selectedCategories: string[];
   t: Translate;
 }) {
-  const selectedNames = new Set(selectedCategories.map((category) => category.toLowerCase()));
+  const [draftCategories, setDraftCategories] = useState(selectedCategories);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const selectedNames = new Set(draftCategories.map((category) => category.toLowerCase()));
+
+  useEffect(() => {
+    setDraftCategories(selectedCategories);
+  }, [selectedCategories]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        pickerRef.current &&
+        event.target instanceof Node &&
+        !pickerRef.current.contains(event.target)
+      ) {
+        onCommit(draftCategories);
+      }
+    };
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCancel();
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [draftCategories, onCancel, onCommit]);
 
   const toggleCategory = (project: ProjectResponse) => {
     const hasCategory = selectedNames.has(project.name.toLowerCase());
     const nextCategories = hasCategory
-      ? selectedCategories.filter((category) =>
+      ? draftCategories.filter((category) =>
         category.toLowerCase() !== project.name.toLowerCase())
-      : [...selectedCategories, project.name];
+      : [...draftCategories, project.name];
 
-    onChange(nextCategories);
+    setDraftCategories(nextCategories);
   };
 
   return (
-    <div className="category-multi-select" onClick={(event) => event.stopPropagation()}>
+    <div
+      className="category-multi-select"
+      onClick={(event) => event.stopPropagation()}
+      ref={pickerRef}
+    >
       <div className="category-option-list">
         {projects.length === 0 ? (
-          <span className="context-muted">{t('noCategory')}</span>
+          <span className="context-muted">{t('noCategoriesYet')}</span>
         ) : (
           projects.map((project) => {
             const isSelected = selectedNames.has(project.name.toLowerCase());
@@ -4869,25 +5257,6 @@ function CategoryMultiSelect({
             );
           })
         )}
-      </div>
-      <div className="category-multi-actions">
-        <button
-          className="tiny-icon-button"
-          disabled={disabled || selectedCategories.length === 0}
-          onClick={() => onChange([])}
-          title={t('noCategory')}
-          type="button"
-        >
-          <Icon name="close" />
-        </button>
-        <button
-          className="tiny-icon-button"
-          onClick={onClose}
-          title={t('saved')}
-          type="button"
-        >
-          <Icon name="check" />
-        </button>
       </div>
     </div>
   );
@@ -5069,21 +5438,53 @@ function TemplatesPage({
     id: string | null,
     name: string,
     fields: UpsertFieldDefinitionRequest[],
-  ) => Promise<void>;
+  ) => Promise<TaskTemplateDetailResponse | null>;
   t: Translate;
   templates: TaskTemplateDetailResponse[];
 }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [templateDraftIsOpen, setTemplateDraftIsOpen] = useState(false);
   const selectedTemplate =
-    templates.find((template) => template.id === selectedTemplateId) ?? null;
+    templateDraftIsOpen
+      ? null
+      : templates.find((template) => template.id === selectedTemplateId) ?? null;
 
   useEffect(() => {
+    if (templateDraftIsOpen) {
+      return;
+    }
+
     if (selectedTemplateId && templates.some((template) => template.id === selectedTemplateId)) {
       return;
     }
 
     setSelectedTemplateId(templates[0]?.id ?? null);
-  }, [selectedTemplateId, templates]);
+  }, [selectedTemplateId, templateDraftIsOpen, templates]);
+
+  const openTemplateDraft = () => {
+    setSelectedTemplateId(null);
+    setTemplateDraftIsOpen(true);
+  };
+
+  const selectTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    setTemplateDraftIsOpen(false);
+  };
+
+  const saveTemplate = async (
+    id: string | null,
+    templateName: string,
+    fields: UpsertFieldDefinitionRequest[],
+  ) => {
+    const savedTemplate = await onSaveTemplate(id, templateName, fields);
+
+    if (savedTemplate) {
+      setSelectedTemplateId(savedTemplate.id);
+      setTemplateDraftIsOpen(false);
+    }
+
+    return savedTemplate;
+  };
 
   return (
     <section className="templates-page" aria-labelledby="templates-title">
@@ -5094,7 +5495,7 @@ function TemplatesPage({
             <h1 id="templates-title">{t('templates')}</h1>
             <p>Define reusable fields for the different shapes a task can take.</p>
           </div>
-          <button onClick={() => setSelectedTemplateId(null)} type="button">
+          <button onClick={openTemplateDraft} type="button">
             <Icon name="plus" />
             <span>New</span>
           </button>
@@ -5106,7 +5507,7 @@ function TemplatesPage({
               className="template-picker-row"
               data-selected={selectedTemplateId === template.id}
               key={template.id}
-              onClick={() => setSelectedTemplateId(template.id)}
+              onClick={() => selectTemplate(template.id)}
               type="button"
             >
               <span>{template.name}</span>
@@ -5117,9 +5518,9 @@ function TemplatesPage({
       </div>
 
       <TemplateEditor
-        key={selectedTemplate?.id ?? 'new-template'}
+        key={templateDraftIsOpen ? 'new-template' : selectedTemplate?.id ?? 'empty-template'}
         onDeleteTemplate={onDeleteTemplate}
-        onSaveTemplate={onSaveTemplate}
+        onSaveTemplate={saveTemplate}
         template={selectedTemplate}
       />
     </section>
@@ -5136,7 +5537,7 @@ function TemplateEditor({
     id: string | null,
     name: string,
     fields: UpsertFieldDefinitionRequest[],
-  ) => Promise<void>;
+  ) => Promise<TaskTemplateDetailResponse | null>;
   template: TaskTemplateDetailResponse | null;
 }) {
   const [name, setName] = useState(template?.name ?? '');
@@ -5144,17 +5545,23 @@ function TemplateEditor({
     () => template?.fields.map(toEditableTemplateField) ?? [],
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [draggedFieldId, setDraggedFieldId] = useState<string | null>(null);
 
-  const addField = () => {
+  const addField = (scope: FieldDefinitionScope) => {
     setFields((currentFields) => [
       ...currentFields,
       {
         clientId: crypto.randomUUID(),
         name: 'New field',
         type: 'Text',
+        scope,
         required: false,
-        sortOrder: currentFields.length,
+        sortOrder: currentFields.filter((field) => field.scope === scope).length,
         optionsText: '',
+        layoutRow: 1,
+        layoutColumn: 1,
+        layoutRowSpan: 1,
+        layoutColumnSpan: 1,
       },
     ]);
   };
@@ -5172,29 +5579,101 @@ function TemplateEditor({
 
   const moveField = (clientId: string, direction: -1 | 1) => {
     setFields((currentFields) => {
-      const index = currentFields.findIndex((field) => field.clientId === clientId);
-      const nextIndex = index + direction;
+      const fieldToMove = currentFields.find((field) => field.clientId === clientId);
 
-      if (index < 0 || nextIndex < 0 || nextIndex >= currentFields.length) {
+      if (!fieldToMove) {
         return currentFields;
       }
 
-      const reorderedFields = [...currentFields];
-      const [field] = reorderedFields.splice(index, 1);
-      reorderedFields.splice(nextIndex, 0, field);
+      const scopedFields = currentFields.filter(
+        (field) => field.scope === fieldToMove.scope,
+      );
+      const scopedIndex = scopedFields.findIndex((field) => field.clientId === clientId);
+      const nextScopedIndex = scopedIndex + direction;
 
-      return reorderedFields.map((candidate, sortOrder) => ({
-        ...candidate,
-        sortOrder,
-      }));
+      if (
+        scopedIndex < 0 ||
+        nextScopedIndex < 0 ||
+        nextScopedIndex >= scopedFields.length
+      ) {
+        return currentFields;
+      }
+
+      const reorderedScopedFields = [...scopedFields];
+      const [field] = reorderedScopedFields.splice(scopedIndex, 1);
+      reorderedScopedFields.splice(nextScopedIndex, 0, field);
+
+      const mergedFields = currentFields.map((currentField) =>
+        currentField.scope === fieldToMove.scope
+          ? reorderedScopedFields.shift()!
+          : currentField,
+      );
+
+      return renumberTemplateFields(mergedFields);
     });
+  };
+
+  const moveFieldTo = (sourceClientId: string, targetClientId: string) => {
+    if (sourceClientId === targetClientId) {
+      return;
+    }
+
+    setFields((currentFields) => {
+      const sourceField = currentFields.find((field) => field.clientId === sourceClientId);
+      const targetField = currentFields.find((field) => field.clientId === targetClientId);
+
+      if (!sourceField || !targetField || sourceField.scope !== targetField.scope) {
+        return currentFields;
+      }
+
+      const scopedFields = currentFields.filter(
+        (field) => field.scope === sourceField.scope,
+      );
+      const sourceIndex = scopedFields.findIndex(
+        (field) => field.clientId === sourceClientId,
+      );
+      const targetIndex = scopedFields.findIndex(
+        (field) => field.clientId === targetClientId,
+      );
+
+      if (sourceIndex < 0 || targetIndex < 0) {
+        return currentFields;
+      }
+
+      const reorderedScopedFields = [...scopedFields];
+      const [field] = reorderedScopedFields.splice(sourceIndex, 1);
+      reorderedScopedFields.splice(targetIndex, 0, field);
+
+      const mergedFields = currentFields.map((currentField) =>
+        currentField.scope === sourceField.scope
+          ? reorderedScopedFields.shift()!
+          : currentField,
+      );
+
+      return renumberTemplateFields(mergedFields);
+    });
+  };
+
+  const handleFieldDrop = (
+    event: DragEvent<HTMLDivElement>,
+    targetClientId: string,
+  ) => {
+    event.preventDefault();
+    const sourceClientId =
+      event.dataTransfer.getData('text/plain') || draggedFieldId;
+
+    if (sourceClientId) {
+      moveFieldTo(sourceClientId, targetClientId);
+    }
+
+    setDraggedFieldId(null);
   };
 
   const removeField = (clientId: string) => {
     setFields((currentFields) =>
-      currentFields
-        .filter((field) => field.clientId !== clientId)
-        .map((field, sortOrder) => ({ ...field, sortOrder })),
+      renumberTemplateFields(
+        currentFields.filter((field) => field.clientId !== clientId),
+      ),
     );
   };
 
@@ -5206,28 +5685,201 @@ function TemplateEditor({
       return;
     }
 
+    const fieldsForSave = normalizeTemplateLayoutFields(
+      renumberTemplateFields(fields),
+    );
+
     setIsSubmitting(true);
     await onSaveTemplate(
       template?.id ?? null,
       trimmedName,
-      fields.map((field, index) => ({
+      fieldsForSave.map((field) => ({
         id: field.id ?? null,
         name: field.name.trim(),
         type: field.type,
+        scope: field.scope,
         required: field.required,
-        sortOrder: index,
+        sortOrder: field.sortOrder,
         options: field.type === 'Select' ? splitOptions(field.optionsText) : [],
+        layoutRow: field.layoutRow,
+        layoutColumn: field.layoutColumn,
+        layoutRowSpan: field.layoutRowSpan,
+        layoutColumnSpan: field.layoutColumnSpan,
       })),
     );
     setIsSubmitting(false);
   };
+
+  const renderFieldRows = (scope: FieldDefinitionScope) => {
+    const scopedFields = [...fields.filter((field) => field.scope === scope)].sort(
+      (first, second) => first.sortOrder - second.sortOrder,
+    );
+
+    if (scopedFields.length === 0) {
+      return <p className="empty-copy">No fields yet.</p>;
+    }
+
+    return scopedFields.map((field, index) => (
+      <div
+        className="template-field-row"
+        data-dragging={draggedFieldId === field.clientId}
+        key={field.clientId}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => handleFieldDrop(event, field.clientId)}
+      >
+        <button
+          className="field-drag-handle"
+          draggable
+          onDragEnd={() => setDraggedFieldId(null)}
+          onDragStart={(event) => {
+            setDraggedFieldId(field.clientId);
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', field.clientId);
+          }}
+          title="Drag to reorder"
+          type="button"
+        >
+          <Icon name="list" />
+          <span className="sr-only">Drag to reorder</span>
+        </button>
+        <input
+          aria-label="Field name"
+          onChange={(event) =>
+            updateField(field.clientId, { name: event.target.value })
+          }
+          required
+          type="text"
+          value={field.name}
+        />
+
+        <select
+          aria-label="Field type"
+          onChange={(event) => {
+            const nextType = event.target.value as FieldDefinitionType;
+            updateField(field.clientId, {
+              type: nextType,
+              layoutColumnSpan:
+                nextType === 'LongText' && field.layoutColumnSpan === 1
+                  ? 2
+                  : field.layoutColumnSpan,
+            });
+          }}
+          value={field.type}
+        >
+          {fieldTypes.map((fieldType) => (
+            <option key={fieldType} value={fieldType}>
+              {fieldType}
+            </option>
+          ))}
+        </select>
+
+        <label className="checkbox-label">
+          <input
+            checked={field.required}
+            onChange={(event) =>
+              updateField(field.clientId, { required: event.target.checked })
+            }
+            type="checkbox"
+          />
+          Required
+        </label>
+
+        <div className="field-layout-actions" aria-label="Field layout">
+          <TemplateLayoutStepper
+            label="Row"
+            max={24}
+            min={1}
+            onChange={(value) => updateField(field.clientId, { layoutRow: value })}
+            value={field.layoutRow}
+          />
+          <TemplateLayoutStepper
+            label="Col"
+            max={FIELD_LAYOUT_MAX_COLUMNS}
+            min={1}
+            onChange={(value) => updateField(field.clientId, { layoutColumn: value })}
+            value={field.layoutColumn}
+          />
+          <TemplateLayoutStepper
+            label="Width"
+            max={FIELD_LAYOUT_MAX_COLUMNS}
+            min={1}
+            onChange={(value) => updateField(field.clientId, { layoutColumnSpan: value })}
+            value={field.layoutColumnSpan}
+          />
+          <TemplateLayoutStepper
+            label="Height"
+            max={6}
+            min={1}
+            onChange={(value) => updateField(field.clientId, { layoutRowSpan: value })}
+            value={field.layoutRowSpan}
+          />
+        </div>
+
+        <div className="field-order-actions">
+          <button
+            disabled={index === 0}
+            onClick={() => moveField(field.clientId, -1)}
+            title="Move up"
+            type="button"
+          >
+            <Icon name="arrowUp" />
+            <span className="sr-only">Move up</span>
+          </button>
+          <button
+            disabled={index === scopedFields.length - 1}
+            onClick={() => moveField(field.clientId, 1)}
+            title="Move down"
+            type="button"
+          >
+            <Icon name="arrowDown" />
+            <span className="sr-only">Move down</span>
+          </button>
+          <button
+            className="ghost-button"
+            onClick={() => removeField(field.clientId)}
+            title="Remove field"
+            type="button"
+          >
+            <Icon name="trash" />
+            <span className="sr-only">Remove field</span>
+          </button>
+        </div>
+
+        {field.type === 'Select' ? (
+          <label className="options-editor">
+            Options
+            <textarea
+              onChange={(event) =>
+                updateField(field.clientId, { optionsText: event.target.value })
+              }
+              placeholder="One option per line"
+              required
+              rows={3}
+              value={field.optionsText}
+            />
+          </label>
+        ) : null}
+      </div>
+    ));
+  };
+
+  const entryPreviewFields = normalizeTemplateLayoutFields(
+    [...fields.filter((field) => field.scope === 'Entry')]
+      .sort((first, second) => first.sortOrder - second.sortOrder),
+  );
+  const headerPreviewFields = normalizeTemplateLayoutFields(
+    [...fields.filter((field) => field.scope === 'Header')]
+      .sort((first, second) => first.sortOrder - second.sortOrder),
+  );
+  const entryLayoutAdjusted = entryPreviewFields.some((field) => field.layoutWasAdjusted);
+  const headerLayoutAdjusted = headerPreviewFields.some((field) => field.layoutWasAdjusted);
 
   return (
     <form className="template-editor" onSubmit={handleSubmit}>
       <div className="detail-header">
         <div>
           <p className="detail-kicker">{template ? 'Edit template' : 'New template'}</p>
-          <h2>{template?.name ?? 'Template'}</h2>
+          <h2>{template?.name ?? 'New template'}</h2>
         </div>
         {template ? (
           <button
@@ -5244,6 +5896,7 @@ function TemplateEditor({
       <label className="template-name">
         Name
         <input
+          placeholder="Template name"
           onChange={(event) => setName(event.target.value)}
           required
           type="text"
@@ -5251,103 +5904,87 @@ function TemplateEditor({
         />
       </label>
 
-      <div className="section-heading">
-        <h3>Fields</h3>
-        <button onClick={addField} type="button">
-          <Icon name="plus" />
-          <span>Add field</span>
-        </button>
-      </div>
-
-      <div className="template-fields">
-        {fields.length === 0 ? <p className="empty-copy">No fields yet.</p> : null}
-
-        {fields.map((field, index) => (
-          <div className="template-field-row" key={field.clientId}>
-            <input
-              aria-label="Field name"
-              onChange={(event) =>
-                updateField(field.clientId, { name: event.target.value })
-              }
-              required
-              type="text"
-              value={field.name}
-            />
-
-            <select
-              aria-label="Field type"
-              onChange={(event) =>
-                updateField(field.clientId, {
-                  type: event.target.value as FieldDefinitionType,
-                })
-              }
-              value={field.type}
-            >
-              {fieldTypes.map((fieldType) => (
-                <option key={fieldType} value={fieldType}>
-                  {fieldType}
-                </option>
-              ))}
-            </select>
-
-            <label className="checkbox-label">
-              <input
-                checked={field.required}
-                onChange={(event) =>
-                  updateField(field.clientId, { required: event.target.checked })
-                }
-                type="checkbox"
-              />
-              Required
-            </label>
-
-            <div className="field-order-actions">
-              <button
-                disabled={index === 0}
-                onClick={() => moveField(field.clientId, -1)}
-                title="Move up"
-                type="button"
+      <section className="template-field-scope">
+        <div className="section-heading">
+          <span>
+            <h3>Task header fields</h3>
+            <small>Fields stored on the task and used for filtering the wall.</small>
+          </span>
+          <button onClick={() => addField('Header')} type="button">
+            <Icon name="plus" />
+            <span>Add header field</span>
+          </button>
+        </div>
+        <div className="template-fields">{renderFieldRows('Header')}</div>
+        <div
+          className="template-scope-preview template-header-preview"
+          aria-label="Header preview"
+          style={getTemplateLayoutGridStyle(headerPreviewFields)}
+        >
+          {headerPreviewFields.length === 0 ? (
+            <span className="template-preview-empty">Title only</span>
+          ) : (
+            headerPreviewFields.map((field) => (
+              <span
+                className="template-preview-chip"
+                data-layout-adjusted={field.layoutWasAdjusted}
+                data-field-type={field.type}
+                key={field.clientId}
+                style={getEditableTemplateFieldGridStyle(field)}
               >
-                <Icon name="arrowUp" />
-                <span className="sr-only">Move up</span>
-              </button>
-              <button
-                disabled={index === fields.length - 1}
-                onClick={() => moveField(field.clientId, 1)}
-                title="Move down"
-                type="button"
-              >
-                <Icon name="arrowDown" />
-                <span className="sr-only">Move down</span>
-              </button>
-              <button
-                className="ghost-button"
-                onClick={() => removeField(field.clientId)}
-                title="Remove field"
-                type="button"
-              >
-                <Icon name="trash" />
-                <span className="sr-only">Remove field</span>
-              </button>
-            </div>
+                {field.name}
+                <small>
+                  {field.type} · R{field.layoutRow} C{field.layoutColumn}
+                </small>
+              </span>
+            ))
+          )}
+        </div>
+        {headerLayoutAdjusted ? (
+          <p className="template-layout-hint">Preview auto-arranged overlapping fields.</p>
+        ) : null}
+      </section>
 
-            {field.type === 'Select' ? (
-              <label className="options-editor">
-                Options
-                <textarea
-                  onChange={(event) =>
-                    updateField(field.clientId, { optionsText: event.target.value })
-                  }
-                  placeholder="One option per line"
-                  required
-                  rows={3}
-                  value={field.optionsText}
-                />
-              </label>
-            ) : null}
-          </div>
-        ))}
-      </div>
+      <section className="template-field-scope">
+        <div className="section-heading">
+          <span>
+            <h3>Entry fields</h3>
+            <small>Fields captured on each note or progress entry.</small>
+          </span>
+          <button onClick={() => addField('Entry')} type="button">
+            <Icon name="plus" />
+            <span>Add entry field</span>
+          </button>
+        </div>
+        <div className="template-fields">{renderFieldRows('Entry')}</div>
+        <div
+          className="template-scope-preview template-entry-preview"
+          aria-label="Entry preview"
+          style={getTemplateLayoutGridStyle(entryPreviewFields)}
+        >
+          {entryPreviewFields.length === 0 ? (
+            <span className="template-preview-empty">Plain note text</span>
+          ) : (
+            entryPreviewFields.map((field) => (
+              <span
+                className="template-preview-chip"
+                data-layout-adjusted={field.layoutWasAdjusted}
+                data-field-type={field.type}
+                key={field.clientId}
+                style={getEditableTemplateFieldGridStyle(field)}
+              >
+                {field.name}
+                <small>
+                  {field.type} · R{field.layoutRow} C{field.layoutColumn}
+                </small>
+              </span>
+            ))
+          )}
+        </div>
+        {entryLayoutAdjusted ? (
+          <p className="template-layout-hint">Preview auto-arranged overlapping fields.</p>
+        ) : null}
+      </section>
 
       <div className="dialog-actions">
         <button disabled={!name.trim() || isSubmitting} type="submit">
@@ -5358,7 +5995,57 @@ function TemplateEditor({
   );
 }
 
+function TemplateLayoutStepper({
+  label,
+  max,
+  min,
+  onChange,
+  value,
+}: {
+  label: string;
+  max: number;
+  min: number;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  const setNextValue = (nextValue: number) => {
+    onChange(clampInteger(nextValue, min, max));
+  };
+
+  return (
+    <label className="layout-stepper">
+      <span>{label}</span>
+      <span className="layout-stepper-control">
+        <button
+          disabled={value <= min}
+          onClick={() => setNextValue(value - 1)}
+          title={`${label} -`}
+          type="button"
+        >
+          <Icon name="minus" />
+        </button>
+        <input
+          max={max}
+          min={min}
+          onChange={(event) => setNextValue(event.target.valueAsNumber)}
+          type="number"
+          value={value}
+        />
+        <button
+          disabled={value >= max}
+          onClick={() => setNextValue(value + 1)}
+          title={`${label} +`}
+          type="button"
+        >
+          <Icon name="plus" />
+        </button>
+      </span>
+    </label>
+  );
+}
+
 function TimelinePanel({
+  entryFields,
   onAddTimelineEntry,
   onQueueDeleteTimelineEntry,
   onUndoDeleteTimelineEntry,
@@ -5367,10 +6054,15 @@ function TimelinePanel({
   t,
   timelineEntries,
 }: {
-  onAddTimelineEntry: (note: string) => Promise<void>;
+  entryFields: TaskTemplateDetailResponse['fields'];
+  onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   onQueueDeleteTimelineEntry: (entryId: string) => void;
   onUndoDeleteTimelineEntry: (entryId: string) => void;
-  onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+  onUpdateTimelineEntry: (
+    entryId: string,
+    note: string | null,
+    fieldValues?: FieldValueMap,
+  ) => Promise<void>;
   pendingDeletedNoteIds: string[];
   t: Translate;
   timelineEntries: TaskItemDetailResponse['timelineEntries'];
@@ -5384,13 +6076,18 @@ function TimelinePanel({
         <span>{notes.length} {t('noteCount')}</span>
       </div>
 
-      <AddTimelineEntryForm onAddTimelineEntry={onAddTimelineEntry} t={t} />
+      <AddTimelineEntryForm
+        entryFields={entryFields}
+        onAddTimelineEntry={onAddTimelineEntry}
+        t={t}
+      />
 
       <ol className="timeline-list">
         {notes.length === 0 ? <li className="empty-copy">{t('noNotesYet')}</li> : null}
         {notes.map((entry) => (
           <NoteEntry
             entry={entry}
+            entryFields={entryFields}
             isPendingDelete={pendingDeletedNoteIds.includes(entry.id)}
             key={entry.id}
             onQueueDeleteTimelineEntry={onQueueDeleteTimelineEntry}
@@ -5406,6 +6103,7 @@ function TimelinePanel({
 
 function NoteEntry({
   entry,
+  entryFields,
   isPendingDelete,
   onQueueDeleteTimelineEntry,
   onUndoDeleteTimelineEntry,
@@ -5413,41 +6111,93 @@ function NoteEntry({
   t,
 }: {
   entry: TaskItemDetailResponse['timelineEntries'][number];
+  entryFields: TaskTemplateDetailResponse['fields'];
   isPendingDelete: boolean;
   onQueueDeleteTimelineEntry: (entryId: string) => void;
   onUndoDeleteTimelineEntry: (entryId: string) => void;
-  onUpdateTimelineEntry: (entryId: string, note: string) => Promise<void>;
+  onUpdateTimelineEntry: (
+    entryId: string,
+    note: string | null,
+    fieldValues?: FieldValueMap,
+  ) => Promise<void>;
   t: Translate;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(entry.details ?? '');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [entryFieldsAreSaving, setEntryFieldsAreSaving] = useState(false);
+  const editContainerRef = useRef<HTMLDivElement>(null);
+  const hasEntryFields = entryFields.length > 0;
 
   useEffect(() => {
     setDraft(entry.details ?? '');
     setIsEditing(false);
     setIsConfirmingDelete(false);
+    setEntryFieldsAreSaving(false);
   }, [entry]);
+
+  const cancelEdit = () => {
+    setDraft(entry.details ?? '');
+    setIsEditing(false);
+  };
 
   const save = async () => {
     const trimmedDraft = draft.trim();
     if (!trimmedDraft) {
+      cancelEdit();
       return;
     }
 
     setIsSubmitting(true);
-    await onUpdateTimelineEntry(entry.id, trimmedDraft);
+    await onUpdateTimelineEntry(
+      entry.id,
+      trimmedDraft,
+    );
     setIsSubmitting(false);
     setIsEditing(false);
   };
 
   return (
     <li className="note-entry" data-pending-delete={isPendingDelete}>
-      <time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time>
-      {isEditing ? (
-        <div className="note-edit">
+      <span className="note-entry-time">
+        <time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time>
+        {entryFieldsAreSaving || isSubmitting ? (
+          <span aria-label="Saving" className="entry-saving-copy" role="status" />
+        ) : null}
+      </span>
+      {hasEntryFields ? (
+        <InlineEntryFieldRow
+          entry={entry}
+          fields={entryFields}
+          onSavingChange={setEntryFieldsAreSaving}
+          onUpdateTimelineEntry={onUpdateTimelineEntry}
+        />
+      ) : isEditing ? (
+        <div
+          className="note-edit"
+          data-saving={isSubmitting}
+          onBlur={(event) => {
+            const nextTarget = event.relatedTarget;
+            if (
+              nextTarget instanceof Node &&
+              event.currentTarget.contains(nextTarget)
+            ) {
+              return;
+            }
+
+            void save();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              cancelEdit();
+            }
+          }}
+          ref={editContainerRef}
+        >
           <textarea
+            autoFocus
             aria-label={t('note')}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -5459,23 +6209,13 @@ function NoteEntry({
             rows={3}
             value={draft}
           />
-          <div className="note-actions">
-            <button disabled={!draft.trim() || isSubmitting} onClick={() => void save()} type="button">
-              {t('save')}
-            </button>
-            <button className="ghost-button" onClick={() => setIsEditing(false)} type="button">
-              {t('cancel')}
-            </button>
-          </div>
         </div>
-      ) : (
-        <button
-          className="note-body"
-          onClick={() => setIsEditing(true)}
-          type="button"
-        >
+      ) : entry.details ? (
+        <button className="note-body" onClick={() => setIsEditing(true)} type="button">
           {entry.details}
         </button>
+      ) : (
+        <span className="note-body note-body-empty">{t('note')}</span>
       )}
       <div className="note-delete-cell">
         {isPendingDelete ? (
@@ -5526,49 +6266,308 @@ function NoteEntry({
   );
 }
 
+function InlineEntryFieldRow({
+  entry,
+  fields,
+  onSavingChange,
+  onUpdateTimelineEntry,
+}: {
+  entry: TaskItemDetailResponse['timelineEntries'][number];
+  fields: FieldDefinitionResponse[];
+  onSavingChange: (isSaving: boolean) => void;
+  onUpdateTimelineEntry: (
+    entryId: string,
+    note: string | null,
+    fieldValues?: FieldValueMap,
+  ) => Promise<void>;
+}) {
+  const [fieldDraft, setFieldDraft] = useState<FieldValueMap>(
+    () => withDefaultFieldValues(fields, toFieldValueMap(entry.fieldValues)),
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedValuesRef = useRef('');
+  const note = entry.details?.trim() || null;
+
+  useEffect(() => {
+    const nextValues = withDefaultFieldValues(fields, toFieldValueMap(entry.fieldValues));
+    setFieldDraft(nextValues);
+    lastSavedValuesRef.current = JSON.stringify(nextValues);
+  }, [entry.fieldValues, fields]);
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+  }, []);
+
+  const saveValues = useCallback(
+    async (values: FieldValueMap) => {
+      const nextValues = withDefaultFieldValues(fields, values);
+      const serializedValues = JSON.stringify(nextValues);
+
+      if (serializedValues === lastSavedValuesRef.current) {
+        return;
+      }
+
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+
+      setIsSaving(true);
+      onSavingChange(true);
+      try {
+        await onUpdateTimelineEntry(entry.id, note, nextValues);
+        lastSavedValuesRef.current = serializedValues;
+      } finally {
+        setIsSaving(false);
+        onSavingChange(false);
+      }
+    },
+    [entry.id, fields, note, onSavingChange, onUpdateTimelineEntry],
+  );
+
+  const scheduleSave = useCallback(
+    (values: FieldValueMap, immediate = false) => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+
+      if (immediate) {
+        void saveValues(values);
+        return;
+      }
+
+      saveTimerRef.current = setTimeout(() => {
+        void saveValues(values);
+      }, 450);
+    },
+    [saveValues],
+  );
+
+  const updateField = (field: FieldDefinitionResponse, value: FieldValuePrimitive) => {
+    const nextValues = {
+      ...fieldDraft,
+      [field.id]: value,
+    };
+
+    setFieldDraft(nextValues);
+    scheduleSave(nextValues, field.type === 'Checkbox' || field.type === 'Select');
+  };
+
+  return (
+    <div
+      className="entry-inline-edit"
+      data-saving={isSaving}
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+
+        if (
+          nextTarget instanceof Node &&
+          event.currentTarget.contains(nextTarget)
+        ) {
+          return;
+        }
+
+        void saveValues(fieldDraft);
+      }}
+    >
+      <EntryFieldEditorRow
+        fields={fields}
+        onChange={updateField}
+        values={fieldDraft}
+      />
+    </div>
+  );
+}
+
+function EntryFieldEditorRow({
+  fields,
+  onChange,
+  values,
+}: {
+  fields: FieldDefinitionResponse[];
+  onChange: (field: FieldDefinitionResponse, value: FieldValuePrimitive) => void;
+  values: FieldValueMap;
+}) {
+  const arrangedFields = normalizeTemplateLayoutFields(fields);
+
+  return (
+    <div
+      className="entry-field-editor-row"
+      style={getTemplateLayoutGridStyle(arrangedFields)}
+    >
+      {arrangedFields.map((field) => (
+        <label
+          className="entry-field-editor-cell"
+          data-field-type={field.type}
+          data-empty={fieldValueIsEmpty(values[field.id] ?? null)}
+          key={field.id}
+          style={getEditableTemplateFieldGridStyle(field)}
+        >
+          <EntryFieldControl
+            field={field}
+            onChange={(value) => onChange(field, value)}
+            value={values[field.id] ?? (field.type === 'Checkbox' ? false : '')}
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function EntryFieldControl({
+  field,
+  onChange,
+  value,
+}: {
+  field: FieldDefinitionResponse;
+  onChange: (value: FieldValuePrimitive) => void;
+  value: FieldValuePrimitive;
+}) {
+  const label = field.required ? `${field.name} *` : field.name;
+
+  switch (field.type) {
+    case 'Checkbox':
+      return (
+        <span className="entry-checkbox-display">
+          <input
+            aria-label={label}
+            checked={value === true}
+            onChange={(event) => onChange(event.target.checked)}
+            type="checkbox"
+          />
+          <span>{label}</span>
+        </span>
+      );
+    case 'Date':
+      return (
+        <input
+          aria-label={label}
+          onChange={(event) => onChange(event.target.value || null)}
+          placeholder={field.name}
+          required={field.required}
+          type="date"
+          value={typeof value === 'string' ? value.slice(0, 10) : ''}
+        />
+      );
+    case 'Select':
+      return (
+        <select
+          aria-label={label}
+          onChange={(event) => onChange(event.target.value || null)}
+          required={field.required}
+          value={typeof value === 'string' ? value : ''}
+        >
+          <option value="">{field.name}</option>
+          {field.options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    case 'LongText':
+      return (
+        <textarea
+          aria-label={label}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={label}
+          required={field.required}
+          rows={1}
+          value={typeof value === 'string' ? value : ''}
+        />
+      );
+    case 'Text':
+    default:
+      return (
+        <input
+          aria-label={label}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={label}
+          required={field.required}
+          type="text"
+          value={typeof value === 'string' ? value : ''}
+        />
+      );
+  }
+}
+
 function AddTimelineEntryForm({
+  entryFields,
   onAddTimelineEntry,
   t,
 }: {
-  onAddTimelineEntry: (note: string) => Promise<void>;
+  entryFields: TaskTemplateDetailResponse['fields'];
+  onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   t: Translate;
 }) {
   const [note, setNote] = useState('');
+  const [fieldValues, setFieldValues] = useState<FieldValueMap>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const hasEntryFields = entryFields.length > 0;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const trimmedNote = note.trim();
-    if (!trimmedNote) {
+    const entryFieldValues = hasEntryFields
+      ? withDefaultFieldValues(entryFields, fieldValues)
+      : undefined;
+
+    if (
+      !trimmedNote &&
+      (!entryFieldValues || !entryFieldsHaveContent(entryFields, fieldValues))
+    ) {
       return;
     }
 
     setIsSubmitting(true);
-    await onAddTimelineEntry(trimmedNote);
+    await onAddTimelineEntry(trimmedNote, entryFieldValues);
     setNote('');
+    setFieldValues({});
     setIsSubmitting(false);
     textareaRef.current?.focus();
   };
 
   return (
     <form className="timeline-form" onSubmit={handleSubmit}>
-      <textarea
-        aria-label={t('note')}
-        ref={textareaRef}
-        onChange={(event) => setNote(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
+      {hasEntryFields ? (
+        <EntryFieldEditorRow
+          fields={entryFields}
+          onChange={(field, value) =>
+            setFieldValues((currentValues) => ({
+              ...currentValues,
+              [field.id]: value,
+            }))
           }
-        }}
-        placeholder={t('addNotePlaceholder')}
-        rows={3}
-        value={note}
-      />
-      <button disabled={!note.trim() || isSubmitting} type="submit">
+          values={fieldValues}
+        />
+      ) : (
+        <textarea
+          aria-label={t('note')}
+          ref={textareaRef}
+          onChange={(event) => setNote(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
+          placeholder={t('addNotePlaceholder')}
+          rows={3}
+          value={note}
+        />
+      )}
+      <button
+        disabled={
+          (!note.trim() &&
+            (!hasEntryFields || !entryFieldsHaveContent(entryFields, fieldValues))) ||
+          isSubmitting
+        }
+        type="submit"
+      >
         <Icon name="note" />
         <span>{t('note')}</span>
       </button>
@@ -5619,7 +6618,7 @@ function ArchiveDialog({
   };
 
   return (
-    <div className="dialog-backdrop" role="presentation">
+    <ModalFrame onClose={onClose}>
       <section
         aria-labelledby="archive-dialog-title"
         aria-modal="true"
@@ -5681,7 +6680,133 @@ function ArchiveDialog({
           </div>
         </form>
       </section>
-    </div>
+    </ModalFrame>
+  );
+}
+
+function ReopenDialog({
+  onClose,
+  onReopen,
+  t,
+  taskTitle,
+}: {
+  onClose: () => void;
+  onReopen: (note?: string) => Promise<void>;
+  t: Translate;
+  taskTitle: string;
+}) {
+  const [note, setNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await onReopen(note.trim() || undefined);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <ModalFrame onClose={onClose}>
+      <section
+        aria-labelledby="reopen-dialog-title"
+        aria-modal="true"
+        className="archive-dialog"
+        role="dialog"
+      >
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">{t('unarchiveSelected')}</p>
+            <h2 id="reopen-dialog-title">{taskTitle}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">{t('cancel')}</span>
+          </button>
+        </div>
+        <form className="archive-form" onSubmit={handleSubmit}>
+          <label>
+            {t('unarchiveNote')}
+            <textarea
+              onChange={(event) => setNote(event.target.value)}
+              rows={3}
+              value={note}
+            />
+          </label>
+          <div className="dialog-actions">
+            <button className="ghost-button" onClick={onClose} type="button">
+              {t('cancel')}
+            </button>
+            <button disabled={isSubmitting} type="submit">
+              <Icon name="undo" />
+              {t('unarchiveSelected')}
+            </button>
+          </div>
+        </form>
+      </section>
+    </ModalFrame>
+  );
+}
+
+function PermanentDeleteDialog({
+  count,
+  onClose,
+  onDelete,
+  t,
+}: {
+  count: number;
+  onClose: () => void;
+  onDelete: () => Promise<void>;
+  t: Translate;
+}) {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  return (
+    <ModalFrame onClose={onClose}>
+      <section
+        aria-labelledby="permanent-delete-title"
+        aria-modal="true"
+        className="delete-workspace-dialog"
+        role="dialog"
+      >
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">{t('deletePermanently')}</p>
+            <h2 id="permanent-delete-title">
+              {count} {t('selectedTasks')}
+            </h2>
+          </div>
+          <button className="icon-button" disabled={isDeleting} onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">{t('close')}</span>
+          </button>
+        </div>
+        <p>{t('deleteArchivedTasksWarning')}</p>
+        <div className="dialog-actions">
+          <button className="ghost-button" disabled={isDeleting} onClick={onClose} type="button">
+            {t('cancel')}
+          </button>
+          <button
+            className="danger-action"
+            disabled={isDeleting}
+            onClick={async () => {
+              setIsDeleting(true);
+              try {
+                await onDelete();
+              } finally {
+                setIsDeleting(false);
+              }
+            }}
+            type="button"
+          >
+            <Icon name="trash" />
+            {t('deletePermanently')}
+          </button>
+        </div>
+      </section>
+    </ModalFrame>
   );
 }
 
@@ -5961,22 +7086,6 @@ function AuthPanel({
   );
 }
 
-function ToastStack({ toasts }: { toasts: ToastMessage[] }) {
-  if (toasts.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="toast-stack" role="status" aria-live="polite">
-      {toasts.map((toast) => (
-        <div className="toast" data-tone={toast.tone} key={toast.id}>
-          {toast.message}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function AccountPanel({
   authOptions,
   currentUser,
@@ -6013,7 +7122,7 @@ function AccountPanel({
   t: Translate;
 }) {
   return (
-    <div className="dialog-backdrop" role="presentation">
+    <ModalFrame onClose={onClose}>
       <section
         aria-labelledby="account-title"
         aria-modal="true"
@@ -6140,7 +7249,7 @@ function AccountPanel({
           </div>
         </section>
       </section>
-    </div>
+    </ModalFrame>
   );
 }
 
@@ -6210,7 +7319,7 @@ function SettingsPanel({
   };
 
   return (
-    <div className="dialog-backdrop" role="presentation">
+    <ModalFrame onClose={onClose}>
       <section
         aria-labelledby="settings-title"
         aria-modal="true"
@@ -6349,7 +7458,7 @@ function SettingsPanel({
           </div>
         </div>
       </section>
-    </div>
+    </ModalFrame>
   );
 }
 
@@ -6491,9 +7600,13 @@ function isReadOnlyRole(role: CurrentUserResponse['workspaces'][number]['role'])
 }
 
 function formatTaskShareRole(role: TaskItemShareRole, t: Translate) {
-  return role === 1 || role === 'Viewer' || role === 'ReadOnly'
+  return isReadOnlyTaskShareRole(role)
     ? t('roleReadOnly')
     : t('roleMember');
+}
+
+function isReadOnlyTaskShareRole(role: TaskItemShareRole) {
+  return role === 1 || role === 'Viewer' || role === 'ReadOnly';
 }
 
 function isTaskShareWorkspace(workspace: Pick<WorkspaceResponse, 'accessKind'>) {
@@ -6511,62 +7624,6 @@ function formatOAuthProvider(provider: string, t: Translate) {
         : provider;
 
   return `${t('continueWith')} ${providerName}`;
-}
-
-function Icon({ name }: { name: IconName }) {
-  const paths: Record<IconName, string> = {
-    archive: 'M4 7h16v13H4V7Zm2-4h12l2 4H4l2-4Zm5 8h2',
-    arrowDown: 'M12 5v14m0 0 6-6m-6 6-6-6',
-    arrowUp: 'M12 19V5m0 0 6 6m-6-6-6 6',
-    back: 'M15 6 9 12l6 6M10 12h10',
-    calendarX: 'M7 3v4M17 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm6 8 4 4m0-4-4 4',
-    check: 'm5 13 4 4L19 7',
-    cloud: 'M17 18H8a5 5 0 1 1 .9-9.9A6.5 6.5 0 0 1 21 11.5 3.5 3.5 0 0 1 17 18Z',
-    clock: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 4v5l3 2',
-    close: 'M6 6l12 12M18 6 6 18',
-    crown: 'M5 17h14l1-9-5 4-3-6-3 6-5-4 1 9Zm1 3h12',
-    edit: 'M4 20h4l10-10-4-4L4 16v4Zm12-16 4 4',
-    filterOff: 'M4 5h16l-6 7v3l-4 2v-5L4 5Zm3 15 13-13',
-    inbox: 'M4 5h16v10l-3 4H7l-3-4V5Zm0 10h5l1.5 2h3L15 15h5',
-    list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
-    login: 'M10 17l5-5-5-5M15 12H3M21 5v14a2 2 0 0 1-2 2h-5M14 3h5a2 2 0 0 1 2 2',
-    logout: 'M14 7l-5 5 5 5M9 12h12M3 5v14a2 2 0 0 0 2 2h5M10 3H5a2 2 0 0 0-2 2',
-    mail: 'M4 6h16v12H4V6Zm0 2 8 5 8-5',
-    note: 'M5 4h11l3 3v13H5V4Zm11 0v4h4M8 12h8M8 16h6',
-    palette: 'M12 4a8 8 0 0 0-1 15.94c.8.1 1.33-.55 1.14-1.33-.13-.55.28-1.04.85-1.04h1.36A5.65 5.65 0 0 0 20 11.92C20 7.55 16.42 4 12 4ZM8 11.5h.01M10 8h.01M14 8h.01M16 11h.01',
-    panel: 'M4 5h16v14H4V5Zm5 0v14',
-    plus: 'M12 5v14M5 12h14',
-    refresh: 'M20 7v5h-5M4 17v-5h5M18 10a6 6 0 0 0-10-4L4 10m2 4a6 6 0 0 0 10 4l4-4',
-    search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm5 12 4 4',
-    settings: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-2.1-.6a6.9 6.9 0 0 0-.7-1.7l1.1-1.9-2.1-2.1-1.9 1.1a6.9 6.9 0 0 0-1.7-.7L12 4H9l-.6 2.1a6.9 6.9 0 0 0-1.7.7L4.8 5.7 2.7 7.8l1.1 1.9a6.9 6.9 0 0 0-.7 1.7L1 12l.6 3 2.1.6c.2.6.4 1.2.7 1.7l-1.1 1.9 2.1 2.1 1.9-1.1c.5.3 1.1.5 1.7.7L9 23h3l.6-2.1c.6-.2 1.2-.4 1.7-.7l1.9 1.1 2.1-2.1-1.1-1.9c.3-.5.5-1.1.7-1.7L20 15l.6-3Z',
-    shield: 'M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3Zm-3 9 2 2 4-5',
-    status: 'M5 7h14M5 12h14M5 17h9',
-    tag: 'M20 10 14 4H5v9l6 6 9-9ZM8 8h.01',
-    templates: 'M4 5h7v7H4V5Zm9 0h7v7h-7V5ZM4 14h7v5H4v-5Zm9 0h7v5h-7v-5Z',
-    trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
-    undo: 'M9 7 4 12l5 5M4 12h10a5 5 0 1 1-3.5 8.5',
-    user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0',
-    users: 'M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 8a7 7 0 0 1 12 0M17 11a3 3 0 1 0 0-6M15 20a5 5 0 0 1 7-4.5',
-    waiting: 'M6 4h12M8 4v5l4 3 4-3V4M8 20v-5l4-3 4 3v5M6 20h12',
-  };
-
-  return (
-    <svg
-      aria-hidden="true"
-      className="icon"
-      fill="none"
-      focusable="false"
-      viewBox="0 0 24 24"
-    >
-      <path
-        d={paths[name]}
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
 }
 
 function pickSavedViewId(
@@ -6704,319 +7761,6 @@ function getViewIcon(view: SavedViewResponse): IconName {
   return 'list';
 }
 
-const emptyTaskWallFilters: TaskWallFilters = {
-  text: '',
-  status: '',
-  category: '',
-  color: '',
-  projectId: '',
-  notTouchedDays: '',
-  followUp: '',
-  sharedWith: '',
-  sharedWithMe: false,
-};
-
-function buildTaskFilterOptions(
-  taskItems: TaskItemSummaryResponse[],
-  colorOptions: string[],
-) {
-  return {
-    statuses: uniqueSorted(taskItems.map((taskItem) => taskItem.status)),
-    categories: uniqueSorted(taskItems.flatMap((taskItem) => splitTaskCategories(taskItem.category))),
-    colors: colorOptions,
-  };
-}
-
-function getTaskColors(taskItems: TaskItemSummaryResponse[]) {
-  return taskItems
-    .map((taskItem) => taskItem.color)
-    .filter((color): color is string => Boolean(color));
-}
-
-function mergeColorOptions(...sources: string[][]) {
-  return Array.from(
-    new Set(
-      sources
-        .flat()
-        .map((color) => color.trim().toUpperCase())
-        .filter(isHexColor),
-    ),
-  );
-}
-
-function uniqueSorted(values: Array<string | null>) {
-  return Array.from(
-    new Set(values.filter((value): value is string => Boolean(value))),
-  ).sort((left, right) => left.localeCompare(right));
-}
-
-function splitTaskCategories(category: string | null | undefined) {
-  if (!category) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      category
-        .split(';')
-        .map((value) => value.trim())
-        .filter(Boolean),
-    ),
-  );
-}
-
-function joinTaskCategories(categories: string[]) {
-  const normalized = Array.from(
-    new Set(
-      categories
-        .map((category) => category.trim())
-        .filter(Boolean),
-    ),
-  );
-
-  return normalized.length > 0 ? normalized.join('; ') : null;
-}
-
-function getProjectsForTaskCategories(
-  category: string | null | undefined,
-  projects: ProjectResponse[] | Map<string, ProjectResponse>,
-) {
-  const projectLookup = projects instanceof Map
-    ? projects
-    : new Map(projects.map((project) => [project.name.toLowerCase(), project]));
-
-  return splitTaskCategories(category)
-    .map((categoryName) => projectLookup.get(categoryName.toLowerCase()) ?? null)
-    .filter((project): project is ProjectResponse => Boolean(project));
-}
-
-function getPrimaryProjectIdForCategories(
-  category: string | null | undefined,
-  projects: ProjectResponse[],
-) {
-  const firstProject = getProjectsForTaskCategories(category, projects)[0];
-  return firstProject?.id ?? null;
-}
-
-function applyTaskWallFilters(
-  taskItems: TaskItemSummaryResponse[],
-  filters: TaskWallFilters,
-  currentUserEmail: string | null,
-  projects: ProjectResponse[],
-) {
-  const text = filters.text.trim().toLowerCase();
-  const sharedWith = filters.sharedWith.trim().toLowerCase();
-  const normalizedCurrentUserEmail = currentUserEmail?.trim().toLowerCase() ?? '';
-  const notTouchedDays = numberOrNull(filters.notTouchedDays);
-
-  return taskItems.filter((taskItem) => {
-    if (text && !taskMatchesText(taskItem, text)) {
-      return false;
-    }
-
-    if (filters.status && taskItem.status !== filters.status) {
-      return false;
-    }
-
-    if (filters.category && !taskHasCategory(taskItem, filters.category)) {
-      return false;
-    }
-
-    if (filters.color && taskItem.color !== filters.color) {
-      return false;
-    }
-
-    if (filters.projectId && !taskMatchesProjectFilter(taskItem, filters.projectId, projects)) {
-      return false;
-    }
-
-    if (filters.followUp && !taskMatchesFollowUp(taskItem, filters.followUp)) {
-      return false;
-    }
-
-    if (notTouchedDays && !isNotTouchedForDays(taskItem, notTouchedDays)) {
-      return false;
-    }
-
-    if (sharedWith &&
-        !taskItem.shares.some((share) => share.email.toLowerCase().includes(sharedWith))) {
-      return false;
-    }
-
-    if (filters.sharedWithMe &&
-        !taskItem.shares.some((share) =>
-          share.email.toLowerCase() === normalizedCurrentUserEmail)) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-function taskMatchesText(taskItem: TaskItemSummaryResponse, text: string) {
-  return [
-    taskItem.title,
-    taskItem.status,
-    taskItem.category,
-    taskItem.latestTimelineEntry?.details,
-    ...taskItem.shares.map((share) => share.email),
-  ].some((value) => value?.toLowerCase().includes(text));
-}
-
-function taskMatchesProjectFilter(
-  taskItem: TaskItemSummaryResponse,
-  projectId: string,
-  projects: ProjectResponse[],
-) {
-  if (taskItem.projectId === projectId) {
-    return true;
-  }
-
-  const project = projects.find((candidate) => candidate.id === projectId);
-  return project ? taskHasCategory(taskItem, project.name) : false;
-}
-
-function taskHasCategory(taskItem: TaskItemSummaryResponse, category: string) {
-  return splitTaskCategories(taskItem.category).some((taskCategory) =>
-    taskCategory.toLowerCase() === category.trim().toLowerCase());
-}
-
-function taskMatchesFollowUp(
-  taskItem: TaskItemSummaryResponse,
-  followUp: SavedViewFollowUpFilter,
-) {
-  if (!taskItem.followUpAt) {
-    return false;
-  }
-
-  const followUpAt = new Date(taskItem.followUpAt);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  const nextWeek = new Date(today);
-  nextWeek.setDate(today.getDate() + 7);
-
-  switch (followUp) {
-    case 'Overdue':
-      return getFollowUpTone(taskItem.followUpAt) === 'overdue';
-    case 'Today':
-      return followUpAt >= today && followUpAt < tomorrow;
-    case 'ThisWeek':
-      return followUpAt >= today && followUpAt < nextWeek;
-    case 'Any':
-    default:
-      return true;
-  }
-}
-
-function isNotTouchedForDays(taskItem: TaskItemSummaryResponse, days: number) {
-  const threshold = Date.now() - days * 24 * 60 * 60 * 1000;
-  return new Date(taskItem.lastTouchedAt).getTime() <= threshold;
-}
-
-function taskWallFiltersAreActive(filters: TaskWallFilters) {
-  return Object.values(filters).some((value) =>
-    typeof value === 'boolean' ? value : value.trim().length > 0,
-  );
-}
-
-function getTaskCardStyle(color: string | null) {
-  const taskColor = color && isHexColor(color) ? color : '#FFF3A6';
-  const textColor = getReadableTextColor(taskColor);
-
-  return {
-    '--task-note-color': taskColor,
-    '--task-note-text': textColor,
-    '--task-note-chip-bg':
-      textColor === '#FFFFFF'
-        ? 'rgba(255, 255, 255, 0.16)'
-        : 'rgba(255, 255, 255, 0.46)',
-    '--task-note-chip-border':
-      textColor === '#FFFFFF'
-        ? 'rgba(255, 255, 255, 0.24)'
-        : 'rgba(24, 33, 44, 0.1)',
-  } as CSSProperties;
-}
-
-function getWorkspaceHeaderStyle(
-  workspaceColor: string | null,
-  projectColor: string | null,
-) {
-  const baseColor = workspaceColor && isHexColor(workspaceColor)
-    ? workspaceColor
-    : '#E8F3F0';
-  const accentColor = projectColor && isHexColor(projectColor)
-    ? projectColor
-    : baseColor;
-
-  return {
-    '--workspace-color': baseColor,
-    '--project-color': accentColor,
-    '--workspace-text': getReadableTextColor(baseColor),
-  } as CSSProperties;
-}
-
-function getSidebarStyle(workspaceColor: string | null) {
-  const baseColor = workspaceColor && isHexColor(workspaceColor)
-    ? workspaceColor
-    : '#184C48';
-
-  return {
-    '--sidebar-workspace-color': baseColor,
-    '--sidebar-workspace-text': getReadableTextColor(baseColor),
-  } as CSSProperties;
-}
-
-function getContextChipStyle(color: string | null) {
-  if (!color || !isHexColor(color)) {
-    return undefined;
-  }
-
-  return {
-    '--context-chip-color': color,
-    '--context-chip-text': getReadableTextColor(color),
-  } as CSSProperties;
-}
-
-function getTaskState(taskItem: TaskItemSummaryResponse) {
-  if (taskItem.archivedAt) {
-    return 'archived';
-  }
-
-  if (isFollowUpOverdue(taskItem)) {
-    return 'overdue';
-  }
-
-  if (isWaiting(taskItem)) {
-    return 'waiting';
-  }
-
-  if (isStale(taskItem)) {
-    return 'stale';
-  }
-
-  return 'active';
-}
-
-function getTaskBadges(taskItem: TaskItemSummaryResponse, t: Translate) {
-  const badges: string[] = [];
-
-  if (taskItem.archivedAt) {
-    badges.push(t('archive'));
-  }
-
-  if (isWaiting(taskItem)) {
-    badges.push(t('waiting'));
-  }
-
-  if (isStale(taskItem)) {
-    badges.push(t('stale'));
-  }
-
-  return badges;
-}
-
 function isTextEditingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -7029,10 +7773,6 @@ function isTextEditingTarget(target: EventTarget | null) {
     tagName === 'select' ||
     target.isContentEditable
   );
-}
-
-function isHexColor(value: string) {
-  return /^#[0-9A-F]{6}$/i.test(value);
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -7062,77 +7802,36 @@ async function copyTextToClipboard(value: string) {
   textarea.remove();
 }
 
-function getReadableTextColor(hexColor: string) {
-  const red = Number.parseInt(hexColor.slice(1, 3), 16);
-  const green = Number.parseInt(hexColor.slice(3, 5), 16);
-  const blue = Number.parseInt(hexColor.slice(5, 7), 16);
-  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
-
-  return luminance > 0.55 ? '#18212C' : '#FFFFFF';
-}
-
-function isWaiting(taskItem: TaskItemSummaryResponse) {
-  return taskItem.status?.toLowerCase().includes('waiting') ?? false;
-}
-
-function isFollowUpOverdue(taskItem: TaskItemSummaryResponse) {
-  return Boolean(taskItem.followUpAt) &&
-    !taskItem.archivedAt &&
-    getFollowUpTone(taskItem.followUpAt) === 'overdue';
-}
-
-function getFollowUpTone(value: string | null) {
-  if (!value) {
-    return 'none';
-  }
-
-  const followUpDate = new Date(value);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  const followUpDay = new Date(
-    followUpDate.getFullYear(),
-    followUpDate.getMonth(),
-    followUpDate.getDate(),
-  );
-
-  if (followUpDay.getTime() < today.getTime()) {
-    return 'overdue';
-  }
-
-  if (followUpDay.getTime() < tomorrow.getTime()) {
-    return 'today';
-  }
-
-  return 'future';
-}
-
-function isStale(taskItem: TaskItemSummaryResponse) {
-  const touchedAt = new Date(taskItem.lastTouchedAt).getTime();
-  const staleAt = Date.now() - staleAfterDays * 24 * 60 * 60 * 1000;
-  return !taskItem.archivedAt && touchedAt < staleAt;
-}
-
-function numberOrNull(value: string) {
-  if (!value.trim()) {
-    return null;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function withDefaultFieldValues(
-  template: TaskTemplateDetailResponse,
+  fields: TaskTemplateDetailResponse['fields'],
   values: FieldValueMap,
 ): FieldValueMap {
   return Object.fromEntries(
-    template.fields.map((field) => [
+    fields.map((field) => [
       field.id,
       values[field.id] ?? (field.type === 'Checkbox' ? false : null),
     ]),
   );
+}
+
+function entryFieldsHaveContent(
+  fields: TaskTemplateDetailResponse['fields'],
+  values: FieldValueMap,
+): boolean {
+  return fields.some((field) => {
+    const value = values[field.id];
+
+    if (typeof value === 'string') {
+      return value.trim().length > 0;
+    }
+
+    return value === true;
+  });
+}
+
+function fieldValueIsEmpty(value: FieldValuePrimitive): boolean {
+  return value === null || value === '' ||
+    (typeof value === 'string' && value.trim().length === 0);
 }
 
 function toEditableTemplateField(
@@ -7143,10 +7842,34 @@ function toEditableTemplateField(
     id: field.id,
     name: field.name,
     type: field.type,
+    scope: field.scope,
     required: field.required,
     sortOrder: field.sortOrder,
     optionsText: field.options.join('\n'),
+    layoutRow: field.layoutRow ?? 1,
+    layoutColumn: field.layoutColumn ?? 1,
+    layoutRowSpan: field.layoutRowSpan ?? 1,
+    layoutColumnSpan: field.layoutColumnSpan ?? (field.type === 'LongText' ? 2 : 1),
   };
+}
+
+function renumberTemplateFields(
+  fields: EditableTemplateField[],
+): EditableTemplateField[] {
+  const sortOrders: Record<FieldDefinitionScope, number> = {
+    Header: 0,
+    Entry: 0,
+  };
+
+  return fields.map((field) => {
+    const sortOrder = sortOrders[field.scope];
+    sortOrders[field.scope] += 1;
+
+    return {
+      ...field,
+      sortOrder,
+    };
+  });
 }
 
 function splitOptions(optionsText: string) {
@@ -7156,10 +7879,12 @@ function splitOptions(optionsText: string) {
     .filter(Boolean);
 }
 
-function formatFollowUpFilter(value: SavedViewFollowUpFilter) {
-  return value
-    .replace('ThisWeek', 'This week')
-    .replace('Any', 'Has follow-up');
+function clampInteger(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 function formatSortField(value: SavedViewSortField | null | undefined, t: Translate) {

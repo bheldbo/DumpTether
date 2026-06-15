@@ -10,6 +10,7 @@ import type {
   CreateArchiveResolutionRequest,
   CopyTaskItemsRequest,
   CopyTaskItemsResponse,
+  DeleteTaskItemsRequest,
   CreateTaskShareRequest,
   CreateTaskShareLinkRequest,
   CreateWorkspaceInvitationRequest,
@@ -23,6 +24,7 @@ import type {
   LoginUserRequest,
   LoginUserResponse,
   ReopenTaskItemRequest,
+  ReopenTaskItemsRequest,
   RegisterUserRequest,
   RegisterUserResponse,
   SavedViewResponse,
@@ -30,6 +32,7 @@ import type {
   TaskTemplateSummaryResponse,
   TaskItemListQuery,
   TaskItemDetailResponse,
+  TaskItemBatchResponse,
   TaskItemSummaryResponse,
   TaskItemViewCountResponse,
   UpdateTaskItemRequest,
@@ -47,6 +50,8 @@ import type {
   TaskItemShareResponse,
   TaskShareLinkResponse,
   ShareLinkAcceptResponse,
+  UpdateTaskShareRequest,
+  UpdateWorkspaceMemberRequest,
 } from './types';
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
@@ -302,11 +307,12 @@ export function getTaskItem(
 
 export function createTaskItem(
   requestBody: CreateTaskItemRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>('/api/tasks', {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function copyTaskItems(
@@ -353,6 +359,24 @@ export function reopenTaskItem(
   requestBody: ReopenTaskItemRequest,
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/reopen`, {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function reopenTaskItems(
+  requestBody: ReopenTaskItemsRequest,
+): Promise<TaskItemBatchResponse> {
+  return request<TaskItemBatchResponse>('/api/tasks/reopen', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function deleteTaskItemsPermanently(
+  requestBody: DeleteTaskItemsRequest,
+): Promise<TaskItemBatchResponse> {
+  return request<TaskItemBatchResponse>('/api/tasks/permanent-delete', {
     method: 'POST',
     body: JSON.stringify(requestBody),
   });
@@ -539,6 +563,16 @@ export function removeWorkspaceMember(userId: string): Promise<void> {
   });
 }
 
+export function updateWorkspaceMemberRole(
+  userId: string,
+  requestBody: UpdateWorkspaceMemberRequest,
+): Promise<WorkspaceMemberResponse> {
+  return request<WorkspaceMemberResponse>(`/api/workspace/members/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(requestBody),
+  });
+}
+
 export function revokeWorkspaceInvitation(id: string): Promise<void> {
   return request<void>(`/api/workspace/invitations/${id}`, {
     method: 'DELETE',
@@ -627,6 +661,17 @@ export function revokeTaskShare(
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/shares/${shareId}`, {
     method: 'DELETE',
+  });
+}
+
+export function updateTaskShareRole(
+  id: string,
+  shareId: string,
+  requestBody: UpdateTaskShareRequest,
+): Promise<TaskItemDetailResponse> {
+  return request<TaskItemDetailResponse>(`/api/tasks/${id}/shares/${shareId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(requestBody),
   });
 }
 

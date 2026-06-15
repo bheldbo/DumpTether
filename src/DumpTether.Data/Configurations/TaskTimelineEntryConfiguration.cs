@@ -56,5 +56,13 @@ internal sealed class TaskTimelineEntryConfiguration : IEntityTypeConfiguration<
             .WithMany("_timelineEntries")
             .HasForeignKey(taskTimelineEntry => taskTimelineEntry.TaskItemId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasMany(taskTimelineEntry => taskTimelineEntry.FieldValues)
+            .WithOne()
+            .HasForeignKey(fieldValue => fieldValue.TaskTimelineEntryId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Navigation(taskTimelineEntry => taskTimelineEntry.FieldValues)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

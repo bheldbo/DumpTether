@@ -57,6 +57,14 @@ public interface ITaskItemService
         ReopenTaskItemRequest request,
         CancellationToken cancellationToken);
 
+    Task<TaskItemBatchResponse> ReopenAsync(
+        ReopenTaskItemsRequest request,
+        CancellationToken cancellationToken);
+
+    Task<TaskItemBatchResponse> DeleteArchivedAsync(
+        DeleteTaskItemsRequest request,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<TaskItemShareResponse>?> ListSharesAsync(
         Guid id,
         CancellationToken cancellationToken);
@@ -85,6 +93,12 @@ public interface ITaskItemService
     Task<TaskItemDetailResponse?> RevokeShareAsync(
         Guid id,
         Guid shareId,
+        CancellationToken cancellationToken);
+
+    Task<TaskItemDetailResponse?> UpdateShareRoleAsync(
+        Guid id,
+        Guid shareId,
+        UpdateTaskShareRequest request,
         CancellationToken cancellationToken);
 
     Task<bool> LeaveShareAsync(

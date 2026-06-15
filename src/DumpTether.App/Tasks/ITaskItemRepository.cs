@@ -64,6 +64,11 @@ public interface ITaskItemRepository
         bool trackChanges,
         CancellationToken cancellationToken);
 
+    Task<int> DeleteArchivedAsync(
+        Guid workspaceId,
+        IReadOnlyList<Guid> ids,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<TaskItem>> ListByShareTokenHashAsync(
         string tokenHash,
         bool trackChanges,

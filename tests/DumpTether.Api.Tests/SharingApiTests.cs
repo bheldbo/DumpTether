@@ -7,6 +7,7 @@ using DumpTether.App.Templates;
 using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
 using DumpTether.Data;
+using DumpTether.Domain;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
@@ -62,6 +63,51 @@ public sealed class SharingApiTests
 
         Assert.Contains(invitedTasks!, taskItem => taskItem.Id == ownerTask.Id);
         Assert.Contains(invitedMembers!, member => member.Email == invited.User.Email);
+    }
+
+    [Fact]
+    public async Task WorkspaceMemberRole_OwnerCanChangeMemberToReadOnly()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var invitedClient = factory.CreateClient();
+        await RegisterAndLoginAsync(
+            ownerClient,
+            "role-owner@example.com",
+            "correct horse battery");
+        var invited = await RegisterAndLoginAsync(
+            invitedClient,
+            "role-invited@example.com",
+            "correct horse battery");
+
+        var inviteResponse = await ownerClient.PostAsJsonAsync(
+            "/api/workspace/invitations",
+            new
+            {
+                email = invited.User.Email
+            });
+        inviteResponse.EnsureSuccessStatusCode();
+        var invite = (await inviteResponse.Content.ReadFromJsonAsync<WorkspaceInvitationResponse>())!;
+        var acceptResponse = await invitedClient.PostAsJsonAsync(
+            "/api/workspace/invitations/accept",
+            new
+            {
+                token = invite.Token
+            });
+        acceptResponse.EnsureSuccessStatusCode();
+
+        var updateResponse = await ownerClient.PatchAsJsonAsync(
+            $"/api/workspace/members/{invited.User.Id}",
+            new
+            {
+                role = "ReadOnly"
+            });
+        updateResponse.EnsureSuccessStatusCode();
+
+        var updated = (await updateResponse.Content.ReadFromJsonAsync<WorkspaceMemberResponse>())!;
+
+        Assert.Equal(invited.User.Id, updated.UserId);
+        Assert.Equal(WorkspaceMembershipRole.ReadOnly, updated.Role);
     }
 
     [Fact]
@@ -1083,6 +1129,54 @@ public sealed class SharingApiTests
 
         detailResponse.EnsureSuccessStatusCode();
         Assert.Equal(HttpStatusCode.NotFound, updateResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task TaskShareRole_OwnerCanChangeEditorToViewer()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var sharedClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "share-role-owner@example.com",
+            "correct horse battery");
+        var sharedUser = await RegisterAndLoginAsync(
+            sharedClient,
+            "share-role-user@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+        var sharedTask = await CreateTaskAsync(ownerClient, "Role mutable task share");
+
+        var shareResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{sharedTask.Id}/shares",
+            new
+            {
+                email = sharedUser.User.Email
+            });
+        shareResponse.EnsureSuccessStatusCode();
+        var sharedDetail = (await shareResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+        var share = Assert.Single(sharedDetail.Shares);
+
+        var updateRoleResponse = await ownerClient.PatchAsJsonAsync(
+            $"/api/tasks/{sharedTask.Id}/shares/{share.Id}",
+            new
+            {
+                role = "Viewer"
+            });
+        updateRoleResponse.EnsureSuccessStatusCode();
+
+        SetWorkspaceHeader(sharedClient, ownerWorkspaceId);
+        var editResponse = await sharedClient.PatchAsJsonAsync(
+            $"/api/tasks/{sharedTask.Id}",
+            new
+            {
+                title = "Viewer should not edit after role update"
+            });
+        var updatedDetail = (await updateRoleResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+
+        Assert.Equal(TaskItemShareRole.Viewer, Assert.Single(updatedDetail.Shares).Role);
+        Assert.Equal(HttpStatusCode.NotFound, editResponse.StatusCode);
     }
 
     [Fact]

@@ -56,7 +56,7 @@ internal sealed class TaskItemService : ITaskItemService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var context = await GetRequiredWorkspaceContextAsync(cancellationToken);
         if (context.IsSharedOnly)
         {
             throw new ValidationException("Task-share access cannot create tasks in this board.");
@@ -71,7 +71,7 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
         var project = await ResolveProjectAsync(
             context.WorkspaceId,
-            request.ProjectId ?? context.ProjectId,
+            request.ProjectId,
             cancellationToken);
         var taskItem = TaskItem.Create(
             context.WorkspaceId,
@@ -100,6 +100,19 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
 
         return MapDetail(taskItem, taskTemplate);
+    }
+
+    private async Task<DevelopmentWorkspaceContext> GetRequiredWorkspaceContextAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new ValidationException("Create a board before creating tasks.", exception);
+        }
     }
 
     private async Task EnsureTaskQuotaAsync(Guid workspaceId, CancellationToken cancellationToken)
@@ -465,7 +478,30 @@ internal sealed class TaskItemService : ITaskItemService
             return null;
         }
 
-        taskItem.EditNote(entryId, request.Note, _clock.UtcNow);
+        if (request.Note is null && (request.FieldValues is null || request.FieldValues.Count == 0))
+        {
+            throw new ValidationException("Note text or entry fields are required.");
+        }
+
+        var now = _clock.UtcNow;
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+
+        if (request.Note is not null)
+        {
+            taskItem.EditNote(entryId, request.Note, now);
+        }
+
+        ApplyTimelineEntryFieldValues(
+            taskItem,
+            entryId,
+            taskTemplate,
+            request.FieldValues,
+            now,
+            requireRequiredFields: false);
+
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
         await PublishTaskEventAsync(
             LiveUpdateEvents.NoteEdited,
@@ -473,11 +509,6 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.LastTouchedAt,
             cancellationToken,
             timelineEntryId: entryId);
-
-        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
-            taskItem,
-            includeDeleted: true,
-            cancellationToken);
 
         return MapDetail(taskItem, taskTemplate);
     }
@@ -526,17 +557,25 @@ internal sealed class TaskItemService : ITaskItemService
         }
 
         var now = _clock.UtcNow;
-        taskItem.AddNote(request.Note, now);
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+        ValidateTimelineEntryHasContent(request);
+        var entry = taskItem.AddNote(request.Note, now);
+        ApplyTimelineEntryFieldValues(
+            taskItem,
+            entry.Id,
+            taskTemplate,
+            request.FieldValues,
+            now,
+            requireRequiredFields: true);
+
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
         await PublishTaskEventAsync(
             LiveUpdateEvents.NoteAdded,
             taskItem,
             now,
-            cancellationToken);
-
-        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
-            taskItem,
-            includeDeleted: true,
             cancellationToken);
 
         return MapDetail(taskItem, taskTemplate);
@@ -629,6 +668,93 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
 
         return MapDetail(taskItem, taskTemplate);
+    }
+
+    public async Task<TaskItemBatchResponse> ReopenAsync(
+        ReopenTaskItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var taskIds = NormalizeTaskIds(request.TaskItemIds);
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var taskItems = await _taskItemRepository.ListByIdsAsync(
+            context.WorkspaceId,
+            taskIds,
+            trackChanges: true,
+            cancellationToken);
+
+        if (taskItems.Count != taskIds.Count ||
+            taskItems.Any(taskItem => !CanEditTask(context, currentSession, taskItem)))
+        {
+            throw new ValidationException("One or more selected tasks were not found.");
+        }
+
+        if (taskItems.Any(taskItem => taskItem.ArchivedAt is null))
+        {
+            throw new ValidationException("Only archived tasks can be unarchived.");
+        }
+
+        var now = _clock.UtcNow;
+
+        foreach (var taskItem in taskItems)
+        {
+            taskItem.Reopen(now, request.Note);
+        }
+
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        foreach (var taskItem in taskItems)
+        {
+            await PublishTaskEventAsync(
+                LiveUpdateEvents.TaskUpdated,
+                taskItem,
+                now,
+                cancellationToken,
+                currentSession);
+        }
+
+        return new TaskItemBatchResponse(taskItems.Count);
+    }
+
+    public async Task<TaskItemBatchResponse> DeleteArchivedAsync(
+        DeleteTaskItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var taskIds = NormalizeTaskIds(request.TaskItemIds);
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+
+        if (!context.CanDeleteWorkspaceData)
+        {
+            throw new ValidationException("Only the board owner can permanently delete archived tasks.");
+        }
+
+        var taskItems = await _taskItemRepository.ListByIdsAsync(
+            context.WorkspaceId,
+            taskIds,
+            trackChanges: false,
+            cancellationToken);
+
+        if (taskItems.Count != taskIds.Count)
+        {
+            throw new ValidationException("One or more selected tasks were not found.");
+        }
+
+        if (taskItems.Any(taskItem => taskItem.ArchivedAt is null))
+        {
+            throw new ValidationException("Only archived tasks can be permanently deleted.");
+        }
+
+        var deletedCount = await _taskItemRepository.DeleteArchivedAsync(
+            context.WorkspaceId,
+            taskIds,
+            cancellationToken);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+
+        return new TaskItemBatchResponse(deletedCount);
     }
 
     public async Task<IReadOnlyList<TaskItemShareResponse>?> ListSharesAsync(
@@ -904,6 +1030,37 @@ internal sealed class TaskItemService : ITaskItemService
         return MapDetail(taskItem, taskTemplate);
     }
 
+    public async Task<TaskItemDetailResponse?> UpdateShareRoleAsync(
+        Guid id,
+        Guid shareId,
+        UpdateTaskShareRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var taskItem = await GetTaskItemForWorkspaceMemberWriteAsync(id, cancellationToken);
+
+        if (taskItem is null)
+        {
+            return null;
+        }
+
+        taskItem.ChangeShareRole(shareId, request.Role, _clock.UtcNow);
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskUpdated,
+            taskItem,
+            taskItem.LastTouchedAt,
+            cancellationToken);
+
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            taskItem,
+            includeDeleted: true,
+            cancellationToken);
+
+        return MapDetail(taskItem, taskTemplate);
+    }
+
     public async Task<bool> LeaveShareAsync(
         Guid shareId,
         CancellationToken cancellationToken)
@@ -1126,6 +1283,21 @@ internal sealed class TaskItemService : ITaskItemService
         {
             throw new ValidationException("Read-only board access cannot change tasks.");
         }
+    }
+
+    private static IReadOnlyList<Guid> NormalizeTaskIds(IReadOnlyList<Guid> taskItemIds)
+    {
+        var taskIds = (taskItemIds ?? [])
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (taskIds.Length == 0)
+        {
+            throw new ValidationException("At least one task is required.");
+        }
+
+        return taskIds;
     }
 
     private async Task<TaskItemQuery> BuildQueryAsync(
@@ -1352,6 +1524,7 @@ internal sealed class TaskItemService : ITaskItemService
 
         foreach (var requiredField in taskTemplate.FieldDefinitions.Where(field =>
                      field.IsActive &&
+                     field.Scope == FieldDefinitionScope.Header &&
                      field.IsRequired))
         {
             if (!providedFieldValues.TryGetValue(requiredField.Id, out var value) ||
@@ -1381,7 +1554,7 @@ internal sealed class TaskItemService : ITaskItemService
         }
 
         var definitions = taskTemplate.FieldDefinitions
-            .Where(field => field.IsActive)
+            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Header)
             .ToDictionary(field => field.Id);
 
         foreach (var (fieldDefinitionId, value) in fieldValues)
@@ -1399,6 +1572,91 @@ internal sealed class TaskItemService : ITaskItemService
         }
     }
 
+    private static void ValidateTimelineEntryHasContent(AddTaskTimelineEntryRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.Note) ||
+            FieldValuesContainMeaningfulContent(request.FieldValues))
+        {
+            return;
+        }
+
+        throw new ValidationException("Note text or entry fields are required.");
+    }
+
+    private static void ApplyTimelineEntryFieldValues(
+        TaskItem taskItem,
+        Guid entryId,
+        TaskTemplate? taskTemplate,
+        IReadOnlyDictionary<Guid, JsonElement>? fieldValues,
+        DateTimeOffset occurredAt,
+        bool requireRequiredFields)
+    {
+        if (fieldValues is null || fieldValues.Count == 0)
+        {
+            if (requireRequiredFields)
+            {
+                ValidateRequiredTimelineEntryFieldValues(taskTemplate, fieldValues);
+            }
+
+            return;
+        }
+
+        if (taskTemplate is null)
+        {
+            throw new ValidationException(
+                "A task template is required before entry field values can be updated.");
+        }
+
+        var definitions = taskTemplate.FieldDefinitions
+            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Entry)
+            .ToDictionary(field => field.Id);
+
+        if (requireRequiredFields)
+        {
+            ValidateRequiredTimelineEntryFieldValues(taskTemplate, fieldValues);
+        }
+
+        foreach (var (fieldDefinitionId, value) in fieldValues)
+        {
+            if (!definitions.TryGetValue(fieldDefinitionId, out var definition))
+            {
+                throw new ValidationException(
+                    $"Entry field definition '{fieldDefinitionId}' was not found.");
+            }
+
+            taskItem.SetTimelineEntryFieldValue(
+                entryId,
+                definition,
+                NormalizeFieldValue(definition, value),
+                occurredAt);
+        }
+    }
+
+    private static void ValidateRequiredTimelineEntryFieldValues(
+        TaskTemplate? taskTemplate,
+        IReadOnlyDictionary<Guid, JsonElement>? fieldValues)
+    {
+        if (taskTemplate is null)
+        {
+            return;
+        }
+
+        var providedFieldValues = fieldValues ?? new Dictionary<Guid, JsonElement>();
+
+        foreach (var requiredField in taskTemplate.FieldDefinitions.Where(field =>
+                     field.IsActive &&
+                     field.Scope == FieldDefinitionScope.Entry &&
+                     field.IsRequired))
+        {
+            if (!providedFieldValues.TryGetValue(requiredField.Id, out var value) ||
+                FieldValueIsEmpty(value))
+            {
+                throw new ValidationException(
+                    $"Entry field '{requiredField.Label}' is required.");
+            }
+        }
+    }
+
     private static void CopyFieldValues(
         TaskItem sourceTask,
         TaskItem copiedTask,
@@ -1406,7 +1664,7 @@ internal sealed class TaskItemService : ITaskItemService
         DateTimeOffset occurredAt)
     {
         var definitions = taskTemplate.FieldDefinitions
-            .Where(field => field.IsActive)
+            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Header)
             .ToDictionary(field => field.Id);
 
         foreach (var fieldValue in sourceTask.FieldValues)
@@ -1541,6 +1799,20 @@ internal sealed class TaskItemService : ITaskItemService
             string.IsNullOrWhiteSpace(value.GetString());
     }
 
+    private static bool FieldValuesContainMeaningfulContent(
+        IReadOnlyDictionary<Guid, JsonElement>? fieldValues)
+    {
+        if (fieldValues is null || fieldValues.Count == 0)
+        {
+            return false;
+        }
+
+        return fieldValues.Values.Any(value =>
+            value.ValueKind == JsonValueKind.True ||
+            value.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(value.GetString()));
+    }
+
     private static TaskItemSummaryResponse MapSummary(TaskItem taskItem)
     {
         var latestTimelineEntry = taskItem.TimelineEntries
@@ -1575,7 +1847,8 @@ internal sealed class TaskItemService : ITaskItemService
                     latestTimelineEntry.Summary,
                     latestTimelineEntry.Details,
                     latestTimelineEntry.OccurredAt,
-                    latestTimelineEntry.UpdatedAt));
+                    latestTimelineEntry.UpdatedAt,
+                    MapFieldValues(latestTimelineEntry.FieldValues)));
     }
 
     private static TaskItemDetailResponse MapDetail(
@@ -1613,14 +1886,34 @@ internal sealed class TaskItemService : ITaskItemService
                 .Where(entry => entry.DeletedAt == null)
                 .OrderBy(entry => entry.OccurredAt)
                 .ThenBy(entry => entry.Id)
-                .Select(entry => new TaskTimelineEntryResponse(
-                    entry.Id,
-                    entry.Kind.ToString(),
-                    entry.Summary,
-                    entry.Details,
-                    entry.OccurredAt,
-                    entry.UpdatedAt))
+                .Select(MapTimelineEntry)
                 .ToList());
+    }
+
+    private static TaskTimelineEntryResponse MapTimelineEntry(TaskTimelineEntry entry)
+    {
+        return new TaskTimelineEntryResponse(
+            entry.Id,
+            entry.Kind.ToString(),
+            entry.Summary,
+            entry.Details,
+            entry.OccurredAt,
+            entry.UpdatedAt,
+            MapFieldValues(entry.FieldValues));
+    }
+
+    private static IReadOnlyList<FieldValueResponse> MapFieldValues(
+        IEnumerable<TaskTimelineEntryFieldValue> fieldValues)
+    {
+        return fieldValues
+            .OrderBy(value => value.UpdatedAt)
+            .ThenBy(value => value.Id)
+            .Select(value => new FieldValueResponse(
+                value.Id,
+                value.FieldDefinitionId,
+                value.ValueJson,
+                value.UpdatedAt))
+            .ToList();
     }
 
     private static IReadOnlyList<TaskItemShareResponse> MapShares(TaskItem taskItem)
@@ -1676,6 +1969,9 @@ internal sealed class TaskItemService : ITaskItemService
     {
         var fieldValueDefinitionIds = taskItem.FieldValues
             .Select(value => value.FieldDefinitionId)
+            .Concat(taskItem.TimelineEntries
+                .SelectMany(entry => entry.FieldValues)
+                .Select(value => value.FieldDefinitionId))
             .ToHashSet();
 
         return new TaskTemplateDetailResponse(
@@ -1685,7 +1981,8 @@ internal sealed class TaskItemService : ITaskItemService
             taskTemplate.UpdatedAt,
             taskTemplate.FieldDefinitions
                 .Where(field => field.IsActive || fieldValueDefinitionIds.Contains(field.Id))
-                .OrderBy(field => field.SortOrder)
+                .OrderBy(field => field.Scope)
+                .ThenBy(field => field.SortOrder)
                 .ThenBy(field => field.Label)
                 .Select(TaskTemplateService.MapField)
                 .ToList());
