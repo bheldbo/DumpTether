@@ -1,0 +1,115 @@
+import { Icon } from './Icon';
+import { ColorOptionPicker } from './ColorOptionPicker';
+import type { Translate } from '../localization';
+import {
+  followUpFilters,
+  formatFollowUpFilter,
+  type TaskWallFilters,
+} from '../taskUtils';
+import type { SavedViewFollowUpFilter } from '../types';
+
+interface TaskFilterBarProps {
+  filters: TaskWallFilters;
+  filtersAreActive: boolean;
+  onChange: (filters: TaskWallFilters) => void;
+  onReset: () => void;
+  options: {
+    statuses: string[];
+    categories: string[];
+    colors: string[];
+  };
+  t: Translate;
+}
+
+export function TaskFilterBar({
+  filters,
+  filtersAreActive,
+  onChange,
+  onReset,
+  options,
+  t,
+}: TaskFilterBarProps) {
+  const updateFilter = (update: Partial<TaskWallFilters>) => {
+    onChange({ ...filters, ...update });
+  };
+
+  return (
+    <div className="filter-bar" aria-label="Temporary task filters">
+      <label className="filter-search">
+        <span className="sr-only">Search tasks</span>
+        <input
+          onChange={(event) => updateFilter({ text: event.target.value })}
+          placeholder={t('filterWall')}
+          type="search"
+          value={filters.text}
+        />
+      </label>
+
+      <select
+        aria-label="Filter by status"
+        onChange={(event) => updateFilter({ status: event.target.value })}
+        value={filters.status}
+      >
+        <option value="">{t('anyStatus')}</option>
+        {options.statuses.map((status) => (
+          <option key={status} value={status}>
+            {status}
+          </option>
+        ))}
+      </select>
+
+      <ColorOptionPicker
+        emptyLabel={t('noTaskColors')}
+        label={t('color')}
+        onChange={(color) => updateFilter({ color })}
+        options={options.colors}
+        value={filters.color}
+        zeroLabel={t('anyColor')}
+      />
+
+      <select
+        aria-label="Filter by follow-up"
+        onChange={(event) =>
+          updateFilter({ followUp: event.target.value as '' | SavedViewFollowUpFilter })
+        }
+        value={filters.followUp}
+      >
+        <option value="">{t('anyFollowUp')}</option>
+        {followUpFilters.map((filter) => (
+          <option key={filter} value={filter}>
+            {formatFollowUpFilter(filter)}
+          </option>
+        ))}
+      </select>
+
+      <input
+        aria-label="Not touched for days"
+        min={1}
+        onChange={(event) => updateFilter({ notTouchedDays: event.target.value })}
+        placeholder={t('notTouchedDays')}
+        type="number"
+        value={filters.notTouchedDays}
+      />
+
+      <input
+        aria-label={t('sharedWith')}
+        onChange={(event) => updateFilter({ sharedWith: event.target.value })}
+        placeholder={t('sharedWith')}
+        type="search"
+        value={filters.sharedWith}
+      />
+
+      {filtersAreActive ? (
+        <button
+          className="icon-button reset-filters-button"
+          onClick={onReset}
+          title={t('removeFilters')}
+          type="button"
+        >
+          <Icon name="filterOff" />
+          <span className="sr-only">{t('removeFilters')}</span>
+        </button>
+      ) : null}
+    </div>
+  );
+}

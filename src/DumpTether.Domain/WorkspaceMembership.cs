@@ -46,4 +46,24 @@ public sealed class WorkspaceMembership
             role,
             createdAt);
     }
+
+    public void ChangeRole(WorkspaceMembershipRole role)
+    {
+        if (!Enum.IsDefined(role))
+        {
+            throw new ArgumentException("Workspace membership role is not valid.", nameof(role));
+        }
+
+        if (role == WorkspaceMembershipRole.Owner)
+        {
+            throw new InvalidOperationException("Workspace ownership cannot be assigned here.");
+        }
+
+        if (Role == WorkspaceMembershipRole.Owner)
+        {
+            throw new InvalidOperationException("Workspace owners cannot be demoted here.");
+        }
+
+        Role = role;
+    }
 }

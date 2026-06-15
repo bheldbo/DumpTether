@@ -48,18 +48,28 @@ public sealed class TaskTemplate
         string key,
         string label,
         FieldDefinitionType type,
+        FieldDefinitionScope scope,
         bool isRequired,
         int sortOrder,
-        string? optionsJson = null)
+        string? optionsJson = null,
+        int layoutRow = 1,
+        int layoutColumn = 1,
+        int layoutRowSpan = 1,
+        int layoutColumnSpan = 1)
     {
         var fieldDefinition = FieldDefinition.Create(
             Id,
             key,
             label,
             type,
+            scope,
             isRequired,
             sortOrder,
-            optionsJson);
+            optionsJson,
+            layoutRow,
+            layoutColumn,
+            layoutRowSpan,
+            layoutColumnSpan);
 
         _fieldDefinitions.Add(fieldDefinition);
         return fieldDefinition;

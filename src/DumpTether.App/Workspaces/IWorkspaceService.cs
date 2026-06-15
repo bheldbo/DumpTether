@@ -56,6 +56,11 @@ public interface IWorkspaceService
         Guid userId,
         CancellationToken cancellationToken);
 
+    Task<WorkspaceMemberResponse?> UpdateMemberRoleAsync(
+        Guid userId,
+        UpdateWorkspaceMemberRequest request,
+        CancellationToken cancellationToken);
+
     Task<bool> LeaveCurrentWorkspaceAsync(CancellationToken cancellationToken);
 
     Task<bool> DeleteAsync(Guid workspaceId, CancellationToken cancellationToken);

@@ -45,6 +45,7 @@ export interface TaskTimelineEntryResponse {
   details: string | null;
   occurredAt: string;
   updatedAt: string;
+  fieldValues: FieldValueResponse[];
 }
 
 export interface ArchiveResolutionResponse {
@@ -185,6 +186,10 @@ export interface CreateWorkspaceInvitationRequest {
   role?: WorkspaceMembershipRole;
 }
 
+export interface UpdateWorkspaceMemberRequest {
+  role: WorkspaceMembershipRole;
+}
+
 export interface AcceptWorkspaceInvitationRequest {
   token?: string | null;
   invitationId?: string | null;
@@ -294,6 +299,10 @@ export interface CreateTaskShareLinkRequest {
   role?: TaskItemShareRole;
 }
 
+export interface UpdateTaskShareRequest {
+  role: TaskItemShareRole;
+}
+
 export interface AcceptShareLinkRequest {
   token: string;
 }
@@ -314,6 +323,10 @@ export interface CopyTaskItemsResponse {
   tasks: TaskItemDetailResponse[];
 }
 
+export interface TaskItemBatchResponse {
+  count: number;
+}
+
 export interface CreateSavedViewRequest {
   name: string;
   scope?: SavedViewScope | null;
@@ -331,6 +344,7 @@ export interface UpdateSavedViewRequest {
 }
 
 export type FieldDefinitionType = 'Text' | 'LongText' | 'Date' | 'Checkbox' | 'Select';
+export type FieldDefinitionScope = 'Header' | 'Entry';
 
 export interface TaskTemplateSummaryResponse {
   id: string;
@@ -353,18 +367,28 @@ export interface FieldDefinitionResponse {
   key: string;
   name: string;
   type: FieldDefinitionType;
+  scope: FieldDefinitionScope;
   required: boolean;
   sortOrder: number;
   options: string[];
+  layoutRow: number;
+  layoutColumn: number;
+  layoutRowSpan: number;
+  layoutColumnSpan: number;
 }
 
 export interface UpsertFieldDefinitionRequest {
   id?: string | null;
   name: string;
   type: FieldDefinitionType;
+  scope?: FieldDefinitionScope | null;
   required: boolean;
   sortOrder: number;
   options?: string[] | null;
+  layoutRow?: number | null;
+  layoutColumn?: number | null;
+  layoutRowSpan?: number | null;
+  layoutColumnSpan?: number | null;
 }
 
 export interface CreateTaskTemplateRequest {
@@ -400,11 +424,13 @@ export interface UpdateTaskItemRequest {
 }
 
 export interface AddTaskTimelineEntryRequest {
-  note: string;
+  note?: string | null;
+  fieldValues?: FieldValueMap;
 }
 
 export interface UpdateTaskTimelineEntryRequest {
-  note: string;
+  note?: string | null;
+  fieldValues?: FieldValueMap;
 }
 
 export interface ArchiveTaskItemRequest {
@@ -419,6 +445,15 @@ export interface ArchiveProjectTasksRequest {
 
 export interface ReopenTaskItemRequest {
   note?: string | null;
+}
+
+export interface ReopenTaskItemsRequest {
+  taskItemIds: string[];
+  note?: string | null;
+}
+
+export interface DeleteTaskItemsRequest {
+  taskItemIds: string[];
 }
 
 export interface CreateTaskShareRequest {

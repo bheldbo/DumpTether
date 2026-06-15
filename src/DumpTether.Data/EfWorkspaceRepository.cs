@@ -295,10 +295,23 @@ internal sealed class EfWorkspaceRepository : IWorkspaceRepository
 
         if (taskIds.Count > 0)
         {
+            var timelineEntryIds = await _dbContext.TaskTimelineEntries
+                .Where(entry => taskIds.Contains(entry.TaskItemId))
+                .Select(entry => entry.Id)
+                .ToListAsync(cancellationToken);
+
             _dbContext.FieldValues.RemoveRange(
                 await _dbContext.FieldValues
                     .Where(fieldValue => taskIds.Contains(fieldValue.TaskItemId))
                     .ToListAsync(cancellationToken));
+            if (timelineEntryIds.Count > 0)
+            {
+                _dbContext.TaskTimelineEntryFieldValues.RemoveRange(
+                    await _dbContext.TaskTimelineEntryFieldValues
+                        .Where(fieldValue => timelineEntryIds.Contains(fieldValue.TaskTimelineEntryId))
+                        .ToListAsync(cancellationToken));
+            }
+
             _dbContext.TaskTimelineEntries.RemoveRange(
                 await _dbContext.TaskTimelineEntries
                     .Where(entry => taskIds.Contains(entry.TaskItemId))

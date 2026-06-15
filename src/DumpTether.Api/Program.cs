@@ -89,7 +89,27 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
-    await dbContext.Database.MigrateAsync();
+    var databaseProvider = dbContext.Database.ProviderName;
+
+    if (string.Equals(
+            databaseProvider,
+            "Npgsql.EntityFrameworkCore.PostgreSQL",
+            StringComparison.Ordinal))
+    {
+        try
+        {
+            await dbContext.Database.MigrateAsync();
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                "DumpTether could not apply EF Core migrations on startup. " +
+                "For local development, start PostgreSQL and run scripts/dev.ps1 -Target Migrate, " +
+                "or keep Database:ApplyMigrationsOnStartup enabled in Development. " +
+                "The database schema is probably older than the current code.",
+                exception);
+        }
+    }
 }
 
 app.UseMiddleware<SecurityHeadersMiddleware>();

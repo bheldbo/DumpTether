@@ -38,5 +38,6 @@ src/**/appsettings.Development.json
 src/**/appsettings.Local.json
 src/**/appsettings.Production.json
 src/**/appsettings.Staging.json
+!src/DumpTether.Api/appsettings.Development.json
 !src/DumpTether.Api/appsettings.Production.json
 appsettings.Local.json

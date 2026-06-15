@@ -2,6 +2,8 @@ namespace DumpTether.Domain;
 
 public sealed class TaskTimelineEntry
 {
+    private readonly List<TaskTimelineEntryFieldValue> _fieldValues = [];
+
     private TaskTimelineEntry()
     {
     }
@@ -39,6 +41,8 @@ public sealed class TaskTimelineEntry
 
     public DateTimeOffset? DeletedAt { get; private set; }
 
+    public IReadOnlyCollection<TaskTimelineEntryFieldValue> FieldValues => _fieldValues.AsReadOnly();
+
     public static TaskTimelineEntry Create(
         Guid taskItemId,
         TaskTimelineEntryKind kind,
@@ -71,6 +75,44 @@ public sealed class TaskTimelineEntry
 
         Details = DomainGuards.NotBlank(note, nameof(note));
         UpdatedAt = updatedAt;
+    }
+
+    public bool SetFieldValue(
+        FieldDefinition fieldDefinition,
+        string valueJson,
+        DateTimeOffset updatedAt)
+    {
+        ArgumentNullException.ThrowIfNull(fieldDefinition);
+
+        if (fieldDefinition.Scope != FieldDefinitionScope.Entry)
+        {
+            throw new InvalidOperationException("Only entry fields can be set on timeline entries.");
+        }
+
+        var normalizedValueJson = DomainGuards.NotBlank(valueJson, nameof(valueJson));
+        var existingValue = _fieldValues.FirstOrDefault(value =>
+            value.FieldDefinitionId == fieldDefinition.Id);
+
+        if (existingValue is not null)
+        {
+            if (existingValue.ValueJson == normalizedValueJson)
+            {
+                return false;
+            }
+
+            existingValue.UpdateValue(normalizedValueJson, updatedAt);
+            UpdatedAt = updatedAt;
+            return true;
+        }
+
+        _fieldValues.Add(TaskTimelineEntryFieldValue.Create(
+            Id,
+            fieldDefinition.Id,
+            normalizedValueJson,
+            updatedAt));
+        UpdatedAt = updatedAt;
+
+        return true;
     }
 
     public void SoftDeleteNote(DateTimeOffset deletedAt)

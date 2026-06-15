@@ -214,6 +214,31 @@ public sealed class WorkspaceController : ControllerBase
         }
     }
 
+    [HttpPatch("members/{userId:guid}")]
+    public async Task<ActionResult<WorkspaceMemberResponse>> UpdateMemberRole(
+        Guid userId,
+        UpdateWorkspaceMemberRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var updated = await _workspaceService.UpdateMemberRoleAsync(
+                userId,
+                request,
+                cancellationToken);
+
+            return updated is null ? NotFound() : Ok(updated);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
     [HttpDelete("membership")]
     public async Task<IActionResult> LeaveCurrentWorkspace(CancellationToken cancellationToken)
     {

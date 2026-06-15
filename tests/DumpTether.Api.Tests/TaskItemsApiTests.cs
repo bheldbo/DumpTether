@@ -21,7 +21,7 @@ public sealed class TaskItemsApiTests
 
         Assert.NotEqual(Guid.Empty, created.Id);
         Assert.NotEqual(Guid.Empty, created.WorkspaceId);
-        Assert.True(created.ProjectId.HasValue);
+        Assert.Null(created.ProjectId);
         Assert.Equal("Capture API notes", created.Title);
         Assert.Equal(created.CreatedAt, created.LastTouchedAt);
     }
@@ -332,6 +332,69 @@ public sealed class TaskItemsApiTests
         var taskItems = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
         Assert.NotNull(taskItems);
         Assert.Contains(taskItems, taskItem => taskItem.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task PostTaskReopenMany_ReopensSelectedArchivedTaskItems()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var first = await CreateTaskItemAsync(client, "Batch reopen first");
+        var second = await CreateTaskItemAsync(client, "Batch reopen second");
+        var archiveResolutionId = await CreateArchiveResolutionAsync(
+            factory,
+            first.WorkspaceId,
+            "Completed");
+
+        await PostArchiveAsync(client, first.Id, new { archiveResolutionId });
+        await PostArchiveAsync(client, second.Id, new { archiveResolutionId });
+
+        var response = await client.PostAsJsonAsync(
+            "/api/tasks/reopen",
+            new
+            {
+                taskItemIds = new[] { first.Id, second.Id },
+                note = "Back on the wall."
+            });
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<TaskItemBatchResponse>();
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Count);
+
+        var activeTasks = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+        Assert.NotNull(activeTasks);
+        Assert.Contains(activeTasks, task => task.Id == first.Id);
+        Assert.Contains(activeTasks, task => task.Id == second.Id);
+    }
+
+    [Fact]
+    public async Task PostTaskPermanentDelete_RemovesArchivedTaskItems()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateTaskItemAsync(client, "Delete from archive");
+        var archiveResolutionId = await CreateArchiveResolutionAsync(
+            factory,
+            created.WorkspaceId,
+            "Completed");
+
+        await PostArchiveAsync(client, created.Id, new { archiveResolutionId });
+
+        var response = await client.PostAsJsonAsync(
+            "/api/tasks/permanent-delete",
+            new
+            {
+                taskItemIds = new[] { created.Id }
+            });
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<TaskItemBatchResponse>();
+
+        Assert.NotNull(result);
+        Assert.Equal(1, result.Count);
+
+        var fetchResponse = await client.GetAsync($"/api/tasks/{created.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, fetchResponse.StatusCode);
     }
 
     private static async Task<TaskItemDetailResponse> CreateTaskItemAsync(

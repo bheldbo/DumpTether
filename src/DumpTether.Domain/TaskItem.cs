@@ -147,13 +147,13 @@ public sealed class TaskItem
         ProjectId = projectId;
     }
 
-    public void AddNote(string note, DateTimeOffset occurredAt)
+    public TaskTimelineEntry AddNote(string? note, DateTimeOffset occurredAt)
     {
-        AddTimelineEntry(
+        return AddTimelineEntry(
             TaskTimelineEntryKind.NoteAdded,
             "Note added",
             occurredAt,
-            DomainGuards.NotBlank(note, nameof(note)));
+            DomainGuards.OptionalTrimmed(note));
     }
 
     public void EditNote(Guid noteId, string note, DateTimeOffset occurredAt)
@@ -289,12 +289,41 @@ public sealed class TaskItem
             share.Email);
     }
 
+    public void ChangeShareRole(Guid shareId, TaskItemShareRole role, DateTimeOffset occurredAt)
+    {
+        DomainGuards.NotEmpty(shareId, nameof(shareId));
+        var share = _shares.FirstOrDefault(candidate => candidate.Id == shareId) ??
+            throw new InvalidOperationException("Task share was not found.");
+
+        if (share.RevokedAt is not null)
+        {
+            throw new InvalidOperationException("Task share has already been removed.");
+        }
+
+        if (!share.ChangeRole(role))
+        {
+            return;
+        }
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.Shared,
+            "Task share role changed",
+            occurredAt,
+            share.Email);
+    }
+
     public bool SetFieldValue(
         FieldDefinition fieldDefinition,
         string valueJson,
         DateTimeOffset updatedAt)
     {
         ArgumentNullException.ThrowIfNull(fieldDefinition);
+
+        if (fieldDefinition.Scope != FieldDefinitionScope.Header)
+        {
+            throw new InvalidOperationException("Only header fields can be set on task items.");
+        }
+
         var normalizedValueJson = DomainGuards.NotBlank(valueJson, nameof(valueJson));
 
         var existingValue = _fieldValues.FirstOrDefault(value =>
@@ -327,6 +356,23 @@ public sealed class TaskItem
             fieldDefinition.Key);
 
         return true;
+    }
+
+    public bool SetTimelineEntryFieldValue(
+        Guid entryId,
+        FieldDefinition fieldDefinition,
+        string valueJson,
+        DateTimeOffset updatedAt)
+    {
+        var entry = GetTimelineEntry(entryId);
+        var changed = entry.SetFieldValue(fieldDefinition, valueJson, updatedAt);
+
+        if (changed)
+        {
+            LastTouchedAt = updatedAt;
+        }
+
+        return changed;
     }
 
     public void Archive(
@@ -377,14 +423,17 @@ public sealed class TaskItem
             DomainGuards.OptionalTrimmed(note));
     }
 
-    private void AddTimelineEntry(
+    private TaskTimelineEntry AddTimelineEntry(
         TaskTimelineEntryKind kind,
         string summary,
         DateTimeOffset occurredAt,
         string? details)
     {
-        _timelineEntries.Add(TaskTimelineEntry.Create(Id, kind, summary, occurredAt, details));
+        var entry = TaskTimelineEntry.Create(Id, kind, summary, occurredAt, details);
+        _timelineEntries.Add(entry);
         LastTouchedAt = occurredAt;
+
+        return entry;
     }
 
     private TaskTimelineEntry GetTimelineEntry(Guid entryId)

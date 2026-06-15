@@ -6,6 +6,7 @@
       "launchUrl": "health",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "Database__ApplyMigrationsOnStartup": "true",
         "Auth__RequireAuthentication": "true",
         "Auth__AllowGuestSessions": "true",
         "Auth__EnableDevelopmentLogin": "true",

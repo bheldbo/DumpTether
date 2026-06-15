@@ -41,14 +41,14 @@ public sealed record UpdateTaskItemRequest(
     Guid? ProjectId = null);
 
 public sealed record AddTaskTimelineEntryRequest(
-    [Required]
     [MaxLength(4000)]
-    string Note);
+    string? Note,
+    Dictionary<Guid, JsonElement>? FieldValues = null);
 
 public sealed record UpdateTaskTimelineEntryRequest(
-    [Required]
     [MaxLength(4000)]
-    string Note);
+    string? Note,
+    Dictionary<Guid, JsonElement>? FieldValues = null);
 
 public sealed record ArchiveTaskItemRequest(
     [Required]
@@ -57,6 +57,15 @@ public sealed record ArchiveTaskItemRequest(
 
 public sealed record ReopenTaskItemRequest(
     [MaxLength(4000)] string? Note = null);
+
+public sealed record ReopenTaskItemsRequest(
+    [Required]
+    IReadOnlyList<Guid> TaskItemIds,
+    [MaxLength(4000)] string? Note = null);
+
+public sealed record DeleteTaskItemsRequest(
+    [Required]
+    IReadOnlyList<Guid> TaskItemIds);
 
 public sealed record CreateTaskShareRequest(
     [Required]
@@ -72,6 +81,10 @@ public sealed record CreateTaskShareLinkRequest(
     IReadOnlyList<Guid>? TaskItemIds = null,
     [property: JsonConverter(typeof(JsonStringEnumConverter))]
     TaskItemShareRole Role = TaskItemShareRole.Editor);
+
+public sealed record UpdateTaskShareRequest(
+    [property: JsonConverter(typeof(JsonStringEnumConverter))]
+    TaskItemShareRole Role);
 
 public sealed record AcceptShareLinkRequest(
     [Required]

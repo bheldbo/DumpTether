@@ -85,6 +85,8 @@ public sealed record ShareLinkAcceptResponse(
 public sealed record CopyTaskItemsResponse(
     IReadOnlyList<TaskItemDetailResponse> Tasks);
 
+public sealed record TaskItemBatchResponse(int Count);
+
 public sealed record TaskShareInboxItem(
     TaskItemShare Share,
     TaskItem TaskItem,
@@ -103,4 +105,5 @@ public sealed record TaskTimelineEntryResponse(
     string Summary,
     string? Details,
     DateTimeOffset OccurredAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    IReadOnlyList<FieldValueResponse> FieldValues);

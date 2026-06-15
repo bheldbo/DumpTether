@@ -16,6 +16,10 @@ public sealed record CreateWorkspaceInvitationRequest(
     [property: JsonConverter(typeof(JsonStringEnumConverter))]
     WorkspaceMembershipRole Role = WorkspaceMembershipRole.Member);
 
+public sealed record UpdateWorkspaceMemberRequest(
+    [property: JsonConverter(typeof(JsonStringEnumConverter))]
+    WorkspaceMembershipRole Role);
+
 public sealed record AcceptWorkspaceInvitationRequest(
     string? Token = null,
     Guid? InvitationId = null);

@@ -429,6 +429,64 @@ internal sealed class WorkspaceService : IWorkspaceService
         return true;
     }
 
+    public async Task<WorkspaceMemberResponse?> UpdateMemberRoleAsync(
+        Guid userId,
+        UpdateWorkspaceMemberRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("User id is required.", nameof(userId));
+        }
+
+        var (workspace, currentSession, _) = await RequireCurrentMembershipAsync(
+            requireOwner: true,
+            trackChanges: false,
+            cancellationToken);
+
+        if (userId == currentSession.UserId)
+        {
+            throw new ValidationException("Use board settings to change your own role.");
+        }
+
+        if (request.Role == WorkspaceMembershipRole.Owner)
+        {
+            throw new ValidationException("Board ownership cannot be assigned here.");
+        }
+
+        var targetMembership = await _workspaceRepository.GetMembershipAsync(
+            workspace.Id,
+            userId,
+            trackChanges: true,
+            cancellationToken);
+
+        if (targetMembership is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            targetMembership.ChangeRole(request.Role);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new ValidationException(exception.Message, exception);
+        }
+
+        await _workspaceRepository.SaveChangesAsync(cancellationToken);
+
+        var members = await _workspaceRepository.ListMembersAsync(
+            workspace.Id,
+            cancellationToken);
+
+        return members
+            .Select(MapMember)
+            .SingleOrDefault(member => member.UserId == userId);
+    }
+
     public async Task<bool> LeaveCurrentWorkspaceAsync(CancellationToken cancellationToken)
     {
         var (workspace, _, membership) = await RequireCurrentMembershipAsync(

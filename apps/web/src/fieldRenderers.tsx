@@ -3,12 +3,16 @@ import type {
   FieldValueMap,
   FieldValuePrimitive,
   FieldValueResponse,
-  TaskTemplateDetailResponse,
 } from './types';
 import { toFieldValueMap } from './fieldValues';
+import {
+  getEditableTemplateFieldGridStyle,
+  getTemplateLayoutGridStyle,
+  normalizeTemplateLayoutFields,
+} from './templateLayout';
 
 interface FieldValueListProps {
-  template: TaskTemplateDetailResponse | null;
+  fields: FieldDefinitionResponse[];
   fieldValues: FieldValueResponse[];
 }
 
@@ -18,10 +22,10 @@ interface FieldEditorListProps {
   onChange: (fieldId: string, value: FieldValuePrimitive) => void;
 }
 
-export function FieldValueList({ template, fieldValues }: FieldValueListProps) {
+export function FieldValueList({ fields, fieldValues }: FieldValueListProps) {
   const valueMap = toFieldValueMap(fieldValues);
 
-  if (!template || template.fields.length === 0) {
+  if (fields.length === 0) {
     return (
       <p className="empty-copy">
         No structured fields yet. Template fields will appear here when they are
@@ -32,7 +36,7 @@ export function FieldValueList({ template, fieldValues }: FieldValueListProps) {
 
   return (
     <dl className="field-list">
-      {template.fields.map((field) => (
+      {fields.map((field) => (
         <div className="field-row" key={field.id}>
           <dt>{field.name}</dt>
           <dd>
@@ -49,10 +53,19 @@ export function FieldEditorList({ fields, values, onChange }: FieldEditorListPro
     return <p className="empty-copy">This template has no custom fields.</p>;
   }
 
+  const arrangedFields = normalizeTemplateLayoutFields(fields);
+
   return (
-    <div className="field-editor-list">
-      {fields.map((field) => (
-        <label className="field-editor" key={field.id}>
+    <div
+      className="field-editor-list"
+      style={getTemplateLayoutGridStyle(arrangedFields)}
+    >
+      {arrangedFields.map((field) => (
+        <label
+          className="field-editor"
+          key={field.id}
+          style={getEditableTemplateFieldGridStyle(field)}
+        >
           <span>
             {field.name}
             {field.required ? <strong aria-label="required"> *</strong> : null}
@@ -176,7 +189,7 @@ function FieldValue({
   value: FieldValuePrimitive;
 }) {
   if (value === null || value === '') {
-    return <span className="field-empty">Empty</span>;
+    return <span className="field-empty" aria-label="Empty" />;
   }
 
   if (field.type === 'Checkbox') {
