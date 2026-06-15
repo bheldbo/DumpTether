@@ -31,6 +31,7 @@ Current frontend boundaries:
 - `components/`: small reusable UI primitives such as icons, modal shell, toasts, and color picker.
 - `components/TaskMetadata.tsx`: shared task badge/chip display used by wall cards and detail views.
 - `features/sharing/`: board/task sharing modal, pending invite chips, member chips, and task share strip.
+- `features/task-wall/`: wall-level creation and batch action controls.
 - `features/timeline/`: note and entry-field behavior for a task.
 - `features/task-detail/`: task-specific dialogs and detail interactions.
 - `taskUtils.ts`: task wall filtering, card state, and color helpers.

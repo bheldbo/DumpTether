@@ -12,7 +12,6 @@ import {
   useState,
 } from 'react';
 import { Icon, type IconName } from './components/Icon';
-import { ColorOptionPicker } from './components/ColorOptionPicker';
 import { ModalFrame } from './components/ModalFrame';
 import { TaskFilterBar } from './components/TaskFilterBar';
 import { TaskBadges, TaskMetaChip } from './components/TaskMetadata';
@@ -133,6 +132,8 @@ import {
   PermanentDeleteDialog,
   ReopenDialog,
 } from './features/task-detail/TaskDialogs';
+import { DraftTaskCard } from './features/task-wall/DraftTaskCard';
+import { FloatingBoardActions } from './features/task-wall/FloatingBoardActions';
 import {
   PendingInvitationChip,
   ShareDialog,
@@ -2024,6 +2025,25 @@ function Sidebar({
     };
   }, [workspaceCreateIsOpen]);
 
+  const connectionTitle = `${connectionStatus === 'online' ? t('backendOnline') : t('backendOffline')}${
+    lastPingedAt ? ` - ${t('lastPinged')}: ${formatDateTime(lastPingedAt)}` : ''
+  }`;
+
+  const handleBrandClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!window.matchMedia('(max-width: 920px)').matches) {
+      return;
+    }
+
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest('button, a, input, select, textarea')
+    ) {
+      return;
+    }
+
+    onToggleSidebar();
+  };
+
   const submitWorkspace = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -2073,7 +2093,7 @@ function Sidebar({
         aria-label="DumpTether navigation"
         style={getSidebarStyle(workspace?.color ?? null)}
       >
-      <div className="brand">
+      <div className="brand" onClick={handleBrandClick}>
         <button
           className="brand-mark"
           onClick={sidebarIsCollapsed ? onToggleSidebar : undefined}
@@ -2086,6 +2106,11 @@ function Sidebar({
           <p className="brand-name">DumpTether</p>
           <p className="brand-subtitle">Personal task evidence</p>
         </div>
+        <span
+          className="mobile-connection-dot"
+          data-state={connectionStatus}
+          title={connectionTitle}
+        />
         <button
           className="icon-button sidebar-toggle"
           onClick={onToggleSidebar}
@@ -2360,9 +2385,7 @@ function Sidebar({
           <span
             className="connection-indicator"
             data-state={connectionStatus}
-            title={`${connectionStatus === 'online' ? t('backendOnline') : t('backendOffline')}${
-              lastPingedAt ? ` · ${t('lastPinged')}: ${formatDateTime(lastPingedAt)}` : ''
-            }`}
+            title={connectionTitle}
           >
             <span />
             <strong>{connectionStatus === 'online' ? t('online') : t('offline')}</strong>
@@ -3621,455 +3644,6 @@ function DeleteProjectDialog({
         </div>
       </section>
     </ModalFrame>
-  );
-}
-
-function FloatingBoardActions({
-  archiveModeIsActive,
-  canCreateTask,
-  canManageSharing,
-  canPermanentlyDelete,
-  colorOptions,
-  editModeIsEnabled,
-  onBatchUpdate,
-  onCopyTaskItemsToWorkspace,
-  onOpenCreateTask,
-  onOpenBatchArchive,
-  onOpenBatchReopen,
-  onOpenBatchPermanentDelete,
-  onOpenBatchShare,
-  onToggleEditMode,
-  projects,
-  selectedTaskCount,
-  statusOptions,
-  taskCount,
-  t,
-  workspaces,
-}: {
-  archiveModeIsActive: boolean;
-  canCreateTask: boolean;
-  canManageSharing: boolean;
-  canPermanentlyDelete: boolean;
-  colorOptions: string[];
-  editModeIsEnabled: boolean;
-  onBatchUpdate: (requestBody: UpdateTaskItemRequest) => Promise<void>;
-  onCopyTaskItemsToWorkspace: (workspaceId: string) => Promise<void>;
-  onOpenCreateTask: () => void;
-  onOpenBatchArchive: () => void;
-  onOpenBatchReopen: () => void;
-  onOpenBatchPermanentDelete: () => void;
-  onOpenBatchShare: () => void;
-  onToggleEditMode: () => void;
-  projects: ProjectResponse[];
-  selectedTaskCount: number;
-  statusOptions: string[];
-  taskCount: number;
-  t: Translate;
-  workspaces: WorkspaceResponse[];
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const openActions = () => {
-      setIsOpen(true);
-    };
-
-    window.addEventListener('dumptether:open-actions', openActions);
-
-    return () => window.removeEventListener('dumptether:open-actions', openActions);
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (
-        menuRef.current &&
-        event.target instanceof Node &&
-        !menuRef.current.contains(event.target) &&
-        !editModeIsEnabled
-      ) {
-        setIsOpen(false);
-      }
-    };
-
-    window.addEventListener('pointerdown', handlePointerDown);
-
-    return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [editModeIsEnabled, isOpen]);
-
-  return (
-    <div className="floating-board-actions" data-edit-mode={editModeIsEnabled} ref={menuRef}>
-      <button
-        className="quick-create-fab"
-        data-active={isOpen}
-        onClick={() => setIsOpen((open) => !open)}
-        title={editModeIsEnabled
-          ? `${selectedTaskCount} ${t('selectedTasks')}`
-          : archiveModeIsActive ? t('archiveActions') : t('newTask')}
-        type="button"
-      >
-        <Icon name={editModeIsEnabled ? 'check' : 'plus'} />
-        <span>{editModeIsEnabled
-          ? `${selectedTaskCount} ${t('selectedTasks')}`
-          : archiveModeIsActive ? t('archiveActions') : t('newTask')}</span>
-      </button>
-
-      {isOpen ? (
-        <div className="quick-action-menu">
-          {canCreateTask ? (
-            <button
-              onClick={() => {
-                setIsOpen(false);
-                onOpenCreateTask();
-              }}
-              type="button"
-            >
-              <Icon name="plus" />
-              <span>{t('addTask')}</span>
-              <kbd>Alt+N</kbd>
-            </button>
-          ) : null}
-          {editModeIsEnabled ? (
-            <>
-              <span className="quick-action-menu-label">
-                {selectedTaskCount} {t('selectedTasks')}
-              </span>
-              {archiveModeIsActive ? (
-                <>
-                  <button
-                    disabled={selectedTaskCount === 0}
-                    onClick={() => {
-                      onOpenBatchReopen();
-                      setIsOpen(false);
-                    }}
-                    type="button"
-                  >
-                    <Icon name="undo" />
-                    <span>{t('unarchiveSelected')}</span>
-                  </button>
-                  {canPermanentlyDelete ? (
-                    <button
-                      className="danger-action"
-                      disabled={selectedTaskCount === 0}
-                      onClick={() => {
-                        onOpenBatchPermanentDelete();
-                        setIsOpen(false);
-                      }}
-                      type="button"
-                    >
-                      <Icon name="trash" />
-                      <span>{t('deletePermanently')}</span>
-                    </button>
-                  ) : null}
-                </>
-              ) : (
-                <button
-                  disabled={selectedTaskCount === 0}
-                  onClick={() => {
-                    onOpenBatchArchive();
-                    setIsOpen(false);
-                  }}
-                  type="button"
-                >
-                  <Icon name="archive" />
-                  <span>{t('archiveSelected')}</span>
-                </button>
-              )}
-              {canManageSharing && !archiveModeIsActive ? (
-                <button
-                  disabled={selectedTaskCount === 0}
-                  onClick={() => {
-                    onOpenBatchShare();
-                    setIsOpen(false);
-                  }}
-                  type="button"
-                >
-                  <Icon name="users" />
-                  <span>{t('shareSelected')}</span>
-                </button>
-              ) : null}
-              <div className="batch-action-grid" aria-label={`${selectedTaskCount} ${t('selectedTasks')}`}>
-                <select
-                  aria-label={t('copyToBoard')}
-                  disabled={selectedTaskCount === 0 || workspaces.length === 0}
-                  onChange={(event) => {
-                    if (event.target.value) {
-                      void onCopyTaskItemsToWorkspace(event.target.value);
-                      setIsOpen(false);
-                    }
-                  }}
-                  value=""
-                >
-                  <option value="">{t('copyToBoard')}</option>
-                  {workspaces.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {formatWorkspaceName(workspace.name, t)}
-                    </option>
-                  ))}
-                </select>
-                {!archiveModeIsActive ? (
-                  <>
-                    <select
-                      aria-label={t('changeStatus')}
-                      disabled={selectedTaskCount === 0}
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          void onBatchUpdate({ status: event.target.value });
-                          setIsOpen(false);
-                        }
-                      }}
-                      value=""
-                    >
-                      <option value="">{t('changeStatus')}</option>
-                      {statusOptions.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label={t('changeCategory')}
-                      disabled={selectedTaskCount === 0}
-                      onChange={(event) => {
-                        const project = projects.find((candidate) => candidate.id === event.target.value);
-                        if (project) {
-                          void onBatchUpdate({
-                            projectId: project.id,
-                            category: project.name,
-                          });
-                          setIsOpen(false);
-                        }
-                      }}
-                      value=""
-                    >
-                      <option value="">{t('changeCategory')}</option>
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ColorOptionPicker
-                      emptyLabel={t('noTaskColors')}
-                      label={t('changeColor')}
-                      onChange={(color) => {
-                        void onBatchUpdate({ color: color || null });
-                        setIsOpen(false);
-                      }}
-                      options={colorOptions}
-                      value=""
-                      zeroLabel={t('changeColor')}
-                    />
-                    <input
-                      aria-label={t('changeDueDate')}
-                      disabled={selectedTaskCount === 0}
-                      onChange={(event) => {
-                        const followUpAt = event.target.value
-                          ? new Date(`${event.target.value}T12:00:00`).toISOString()
-                          : null;
-                        void onBatchUpdate({ followUpAt });
-                        setIsOpen(false);
-                      }}
-                      type="date"
-                    />
-                  </>
-                ) : null}
-              </div>
-              <button
-                className="ghost-button"
-                onClick={() => {
-                  onToggleEditMode();
-                  setIsOpen(false);
-                }}
-                type="button"
-              >
-                <Icon name="check" />
-                <span>{t('done')}</span>
-              </button>
-            </>
-          ) : (
-            taskCount > 0 ? (
-              <button
-                onClick={() => {
-                  onToggleEditMode();
-                  setIsOpen(false);
-                }}
-                type="button"
-              >
-                <Icon name="check" />
-                <span>{t('selectTasksForAction')}</span>
-                <kbd>Alt+X</kbd>
-              </button>
-            ) : null
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function DraftTaskCard({
-  onCancel,
-  onCreateTaskItem,
-  onCreated,
-  projects,
-  selectedProjectId,
-  t,
-  templates,
-}: {
-  onCancel: () => void;
-  onCreateTaskItem: (
-    title: string,
-    options?: Partial<CreateTaskItemRequest>,
-  ) => Promise<TaskItemDetailResponse | null>;
-  onCreated: (taskItem: TaskItemDetailResponse) => void;
-  projects: ProjectResponse[];
-  selectedProjectId: string;
-  t: Translate;
-  templates: TaskTemplateDetailResponse[];
-}) {
-  const [title, setTitle] = useState('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
-
-  useEffect(() => {
-    setSelectedTemplateId((currentId) =>
-      currentId && templates.some((template) => template.id === currentId)
-        ? currentId
-        : templates[0]?.id ?? '',
-    );
-  }, [templates]);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  const submitDraft = async () => {
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle || isSubmitting) {
-      inputRef.current?.focus();
-      return;
-    }
-
-    setIsSubmitting(true);
-    const created = await onCreateTaskItem(trimmedTitle, {
-      projectId: selectedProject?.id ?? null,
-      category: selectedProject?.name ?? null,
-      taskTemplateId: selectedTemplateId || null,
-    });
-    setIsSubmitting(false);
-
-    if (created) {
-      onCreated(created);
-    }
-  };
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await submitDraft();
-  };
-
-  return (
-    <article
-      className="task-card task-card-draft"
-      data-expanded="true"
-      data-state="active"
-      style={getTaskCardStyle('#FFF3A6')}
-    >
-      <div className="task-card-detail">
-        <section className="task-detail draft-task-detail" aria-label={t('newTask')}>
-          <form
-            className="detail-header task-detail-header draft-task-header"
-            onSubmit={(event) => void handleSubmit(event)}
-          >
-            <button
-              className="icon-button task-detail-back-button"
-              onClick={onCancel}
-              title={t('backToWall')}
-              type="button"
-            >
-              <Icon name="back" />
-              <span className="sr-only">{t('backToWall')}</span>
-            </button>
-            <div className="task-header-editor">
-              <p className="detail-kicker">{t('newTask')}</p>
-              <div className="task-title-row">
-                <input
-                  aria-label={t('taskTitleRequired')}
-                  className="task-title-input"
-                  onChange={(event) => setTitle(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void submitDraft();
-                    }
-
-                    if (event.key === 'Escape' && !title.trim()) {
-                      onCancel();
-                    }
-                  }}
-                  placeholder={t('newTaskTitlePlaceholder')}
-                  ref={inputRef}
-                  required
-                  type="text"
-                  value={title}
-                />
-              </div>
-              <div className="task-header-fields task-header-fields-edit draft-task-controls">
-                {selectedProject ? (
-                  <span className="task-meta-chip draft-meta-chip" style={getContextChipStyle(selectedProject.color)}>
-                    <Icon name="tag" />
-                    {t('category')}: {selectedProject.name}
-                  </span>
-                ) : (
-                  <span className="task-meta-chip draft-meta-chip">
-                    <Icon name="tag" />
-                    {t('category')}: {t('noCategory')}
-                  </span>
-                )}
-                {templates.length > 0 ? (
-                  <label className="task-meta-chip draft-template-chip">
-                    <Icon name="templates" />
-                    <span className="sr-only">{t('templates')}</span>
-                    <select
-                      aria-label={t('templates')}
-                      onChange={(event) => setSelectedTemplateId(event.target.value)}
-                      value={selectedTemplateId}
-                    >
-                      {templates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-              </div>
-            </div>
-            <div className="detail-actions">
-              <button
-                className="secondary-action"
-                disabled={!title.trim() || isSubmitting}
-                type="submit"
-              >
-                <Icon name="plus" />
-                <span>{t('addTask')}</span>
-              </button>
-            </div>
-          </form>
-          <section className="timeline-panel draft-notes-placeholder">
-            <h3>{t('notes')}</h3>
-            <p>{t('draftTaskHelp')}</p>
-          </section>
-        </section>
-      </div>
-    </article>
   );
 }
 
