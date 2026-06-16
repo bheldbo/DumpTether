@@ -407,9 +407,9 @@
 .field-layout-actions {
   grid-column: 2 / -1;
   display: grid;
-  grid-template-columns: repeat(4, minmax(48px, 1fr));
+  grid-template-columns: minmax(120px, auto) minmax(150px, 220px);
   gap: 6px;
-  max-width: 390px;
+  max-width: 380px;
   padding: 8px;
   border: 1px solid rgba(24, 33, 44, 0.06);
   border-radius: 8px;
@@ -429,6 +429,19 @@
   min-height: 34px;
   padding: 5px 7px;
   text-align: center;
+}
+
+.field-cell-copy {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid #dbe3eb;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #536273;
+  font-size: 0.76rem;
+  font-weight: 780;
 }
 
 .layout-stepper {
@@ -547,6 +560,87 @@
   grid-column: 2 / -1;
 }
 
+.template-layout-designer {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #dbe5eb;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.template-layout-toolbar,
+.template-layout-row-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.template-layout-toolbar > span,
+.template-layout-row-header > strong {
+  color: #536273;
+  font-size: 0.76rem;
+  font-weight: 820;
+  text-transform: uppercase;
+}
+
+.template-layout-toolbar button {
+  min-height: 32px;
+  padding: 5px 9px;
+}
+
+.template-layout-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.template-layout-row {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(24, 33, 44, 0.08);
+  border-radius: 8px;
+  background: rgba(247, 250, 252, 0.72);
+}
+
+.template-layout-row-header {
+  justify-content: flex-start;
+}
+
+.template-layout-row-header .layout-stepper {
+  width: min(210px, 100%);
+}
+
+.template-layout-grid-row {
+  display: grid;
+  gap: 7px;
+  grid-auto-rows: minmax(48px, auto);
+  align-items: stretch;
+  min-width: 0;
+}
+
+.template-layout-cell {
+  grid-row: 1;
+  min-height: 48px;
+  display: grid;
+  place-items: start;
+  padding: 6px;
+  border: 1px dashed rgba(83, 98, 115, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.56);
+  color: rgba(83, 98, 115, 0.62);
+  font-size: 0.68rem;
+  font-weight: 780;
+}
+
+.template-layout-cell:hover,
+.template-layout-cell:focus-visible {
+  border-color: rgba(24, 76, 72, 0.36);
+  background: rgba(232, 246, 244, 0.74);
+}
+
 .template-scope-preview {
   display: grid;
   gap: 7px;
@@ -570,6 +664,8 @@
 }
 
 .template-preview-chip {
+  grid-row: 1;
+  z-index: 1;
   min-height: 32px;
   min-width: 0;
   display: flex;
@@ -582,6 +678,11 @@
   background: rgba(255, 255, 255, 0.8);
   color: #283746;
   font-weight: 760;
+  cursor: grab;
+}
+
+.template-preview-chip:active {
+  cursor: grabbing;
 }
 
 .template-preview-chip[data-layout-adjusted="true"] {
@@ -600,6 +701,12 @@
 }
 
 .template-preview-empty {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  z-index: 1;
+  align-self: center;
+  justify-self: center;
+  pointer-events: none;
   color: #7a8796;
   font-size: 0.82rem;
   font-style: italic;

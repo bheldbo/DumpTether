@@ -36,7 +36,7 @@ Current frontend boundaries:
 - `features/sharing/`: board/task sharing modal, pending invite chips, member chips, and task share strip.
 - `features/settings/`: account, auth, settings, status, and archive-reason panels.
 - `features/task-wall/`: wall-level loading, creation, and batch action controls.
-- `features/templates/`: template list, field editor, layout controls, and template previews.
+- `features/templates/`: template list/page flow plus the field editor, row/cell layout controls, and template previews.
 - `features/timeline/`: note and entry-field behavior for a task.
 - `features/task-detail/`: task-specific dialogs, category editing, and detail interactions.
 - `styles/`: source CSS modules imported by `App.css`. Vite still bundles and minifies them into release assets.

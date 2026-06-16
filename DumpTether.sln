@@ -57,6 +57,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "web-src", "web-src", "{19B2
 		apps\web\src\features\task-wall\BoardLoadingState.tsx = apps\web\src\features\task-wall\BoardLoadingState.tsx
 		apps\web\src\features\task-wall\DraftTaskCard.tsx = apps\web\src\features\task-wall\DraftTaskCard.tsx
 		apps\web\src\features\task-wall\FloatingBoardActions.tsx = apps\web\src\features\task-wall\FloatingBoardActions.tsx
+		apps\web\src\features\templates\TemplateEditor.tsx = apps\web\src\features\templates\TemplateEditor.tsx
 		apps\web\src\features\templates\TemplatesPage.tsx = apps\web\src\features\templates\TemplatesPage.tsx
 		apps\web\src\features\timeline\TimelinePanel.tsx = apps\web\src\features\timeline\TimelinePanel.tsx
 		apps\web\src\liveUpdates.ts = apps\web\src\liveUpdates.ts
