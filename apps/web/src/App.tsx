@@ -2031,7 +2031,7 @@ function Sidebar({
   }`;
 
   const handleBrandClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (!window.matchMedia('(max-width: 920px)').matches) {
+    if (!window.matchMedia('(max-width: 1100px)').matches) {
       return;
     }
 
@@ -2649,6 +2649,28 @@ function TaskBoard({
     [colorOptions, taskItems],
   );
   const filtersAreActive = taskWallFiltersAreActive(filters);
+  const selectedProjectIds = filters.projectIds;
+  const toggleProjectFilter = useCallback((projectId: string) => {
+    setFilters((currentFilters) => {
+      if (!projectId) {
+        return {
+          ...currentFilters,
+          category: '',
+          projectIds: [],
+        };
+      }
+
+      const nextProjectIds = currentFilters.projectIds.includes(projectId)
+        ? currentFilters.projectIds.filter((currentProjectId) => currentProjectId !== projectId)
+        : [...currentFilters.projectIds, projectId];
+
+      return {
+        ...currentFilters,
+        category: '',
+        projectIds: nextProjectIds,
+      };
+    });
+  }, []);
   useEffect(() => {
     setPendingDeletedNoteIds([]);
   }, [selectedTaskId]);
@@ -2799,17 +2821,14 @@ function TaskBoard({
       className="task-board"
       aria-labelledby="task-board-title"
       data-focus-mode={focusModeIsEnabled}
+      data-refreshing={isRefreshing && !focusModeIsEnabled}
     >
       {!focusModeIsEnabled ? (
         <WorkspaceHeader
           currentView={currentView}
           onCreateProject={onCreateProject}
           onDeleteProject={onDeleteProject}
-          onSelectProjectFilter={(projectId) => setFilters((currentFilters) => ({
-            ...currentFilters,
-            category: '',
-            projectId,
-          }))}
+          onSelectProjectFilter={toggleProjectFilter}
           onUpdateProject={onUpdateProject}
           onUpdateWorkspace={onUpdateWorkspace}
           onCreateWorkspaceInvitation={onCreateWorkspaceInvitation}
@@ -2820,7 +2839,7 @@ function TaskBoard({
           invitations={workspaceInvitations}
           members={workspaceMembers}
           projects={projects}
-          selectedProjectId={filters.projectId}
+          selectedProjectIds={selectedProjectIds}
           t={t}
           workspace={workspace}
           canManageWorkspaceMetadata={canManageWorkspaceMetadata}
@@ -2843,9 +2862,9 @@ function TaskBoard({
       ) : null}
 
       {isRefreshing && !focusModeIsEnabled ? (
-        <p className="board-refreshing" role="status">
-          {t('updatingTasks')}
-        </p>
+        <div className="board-refresh-overlay">
+          <BoardLoadingState compact t={t} />
+        </div>
       ) : null}
 
       <div className="task-grid" aria-busy={isLoading}>
@@ -2869,7 +2888,7 @@ function TaskBoard({
               onSelectTaskItem(createdTask.id);
             }}
             projects={projects}
-            selectedProjectId={filters.projectId}
+            selectedProjectId={selectedProjectIds[0] ?? ''}
             t={t}
             templates={templates}
           />
@@ -2974,7 +2993,7 @@ function TaskBoard({
                 </span>
                 <TaskBadges taskItem={taskItem} t={t} />
                 <span className="task-card-created">
-                  {taskCategoryNames.length > 0 && !filters.projectId ? (
+                  {taskCategoryNames.length > 0 && selectedProjectIds.length === 0 ? (
                     <span
                       className="task-card-category-markers"
                       title={`${t('category')}: ${taskCategoryNames.join(', ')}`}
@@ -3149,7 +3168,7 @@ function WorkspaceHeader({
   onUpdateWorkspace,
   onUpdateWorkspaceMemberRole,
   projects,
-  selectedProjectId,
+  selectedProjectIds,
   t,
   workspace,
 }: {
@@ -3174,7 +3193,7 @@ function WorkspaceHeader({
     requestBody: UpdateWorkspaceMemberRequest,
   ) => Promise<WorkspaceMemberResponse>;
   projects: ProjectResponse[];
-  selectedProjectId: string;
+  selectedProjectIds: string[];
   t: Translate;
   workspace: WorkspaceResponse | null;
 }) {
@@ -3438,7 +3457,7 @@ function WorkspaceHeader({
         <div className="project-tag-strip" aria-label={t('projectTags')}>
           <button
             className="project-tag"
-            data-selected={!selectedProjectId}
+            data-selected={selectedProjectIds.length === 0}
             onClick={() => onSelectProjectFilter('')}
             type="button"
           >
@@ -3494,7 +3513,7 @@ function WorkspaceHeader({
               <span className="project-tag-wrap" key={project.id}>
                 <button
                   className="project-tag"
-                  data-selected={selectedProjectId === project.id}
+                  data-selected={selectedProjectIds.includes(project.id)}
                   onClick={() => onSelectProjectFilter(project.id)}
                   style={getContextChipStyle(project.color)}
                   title={project.name}
@@ -3589,7 +3608,7 @@ function WorkspaceHeader({
           onClose={() => setPendingDeleteProject(null)}
           onDelete={async () => {
             await onDeleteProject(pendingDeleteProject.id);
-            if (selectedProjectId === pendingDeleteProject.id) {
+            if (selectedProjectIds.includes(pendingDeleteProject.id)) {
               onSelectProjectFilter('');
             }
             cancelProjectEditing();

@@ -588,9 +588,18 @@ label {
   gap: 14px;
 }
 
+.task-board {
+  position: relative;
+}
+
 .task-board[data-loading="true"] {
   min-height: calc(100dvh - 90px);
   align-content: start;
+}
+
+.task-board[data-refreshing="true"] .task-grid {
+  opacity: 0.68;
+  transition: opacity 120ms ease;
 }
 
 .board-loading-state {
@@ -603,6 +612,36 @@ label {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.58);
   color: #526172;
+}
+
+.board-refresh-overlay {
+  position: absolute;
+  z-index: 18;
+  top: 84px;
+  right: 16px;
+  max-width: min(320px, calc(100% - 32px));
+  pointer-events: none;
+}
+
+.board-refresh-overlay .board-loading-state,
+.board-loading-state[data-compact="true"] {
+  min-height: 0;
+  align-items: center;
+  padding: 10px 12px;
+  border-style: solid;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 14px 34px rgba(32, 45, 58, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.board-loading-state[data-compact="true"] p {
+  display: none;
+}
+
+.board-loading-state[data-compact="true"] .board-loading-spinner {
+  width: 28px;
+  height: 28px;
 }
 
 .board-loading-state strong {
@@ -3664,7 +3703,7 @@ button.member-chip:hover {
   white-space: nowrap;
 }
 
-@media (max-width: 920px) {
+@media (max-width: 1100px) {
   .app-shell,
   .app-shell[data-sidebar-collapsed="true"] {
     grid-template-columns: 1fr;
@@ -3708,7 +3747,12 @@ button.member-chip:hover {
   }
 
   .workspace-nav-row {
-    min-width: 188px;
+    min-width: 232px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .workspace-row-actions {
+    min-width: 36px;
   }
 
   .workspace-row-action {
@@ -3972,6 +4016,8 @@ button.member-chip:hover {
 
   .view-nav:not(.workspace-nav) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: none;
+    overflow: visible;
   }
 
   .sidebar,
@@ -4206,6 +4252,11 @@ button.member-chip:hover {
     padding: 6px;
     overflow-x: visible;
     overflow-y: visible;
+  }
+
+  .board-refresh-overlay {
+    top: 10px;
+    right: 10px;
   }
 
   .filter-bar > * {
