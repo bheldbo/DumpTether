@@ -132,6 +132,7 @@ import {
   PermanentDeleteDialog,
   ReopenDialog,
 } from './features/task-detail/TaskDialogs';
+import { BoardLoadingState } from './features/task-wall/BoardLoadingState';
 import { DraftTaskCard } from './features/task-wall/DraftTaskCard';
 import { FloatingBoardActions } from './features/task-wall/FloatingBoardActions';
 import {
@@ -2779,6 +2780,19 @@ function TaskBoard({
 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [canUseBatchActions, closeEditMode, editModeIsEnabled, openCreateTask, visibleTaskItems.length]);
+
+  if (isLoading && !focusModeIsEnabled) {
+    return (
+      <section
+        className="task-board"
+        aria-busy="true"
+        aria-labelledby="task-board-title"
+        data-loading="true"
+      >
+        <BoardLoadingState t={t} />
+      </section>
+    );
+  }
 
   return (
     <section
