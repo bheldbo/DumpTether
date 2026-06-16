@@ -31,13 +31,14 @@ helper.
 
 Current frontend boundaries:
 
-- `components/`: small reusable UI primitives such as icons, modal shell, toasts, and color picker.
+- `components/`: small reusable UI primitives such as icons, modal shell, toasts, and color pickers.
 - `components/TaskMetadata.tsx`: shared task badge/chip display used by wall cards and detail views.
 - `features/sharing/`: board/task sharing modal, pending invite chips, member chips, and task share strip.
 - `features/settings/`: account, auth, settings, status, and archive-reason panels.
 - `features/task-wall/`: wall-level loading, creation, and batch action controls.
+- `features/templates/`: template list, field editor, layout controls, and template previews.
 - `features/timeline/`: note and entry-field behavior for a task.
-- `features/task-detail/`: task-specific dialogs and detail interactions.
+- `features/task-detail/`: task-specific dialogs, category editing, and detail interactions.
 - `styles/`: source CSS modules imported by `App.css`. Vite still bundles and minifies them into release assets.
 - `taskUtils.ts`: task wall filtering, card state, and color helpers.
 - `templateFieldUtils.ts`: template field shape, entry field defaults, and validation helpers used by UI.
@@ -54,7 +55,6 @@ The next refactors should move these remaining surfaces out of `App.tsx`:
 - workspace header and member/share controls
 - task wall/card interactions
 - task detail header and field editing
-- template list/editor
 
 Each feature module should expose one or two top-level components and keep helper functions
 private unless another feature genuinely needs them.
