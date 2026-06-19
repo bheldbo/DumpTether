@@ -383,67 +383,6 @@
   line-height: 1.35;
 }
 
-.template-fields {
-  display: grid;
-  gap: 10px;
-}
-
-.template-field-row {
-  display: grid;
-  grid-template-columns: 34px minmax(160px, 1fr) minmax(130px, 170px) minmax(110px, auto) auto;
-  gap: 10px;
-  align-items: start;
-  padding: 12px;
-  border: 1px solid #dbe3eb;
-  border-radius: 8px;
-  background: #fbfcfd;
-  transition:
-    border-color 120ms ease,
-    background 120ms ease,
-    opacity 120ms ease,
-    transform 120ms ease;
-}
-
-.field-layout-actions {
-  grid-column: 2 / -1;
-  display: grid;
-  grid-template-columns: minmax(120px, auto) minmax(150px, 220px);
-  gap: 6px;
-  max-width: 380px;
-  padding: 8px;
-  border: 1px solid rgba(24, 33, 44, 0.06);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.field-layout-actions label {
-  display: grid;
-  gap: 3px;
-  color: #667586;
-  font-size: 0.68rem;
-  font-weight: 780;
-  text-transform: uppercase;
-}
-
-.field-layout-actions input {
-  min-height: 34px;
-  padding: 5px 7px;
-  text-align: center;
-}
-
-.field-cell-copy {
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 9px;
-  border: 1px solid #dbe3eb;
-  border-radius: 7px;
-  background: #f8fafc;
-  color: #536273;
-  font-size: 0.76rem;
-  font-weight: 780;
-}
-
 .layout-stepper {
   gap: 4px;
 }
@@ -494,36 +433,6 @@
   height: 14px;
 }
 
-.template-field-row[data-dragging="true"] {
-  border-color: rgba(24, 76, 72, 0.36);
-  background: #eef7f6;
-  opacity: 0.78;
-}
-
-.field-drag-handle {
-  width: 34px;
-  min-height: 34px;
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
-  border-color: transparent;
-  background: transparent;
-  color: #667586;
-  cursor: grab;
-  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
-}
-
-.field-drag-handle:hover,
-.field-drag-handle:focus-visible {
-  background: rgba(24, 76, 72, 0.08);
-  color: #184c48;
-}
-
-.field-drag-handle:active {
-  cursor: grabbing;
-  transform: scale(0.96);
-}
-
 .checkbox-label {
   min-height: 38px;
   display: flex;
@@ -536,37 +445,13 @@
   min-height: 18px;
 }
 
-.field-order-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.field-order-actions button {
-  width: 34px;
-  min-height: 34px;
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
-}
-
-.field-order-actions button,
-.ghost-button {
-  background: #f7f9fb;
-}
-
-.options-editor {
-  grid-column: 2 / -1;
-}
-
 .template-layout-designer {
   display: grid;
   gap: 10px;
-  padding: 10px;
-  border: 1px solid #dbe5eb;
+  padding: 12px;
+  border: 1px solid #d9e3ea;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.66);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(246, 250, 252, 0.74));
 }
 
 .template-layout-toolbar,
@@ -584,6 +469,18 @@
   font-size: 0.76rem;
   font-weight: 820;
   text-transform: uppercase;
+}
+
+.template-layout-toolbar {
+  justify-content: flex-start;
+}
+
+.template-layout-toolbar > .layout-stepper {
+  width: min(220px, 100%);
+}
+
+.template-layout-toolbar > span {
+  text-transform: none;
 }
 
 .template-layout-toolbar button {
@@ -615,21 +512,28 @@
 
 .template-layout-grid-row {
   display: grid;
-  gap: 7px;
+  gap: 0;
   grid-auto-rows: minmax(48px, auto);
   align-items: stretch;
   min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(83, 98, 115, 0.2);
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, rgba(83, 98, 115, 0.18) 1px, transparent 1px)
+    0 0 / calc(100% / var(--template-layout-columns, 1)) 100%,
+    rgba(255, 255, 255, 0.58);
 }
 
 .template-layout-cell {
   grid-row: 1;
-  min-height: 48px;
+  min-height: 56px;
   display: grid;
   place-items: start;
-  padding: 6px;
-  border: 1px dashed rgba(83, 98, 115, 0.28);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.56);
+  padding: 7px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: rgba(83, 98, 115, 0.62);
   font-size: 0.68rem;
   font-weight: 780;
@@ -637,7 +541,6 @@
 
 .template-layout-cell:hover,
 .template-layout-cell:focus-visible {
-  border-color: rgba(24, 76, 72, 0.36);
   background: rgba(232, 246, 244, 0.74);
 }
 
@@ -668,21 +571,43 @@
   z-index: 1;
   min-height: 32px;
   min-width: 0;
+  position: relative;
   display: flex;
   gap: 8px;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 9px;
-  border: 1px solid rgba(24, 33, 44, 0.1);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.8);
+  margin: 6px;
+  padding: 7px 22px 7px 10px;
+  border: 1px solid rgba(24, 76, 72, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.88);
   color: #283746;
   font-weight: 760;
   cursor: grab;
+  box-shadow: 0 6px 14px rgba(31, 44, 57, 0.08);
+}
+
+.template-preview-chip[data-active="true"] {
+  border-color: rgba(24, 76, 72, 0.45);
+  background: #eaf7f5;
+  box-shadow:
+    0 0 0 2px rgba(24, 76, 72, 0.1),
+    0 8px 18px rgba(31, 44, 57, 0.1);
 }
 
 .template-preview-chip:active {
   cursor: grabbing;
+}
+
+.template-cell-resize-handle {
+  position: absolute;
+  top: 7px;
+  right: 5px;
+  bottom: 7px;
+  width: 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, rgba(24, 76, 72, 0.28), transparent);
+  cursor: col-resize;
 }
 
 .template-preview-chip[data-layout-adjusted="true"] {
@@ -717,6 +642,58 @@
   color: #8a5d18;
   font-size: 0.76rem;
   font-weight: 720;
+}
+
+.template-cell-editor {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(150px, 0.8fr) auto minmax(150px, 0.7fr);
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #dbe5eb;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.template-cell-editor-empty {
+  grid-template-columns: 1fr;
+  color: #69788a;
+  font-size: 0.84rem;
+}
+
+.template-cell-editor-title {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #536273;
+  font-size: 0.75rem;
+  font-weight: 820;
+  text-transform: uppercase;
+}
+
+.template-cell-editor label {
+  display: grid;
+  gap: 5px;
+  color: #536273;
+  font-size: 0.74rem;
+  font-weight: 780;
+}
+
+.template-cell-editor .checkbox-label {
+  min-height: 40px;
+  align-self: center;
+  padding-top: 16px;
+}
+
+.template-cell-options {
+  grid-column: 1 / -1;
+}
+
+.template-cell-editor-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .dialog-backdrop {
