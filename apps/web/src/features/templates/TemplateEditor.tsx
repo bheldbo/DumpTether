@@ -2,7 +2,6 @@ import {
   type CSSProperties,
   type DragEvent,
   type FormEvent,
-  type PointerEvent as ReactPointerEvent,
   useState,
 } from 'react';
 import { Icon } from '../../components/Icon';
@@ -57,7 +56,7 @@ function findFirstOpenTemplateCell(
   fields: EditableTemplateField[],
   rows: number[],
   scope: FieldDefinitionScope,
-) {
+): { row: number; column: number } | null {
   const occupiedCells = new Set<string>();
 
   fields
@@ -83,7 +82,7 @@ function findFirstOpenTemplateCell(
     }
   }
 
-  return { row: Math.max(1, rows.length), column: 1 };
+  return null;
 }
 
 function fieldOccupiesTemplateCell(
@@ -146,6 +145,7 @@ export function TemplateEditor({
     scope: FieldDefinitionScope,
     row: number,
     column: number,
+    rowsOverride = layoutRows[scope],
   ) => {
     const clientId = crypto.randomUUID();
 
@@ -169,7 +169,7 @@ export function TemplateEditor({
           layoutColumn: column,
           layoutRowSpan: 1,
           layoutColumnSpan: 1,
-        }, layoutRows[scope]),
+        }, rowsOverride),
       ];
 
       return renumberTemplateFields(nextFields);
@@ -185,7 +185,22 @@ export function TemplateEditor({
       scope,
     );
 
-    createFieldAtCell(scope, firstOpenCell.row, firstOpenCell.column);
+    if (firstOpenCell) {
+      createFieldAtCell(scope, firstOpenCell.row, firstOpenCell.column);
+      return;
+    }
+
+    const nextRowNumber = layoutRows[scope].length + 1;
+    const nextRows = [
+      ...layoutRows[scope],
+      layoutRows[scope][layoutRows[scope].length - 1] ?? 1,
+    ];
+
+    setLayoutRows((currentRows) => ({
+      ...currentRows,
+      [scope]: nextRows,
+    }));
+    createFieldAtCell(scope, nextRowNumber, 1, nextRows);
   };
 
   const updateField = (
@@ -284,9 +299,19 @@ export function TemplateEditor({
     rowIndex: number,
     columnCount: number,
   ) => {
+    const rowNumber = rowIndex + 1;
+    const minimumColumnsForExistingFields = Math.max(
+      1,
+      ...fields
+        .filter((field) => field.scope === scope && field.layoutRow === rowNumber)
+        .map((field) => field.layoutColumn + field.layoutColumnSpan - 1),
+    );
+
     updateLayoutRowsForScope(scope, (rows) =>
       rows.map((existingColumnCount, index) =>
-        index === rowIndex ? columnCount : existingColumnCount));
+        index === rowIndex
+          ? Math.max(minimumColumnsForExistingFields, columnCount)
+          : existingColumnCount));
   };
 
   const setLayoutRowCount = (scope: FieldDefinitionScope, rowCount: number) => {
@@ -340,10 +365,6 @@ export function TemplateEditor({
     );
     setActiveFieldId((currentActiveFieldId) =>
       currentActiveFieldId === clientId ? null : currentActiveFieldId);
-  };
-
-  const resizeFieldSpan = (clientId: string, columnSpan: number) => {
-    updateField(clientId, { layoutColumnSpan: columnSpan });
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -449,7 +470,6 @@ export function TemplateEditor({
             moveFieldToLayoutCell(sourceClientId, 'Header', row, column)}
           onEndDrag={() => setDraggedFieldId(null)}
           onRemoveRow={(rowIndex) => removeLayoutRow('Header', rowIndex)}
-          onResizeField={resizeFieldSpan}
           onSelectField={setActiveFieldId}
           onStartDrag={setDraggedFieldId}
         />
@@ -489,7 +509,6 @@ export function TemplateEditor({
             moveFieldToLayoutCell(sourceClientId, 'Entry', row, column)}
           onEndDrag={() => setDraggedFieldId(null)}
           onRemoveRow={(rowIndex) => removeLayoutRow('Entry', rowIndex)}
-          onResizeField={resizeFieldSpan}
           onSelectField={setActiveFieldId}
           onStartDrag={setDraggedFieldId}
         />
@@ -638,7 +657,6 @@ function TemplateLayoutCanvas({
   onDropField,
   onEndDrag,
   onRemoveRow,
-  onResizeField,
   onSelectField,
   onStartDrag,
 }: {
@@ -653,7 +671,6 @@ function TemplateLayoutCanvas({
   onDropField: (sourceClientId: string, row: number, column: number) => void;
   onEndDrag: () => void;
   onRemoveRow: (rowIndex: number) => void;
-  onResizeField: (clientId: string, columnSpan: number) => void;
   onSelectField: (clientId: string) => void;
   onStartDrag: (clientId: string) => void;
 }) {
@@ -671,39 +688,6 @@ function TemplateLayoutCanvas({
     }
   };
 
-  const startFieldResize = (
-    event: ReactPointerEvent<HTMLSpanElement>,
-    field: EditableTemplateField,
-    columnCount: number,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const gridRow = event.currentTarget.closest('.template-layout-grid-row');
-
-    if (!(gridRow instanceof HTMLElement)) {
-      return;
-    }
-
-    const startX = event.clientX;
-    const cellWidth = gridRow.getBoundingClientRect().width / columnCount;
-    const maxSpan = Math.max(1, columnCount - field.layoutColumn + 1);
-    const startSpan = field.layoutColumnSpan;
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const delta = Math.round((moveEvent.clientX - startX) / cellWidth);
-      onResizeField(field.clientId, clampInteger(startSpan + delta, 1, maxSpan));
-    };
-
-    const handlePointerUp = () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-  };
-
   return (
     <div className="template-layout-designer">
       <div className="template-layout-toolbar">
@@ -714,7 +698,7 @@ function TemplateLayoutCanvas({
           onChange={onChangeRowCount}
           value={layoutRows.length}
         />
-        <span>Click a cell to add or edit a field.</span>
+        <span>Build rows first. Split a row into cells, then click a cell to define its field.</span>
       </div>
       <div className="template-layout-rows">
         {layoutRows.map((columnCount, rowIndex) => {
@@ -726,22 +710,37 @@ function TemplateLayoutCanvas({
             <div className="template-layout-row" key={rowNumber}>
               <div className="template-layout-row-header">
                 <strong>Row {rowNumber}</strong>
-                <TemplateLayoutStepper
-                  label="Cols"
-                  max={FIELD_LAYOUT_MAX_COLUMNS}
-                  min={1}
-                  onChange={(value) => onChangeRowColumns(rowIndex, value)}
-                  value={columnCount}
-                />
-                <button
-                  className="tiny-icon-button"
-                  disabled={layoutRows.length <= 1 || rowHasFields}
-                  onClick={() => onRemoveRow(rowIndex)}
-                  title={rowHasFields ? 'Move fields before removing row' : 'Remove row'}
-                  type="button"
-                >
-                  <Icon name="trash" />
-                </button>
+                <div className="template-layout-row-actions">
+                  <button
+                    className="template-split-cells-button"
+                    disabled={columnCount >= FIELD_LAYOUT_MAX_COLUMNS}
+                    onClick={() =>
+                      onChangeRowColumns(
+                        rowIndex,
+                        Math.min(FIELD_LAYOUT_MAX_COLUMNS, columnCount + 1),
+                      )}
+                    type="button"
+                  >
+                    <Icon name="templates" />
+                    <span>Split cells</span>
+                  </button>
+                  <TemplateLayoutStepper
+                    label="Cells"
+                    max={FIELD_LAYOUT_MAX_COLUMNS}
+                    min={1}
+                    onChange={(value) => onChangeRowColumns(rowIndex, value)}
+                    value={columnCount}
+                  />
+                  <button
+                    className="tiny-icon-button"
+                    disabled={layoutRows.length <= 1 || rowHasFields}
+                    onClick={() => onRemoveRow(rowIndex)}
+                    title={rowHasFields ? 'Move fields before removing row' : 'Remove row'}
+                    type="button"
+                  >
+                    <Icon name="trash" />
+                  </button>
+                </div>
               </div>
               <div
                 className="template-layout-grid-row"
@@ -752,65 +751,69 @@ function TemplateLayoutCanvas({
               >
                 {Array.from({ length: columnCount }, (_, columnIndex) => {
                   const columnNumber = columnIndex + 1;
+                  const field = rowFields.find(
+                    (rowField) => rowField.layoutColumn === columnNumber,
+                  );
+
+                  if (rowFields.some((rowField) =>
+                    columnNumber > rowField.layoutColumn &&
+                    columnNumber < rowField.layoutColumn + rowField.layoutColumnSpan)) {
+                    return null;
+                  }
+
+                  if (field) {
+                    const columnSpan = Math.min(
+                      field.layoutColumnSpan,
+                      columnCount - field.layoutColumn + 1,
+                    );
+
+                    return (
+                      <button
+                        className="template-layout-field-cell"
+                        data-active={activeFieldId === field.clientId}
+                        data-field-type={field.type}
+                        draggable
+                        key={field.clientId}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelectField(field.clientId);
+                        }}
+                        onDragEnd={onEndDrag}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDragStart={(event) => {
+                          onStartDrag(field.clientId);
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', field.clientId);
+                        }}
+                        onDrop={(event) =>
+                          handleCellDrop(event, field.layoutRow, field.layoutColumn)}
+                        style={{
+                          gridColumn: `${field.layoutColumn} / span ${Math.max(1, columnSpan)}`,
+                        }}
+                        type="button"
+                      >
+                        <span className="template-layout-field-label">{field.name}</span>
+                        <span className="template-layout-field-meta">
+                          {field.type}
+                          {columnSpan > 1 ? ` - ${columnSpan} cells` : ''}
+                        </span>
+                      </button>
+                    );
+                  }
 
                   return (
                     <button
                       aria-label={`Drop field in row ${rowNumber}, column ${columnNumber}`}
-                      className="template-layout-cell"
+                      className="template-layout-cell template-layout-empty-cell"
                       key={`${rowNumber}:${columnNumber}`}
                       onClick={() => onCreateField(rowNumber, columnNumber)}
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={(event) => handleCellDrop(event, rowNumber, columnNumber)}
                       type="button"
                     >
-                      <span>{columnNumber}</span>
-                    </button>
-                  );
-                })}
-                {rowFields.length === 0 ? (
-                  <span className="template-preview-empty">{emptyLabel}</span>
-                ) : null}
-                {rowFields.map((field) => {
-                  const columnSpan = Math.min(
-                    field.layoutColumnSpan,
-                    columnCount - field.layoutColumn + 1,
-                  );
-
-                  return (
-                    <button
-                      className="template-preview-chip"
-                      data-active={activeFieldId === field.clientId}
-                      data-field-type={field.type}
-                      draggable
-                      key={field.clientId}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelectField(field.clientId);
-                      }}
-                      onDragOver={(event) => event.preventDefault()}
-                      onDragEnd={onEndDrag}
-                      onDragStart={(event) => {
-                        onStartDrag(field.clientId);
-                        event.dataTransfer.effectAllowed = 'move';
-                        event.dataTransfer.setData('text/plain', field.clientId);
-                      }}
-                      onDrop={(event) =>
-                        handleCellDrop(event, field.layoutRow, field.layoutColumn)}
-                      style={{
-                        gridColumn: `${field.layoutColumn} / span ${Math.max(1, columnSpan)}`,
-                      }}
-                      type="button"
-                    >
-                      <span>{field.name}</span>
-                      <small>
-                        {field.type} - R{field.layoutRow} C{field.layoutColumn}
-                      </small>
-                      <span
-                        aria-hidden="true"
-                        className="template-cell-resize-handle"
-                        onPointerDown={(event) =>
-                          startFieldResize(event, field, columnCount)}
-                      />
+                      <Icon name="plus" />
+                      <span>Field</span>
+                      <small>{rowFields.length === 0 && columnNumber === 1 ? emptyLabel : `Cell ${columnNumber}`}</small>
                     </button>
                   );
                 })}

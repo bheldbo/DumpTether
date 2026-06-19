@@ -806,6 +806,7 @@
   .field-editor,
   .entry-field-editor-cell,
   .template-layout-cell,
+  .template-layout-field-cell,
   .template-preview-chip,
   .template-preview-empty {
     grid-column: 1 / -1 !important;
