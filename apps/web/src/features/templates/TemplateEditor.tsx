@@ -2,6 +2,8 @@ import {
   type CSSProperties,
   type DragEvent,
   type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
   useState,
 } from 'react';
 import { Icon } from '../../components/Icon';
@@ -23,6 +25,7 @@ import type {
 type TemplateLayoutRows = Record<FieldDefinitionScope, number[]>;
 
 const templateScopes: FieldDefinitionScope[] = ['Header', 'Entry'];
+const minimumColumnWeight = 0.35;
 
 function createTemplateLayoutRows(fields: EditableTemplateField[]): TemplateLayoutRows {
   return Object.fromEntries(
@@ -115,6 +118,63 @@ function normalizeFieldToLayoutRows(
     layoutColumnSpan: columnSpan,
     layoutRowSpan: 1,
   };
+}
+
+function createColumnWeights(columnCount: number) {
+  return Array.from({ length: columnCount }, () => 1);
+}
+
+function normalizeColumnWeights(weights: number[] | undefined, columnCount: number) {
+  if (!weights?.length) {
+    return createColumnWeights(columnCount);
+  }
+
+  if (weights.length === columnCount) {
+    return weights.map((weight) => Math.max(minimumColumnWeight, weight));
+  }
+
+  if (weights.length < columnCount) {
+    return [
+      ...weights.map((weight) => Math.max(minimumColumnWeight, weight)),
+      ...createColumnWeights(columnCount - weights.length),
+    ];
+  }
+
+  return weights
+    .slice(0, columnCount)
+    .map((weight) => Math.max(minimumColumnWeight, weight));
+}
+
+function getColumnBoundaryPercent(weights: number[], boundaryIndex: number) {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const beforeBoundary = weights
+    .slice(0, boundaryIndex + 1)
+    .reduce((sum, weight) => sum + weight, 0);
+
+  return total <= 0 ? 0 : (beforeBoundary / total) * 100;
+}
+
+function getColumnMidpointPercent(weights: number[], columnIndex: number) {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const beforeColumn = weights
+    .slice(0, columnIndex)
+    .reduce((sum, weight) => sum + weight, 0);
+
+  return total <= 0
+    ? 0
+    : ((beforeColumn + weights[columnIndex] / 2) / total) * 100;
+}
+
+function insertColumnWeightAfter(weights: number[], columnIndex: number) {
+  const currentWeight = Math.max(minimumColumnWeight * 2, weights[columnIndex] ?? 1);
+  const splitWeight = currentWeight / 2;
+
+  return [
+    ...weights.slice(0, columnIndex),
+    splitWeight,
+    splitWeight,
+    ...weights.slice(columnIndex + 1),
+  ];
 }
 
 export function TemplateEditor({
@@ -294,24 +354,42 @@ export function TemplateEditor({
     });
   };
 
-  const setLayoutRowColumns = (
+  const splitLayoutCell = (
     scope: FieldDefinitionScope,
     rowIndex: number,
-    columnCount: number,
+    column: number,
   ) => {
     const rowNumber = rowIndex + 1;
-    const minimumColumnsForExistingFields = Math.max(
-      1,
-      ...fields
-        .filter((field) => field.scope === scope && field.layoutRow === rowNumber)
-        .map((field) => field.layoutColumn + field.layoutColumnSpan - 1),
-    );
+    const currentColumnCount = layoutRows[scope][rowIndex] ?? 1;
 
-    updateLayoutRowsForScope(scope, (rows) =>
-      rows.map((existingColumnCount, index) =>
-        index === rowIndex
-          ? Math.max(minimumColumnsForExistingFields, columnCount)
-          : existingColumnCount));
+    if (currentColumnCount >= FIELD_LAYOUT_MAX_COLUMNS) {
+      return;
+    }
+
+    setLayoutRows((currentRows) => ({
+      ...currentRows,
+      [scope]: currentRows[scope].map((columnCount, index) =>
+        index === rowIndex ? columnCount + 1 : columnCount),
+    }));
+
+    setFields((currentFields) =>
+      renumberTemplateFields(
+        currentFields.map((field) => {
+          if (
+            field.scope !== scope ||
+            field.layoutRow !== rowNumber ||
+            field.layoutColumn <= column
+          ) {
+            return field;
+          }
+
+          return {
+            ...field,
+            layoutColumn: field.layoutColumn + 1,
+          };
+        }),
+      ),
+    );
   };
 
   const setLayoutRowCount = (scope: FieldDefinitionScope, rowCount: number) => {
@@ -463,14 +541,14 @@ export function TemplateEditor({
           fields={headerPreviewFields}
           layoutRows={layoutRows.Header}
           onChangeRowCount={(rowCount) => setLayoutRowCount('Header', rowCount)}
-          onChangeRowColumns={(rowIndex, columnCount) =>
-            setLayoutRowColumns('Header', rowIndex, columnCount)}
           onCreateField={(row, column) => createFieldAtCell('Header', row, column)}
           onDropField={(sourceClientId, row, column) =>
             moveFieldToLayoutCell(sourceClientId, 'Header', row, column)}
           onEndDrag={() => setDraggedFieldId(null)}
           onRemoveRow={(rowIndex) => removeLayoutRow('Header', rowIndex)}
           onSelectField={setActiveFieldId}
+          onSplitCell={(rowIndex, column) =>
+            splitLayoutCell('Header', rowIndex, column)}
           onStartDrag={setDraggedFieldId}
         />
         {!activeFieldId || activeHeaderField ? (
@@ -502,14 +580,14 @@ export function TemplateEditor({
           fields={entryPreviewFields}
           layoutRows={layoutRows.Entry}
           onChangeRowCount={(rowCount) => setLayoutRowCount('Entry', rowCount)}
-          onChangeRowColumns={(rowIndex, columnCount) =>
-            setLayoutRowColumns('Entry', rowIndex, columnCount)}
           onCreateField={(row, column) => createFieldAtCell('Entry', row, column)}
           onDropField={(sourceClientId, row, column) =>
             moveFieldToLayoutCell(sourceClientId, 'Entry', row, column)}
           onEndDrag={() => setDraggedFieldId(null)}
           onRemoveRow={(rowIndex) => removeLayoutRow('Entry', rowIndex)}
           onSelectField={setActiveFieldId}
+          onSplitCell={(rowIndex, column) =>
+            splitLayoutCell('Entry', rowIndex, column)}
           onStartDrag={setDraggedFieldId}
         />
         {!activeFieldId || activeEntryField ? (
@@ -652,12 +730,12 @@ function TemplateLayoutCanvas({
   fields,
   layoutRows,
   onChangeRowCount,
-  onChangeRowColumns,
   onCreateField,
   onDropField,
   onEndDrag,
   onRemoveRow,
   onSelectField,
+  onSplitCell,
   onStartDrag,
 }: {
   activeFieldId: string | null;
@@ -666,14 +744,25 @@ function TemplateLayoutCanvas({
   fields: EditableTemplateField[];
   layoutRows: number[];
   onChangeRowCount: (rowCount: number) => void;
-  onChangeRowColumns: (rowIndex: number, columnCount: number) => void;
   onCreateField: (row: number, column: number) => void;
   onDropField: (sourceClientId: string, row: number, column: number) => void;
   onEndDrag: () => void;
   onRemoveRow: (rowIndex: number) => void;
   onSelectField: (clientId: string) => void;
+  onSplitCell: (rowIndex: number, column: number) => void;
   onStartDrag: (clientId: string) => void;
 }) {
+  const [rowWeights, setRowWeights] = useState<number[][]>(
+    () => layoutRows.map((columnCount) => createColumnWeights(columnCount)),
+  );
+
+  useEffect(() => {
+    setRowWeights((currentWeights) =>
+      layoutRows.map((columnCount, rowIndex) =>
+        normalizeColumnWeights(currentWeights[rowIndex], columnCount)),
+    );
+  }, [layoutRows]);
+
   const handleCellDrop = (
     event: DragEvent<HTMLButtonElement>,
     row: number,
@@ -686,6 +775,87 @@ function TemplateLayoutCanvas({
     if (sourceClientId) {
       onDropField(sourceClientId, row, column);
     }
+  };
+
+  const splitCell = (rowIndex: number, column: number) => {
+    const columnCount = layoutRows[rowIndex] ?? 1;
+
+    if (columnCount >= FIELD_LAYOUT_MAX_COLUMNS) {
+      return;
+    }
+
+    setRowWeights((currentWeights) =>
+      currentWeights.map((weights, currentRowIndex) =>
+        currentRowIndex === rowIndex
+          ? insertColumnWeightAfter(
+              normalizeColumnWeights(weights, columnCount),
+              column - 1,
+            )
+          : weights),
+    );
+    onSplitCell(rowIndex, column);
+  };
+
+  const startColumnResize = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    rowIndex: number,
+    boundaryIndex: number,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const rowElement = event.currentTarget.closest('.template-layout-grid-row');
+
+    if (!(rowElement instanceof HTMLElement)) {
+      return;
+    }
+
+    const rowBounds = rowElement.getBoundingClientRect();
+    const initialWeights = normalizeColumnWeights(
+      rowWeights[rowIndex],
+      layoutRows[rowIndex] ?? 1,
+    );
+    const totalWeight = initialWeights.reduce((sum, weight) => sum + weight, 0);
+    const weightBeforePair = initialWeights
+      .slice(0, boundaryIndex)
+      .reduce((sum, weight) => sum + weight, 0);
+    const pairWeight = initialWeights[boundaryIndex] + initialWeights[boundaryIndex + 1];
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const pointerRatio = clampInteger(
+        Math.round(((moveEvent.clientX - rowBounds.left) / rowBounds.width) * 1000),
+        1,
+        999,
+      ) / 1000;
+      const pointerWeight = pointerRatio * totalWeight;
+      const nextLeftWeight = Math.min(
+        pairWeight - minimumColumnWeight,
+        Math.max(minimumColumnWeight, pointerWeight - weightBeforePair),
+      );
+      const nextRightWeight = pairWeight - nextLeftWeight;
+
+      setRowWeights((currentWeights) =>
+        currentWeights.map((weights, currentRowIndex) => {
+          if (currentRowIndex !== rowIndex) {
+            return weights;
+          }
+
+          const nextWeights = [...normalizeColumnWeights(weights, layoutRows[rowIndex] ?? 1)];
+          nextWeights[boundaryIndex] = nextLeftWeight;
+          nextWeights[boundaryIndex + 1] = nextRightWeight;
+
+          return nextWeights;
+        }),
+      );
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
   };
 
   return (
@@ -705,32 +875,14 @@ function TemplateLayoutCanvas({
           const rowNumber = rowIndex + 1;
           const rowFields = fields.filter((field) => field.layoutRow === rowNumber);
           const rowHasFields = rowFields.length > 0;
+          const weights = normalizeColumnWeights(rowWeights[rowIndex], columnCount);
 
           return (
             <div className="template-layout-row" key={rowNumber}>
               <div className="template-layout-row-header">
                 <strong>Row {rowNumber}</strong>
                 <div className="template-layout-row-actions">
-                  <button
-                    className="template-split-cells-button"
-                    disabled={columnCount >= FIELD_LAYOUT_MAX_COLUMNS}
-                    onClick={() =>
-                      onChangeRowColumns(
-                        rowIndex,
-                        Math.min(FIELD_LAYOUT_MAX_COLUMNS, columnCount + 1),
-                      )}
-                    type="button"
-                  >
-                    <Icon name="templates" />
-                    <span>Split cells</span>
-                  </button>
-                  <TemplateLayoutStepper
-                    label="Cells"
-                    max={FIELD_LAYOUT_MAX_COLUMNS}
-                    min={1}
-                    onChange={(value) => onChangeRowColumns(rowIndex, value)}
-                    value={columnCount}
-                  />
+                  <span>{columnCount} {columnCount === 1 ? 'cell' : 'cells'}</span>
                   <button
                     className="tiny-icon-button"
                     disabled={layoutRows.length <= 1 || rowHasFields}
@@ -746,7 +898,7 @@ function TemplateLayoutCanvas({
                 className="template-layout-grid-row"
                 style={{
                   '--template-layout-columns': columnCount,
-                  gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                  gridTemplateColumns: weights.map((weight) => `${weight}fr`).join(' '),
                 } as CSSProperties}
               >
                 {Array.from({ length: columnCount }, (_, columnIndex) => {
@@ -817,6 +969,40 @@ function TemplateLayoutCanvas({
                     </button>
                   );
                 })}
+                {columnCount < FIELD_LAYOUT_MAX_COLUMNS
+                  ? Array.from({ length: columnCount }, (_, columnIndex) => (
+                      <button
+                        aria-label={`Split row ${rowNumber}, cell ${columnIndex + 1}`}
+                        className="template-layout-split-guide"
+                        key={`split:${rowNumber}:${columnIndex + 1}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          splitCell(rowIndex, columnIndex + 1);
+                        }}
+                        style={{
+                          left: `${getColumnMidpointPercent(weights, columnIndex)}%`,
+                        }}
+                        title="Split cell"
+                        type="button"
+                      />
+                    ))
+                  : null}
+                {columnCount > 1
+                  ? Array.from({ length: columnCount - 1 }, (_, boundaryIndex) => (
+                      <button
+                        aria-label={`Resize row ${rowNumber} columns ${boundaryIndex + 1} and ${boundaryIndex + 2}`}
+                        className="template-layout-resize-handle"
+                        key={`resize:${rowNumber}:${boundaryIndex}`}
+                        onPointerDown={(event) =>
+                          startColumnResize(event, rowIndex, boundaryIndex)}
+                        style={{
+                          left: `${getColumnBoundaryPercent(weights, boundaryIndex)}%`,
+                        }}
+                        title="Drag to resize columns"
+                        type="button"
+                      />
+                    ))
+                  : null}
               </div>
             </div>
           );

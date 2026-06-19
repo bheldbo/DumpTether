@@ -813,6 +813,11 @@
     grid-row: auto !important;
   }
 
+  .template-layout-split-guide,
+  .template-layout-resize-handle {
+    display: none;
+  }
+
   .template-field-scope,
   .template-editor,
   .task-detail,
