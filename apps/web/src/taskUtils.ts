@@ -11,7 +11,7 @@ export interface TaskWallFilters {
   status: string;
   category: string;
   color: string;
-  projectId: string;
+  projectIds: string[];
   notTouchedDays: string;
   followUp: '' | SavedViewFollowUpFilter;
   sharedWith: string;
@@ -30,7 +30,7 @@ export const emptyTaskWallFilters: TaskWallFilters = {
   status: '',
   category: '',
   color: '',
-  projectId: '',
+  projectIds: [],
   notTouchedDays: '',
   followUp: '',
   sharedWith: '',
@@ -151,7 +151,11 @@ export function applyTaskWallFilters(
       return false;
     }
 
-    if (filters.projectId && !taskMatchesProjectFilter(taskItem, filters.projectId, projects)) {
+    if (
+      filters.projectIds.length > 0 &&
+      !filters.projectIds.some((projectId) =>
+        taskMatchesProjectFilter(taskItem, projectId, projects))
+    ) {
       return false;
     }
 
@@ -180,7 +184,11 @@ export function applyTaskWallFilters(
 
 export function taskWallFiltersAreActive(filters: TaskWallFilters) {
   return Object.values(filters).some((value) =>
-    typeof value === 'boolean' ? value : value.trim().length > 0,
+    Array.isArray(value)
+      ? value.length > 0
+      : typeof value === 'boolean'
+        ? value
+        : value.trim().length > 0,
   );
 }
 

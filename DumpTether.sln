@@ -39,14 +39,47 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "web-src", "web-src", "{19B2
 		apps\web\src\api.ts = apps\web\src\api.ts
 		apps\web\src\App.css = apps\web\src\App.css
 		apps\web\src\App.tsx = apps\web\src\App.tsx
+		apps\web\src\appTypes.ts = apps\web\src\appTypes.ts
+		apps\web\src\appUtils.ts = apps\web\src\appUtils.ts
+		apps\web\src\components\ColorOptionPicker.tsx = apps\web\src\components\ColorOptionPicker.tsx
+		apps\web\src\components\ColorPickerPopover.tsx = apps\web\src\components\ColorPickerPopover.tsx
+		apps\web\src\components\Icon.tsx = apps\web\src\components\Icon.tsx
+		apps\web\src\components\ModalFrame.tsx = apps\web\src\components\ModalFrame.tsx
+		apps\web\src\components\TaskFilterBar.tsx = apps\web\src\components\TaskFilterBar.tsx
+		apps\web\src\components\TaskMetadata.tsx = apps\web\src\components\TaskMetadata.tsx
+		apps\web\src\components\ToastStack.tsx = apps\web\src\components\ToastStack.tsx
 		apps\web\src\fieldRenderers.tsx = apps\web\src\fieldRenderers.tsx
 		apps\web\src\fieldValues.ts = apps\web\src\fieldValues.ts
+		apps\web\src\features\settings\AccountSettingsPanels.tsx = apps\web\src\features\settings\AccountSettingsPanels.tsx
+		apps\web\src\features\task-detail\CategoryMultiSelect.tsx = apps\web\src\features\task-detail\CategoryMultiSelect.tsx
+		apps\web\src\features\task-detail\TaskDialogs.tsx = apps\web\src\features\task-detail\TaskDialogs.tsx
+		apps\web\src\features\sharing\ShareDialog.tsx = apps\web\src\features\sharing\ShareDialog.tsx
+		apps\web\src\features\task-wall\BoardLoadingState.tsx = apps\web\src\features\task-wall\BoardLoadingState.tsx
+		apps\web\src\features\task-wall\DraftTaskCard.tsx = apps\web\src\features\task-wall\DraftTaskCard.tsx
+		apps\web\src\features\task-wall\FloatingBoardActions.tsx = apps\web\src\features\task-wall\FloatingBoardActions.tsx
+		apps\web\src\features\templates\TemplateEditor.tsx = apps\web\src\features\templates\TemplateEditor.tsx
+		apps\web\src\features\templates\TemplatesPage.tsx = apps\web\src\features\templates\TemplatesPage.tsx
+		apps\web\src\features\timeline\TimelinePanel.tsx = apps\web\src\features\timeline\TimelinePanel.tsx
 		apps\web\src\liveUpdates.ts = apps\web\src\liveUpdates.ts
 		apps\web\src\localization.ts = apps\web\src\localization.ts
 		apps\web\src\main.tsx = apps\web\src\main.tsx
+		apps\web\src\styles\base.css = apps\web\src\styles\base.css
+		apps\web\src\styles\panels.css = apps\web\src\styles\panels.css
+		apps\web\src\styles\responsive.css = apps\web\src\styles\responsive.css
+		apps\web\src\styles\shell.css = apps\web\src\styles\shell.css
+		apps\web\src\styles\task-detail.css = apps\web\src\styles\task-detail.css
+		apps\web\src\styles\task-wall.css = apps\web\src\styles\task-wall.css
+		apps\web\src\taskUtils.ts = apps\web\src\taskUtils.ts
+		apps\web\src\templateFieldUtils.ts = apps\web\src\templateFieldUtils.ts
 		apps\web\src\templateLayout.ts = apps\web\src\templateLayout.ts
 		apps\web\src\types.ts = apps\web\src\types.ts
 		apps\web\src\vite-env.d.ts = apps\web\src\vite-env.d.ts
+		apps\web\src\workspaceCache.ts = apps\web\src\workspaceCache.ts
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "frontend-docs", "frontend-docs", "{F2B59F92-13C4-4FCF-9B6F-C5E7739F36D3}"
+	ProjectSection(SolutionItems) = preProject
+		docs\product\web-frontend-architecture.md = docs\product\web-frontend-architecture.md
 	EndProjectSection
 EndProject
 Global
@@ -140,5 +173,6 @@ Global
 		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{3CA94FAE-6468-4FC3-8EA0-C012191BA8E6} = {FF9AC7E0-29BC-4F15-8F45-D008C44FEB63}
 		{19B23972-54B2-4ACC-8846-9EA926FE5863} = {3CA94FAE-6468-4FC3-8EA0-C012191BA8E6}
+		{F2B59F92-13C4-4FCF-9B6F-C5E7739F36D3} = {3CA94FAE-6468-4FC3-8EA0-C012191BA8E6}
 	EndGlobalSection
 EndGlobal
