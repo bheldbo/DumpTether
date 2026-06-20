@@ -49,13 +49,15 @@ internal sealed class WorkspaceService : IWorkspaceService
         {
             var workspaces = await _workspaceRepository.ListAsync(cancellationToken);
 
-            return workspaces
-                .Select(MapWorkspace)
-                .ToList();
+            return SortWorkspaceResponses(workspaces.Select(MapWorkspace));
         }
 
         var workspaceMemberships = await _authRepository.ListWorkspacesForUserAsync(
             currentSession.UserId,
+            cancellationToken);
+        workspaceMemberships = await EnsureStandardWorkspaceAsync(
+            currentSession.UserId,
+            workspaceMemberships,
             cancellationToken);
 
         var responses = new List<WorkspaceResponse>();
@@ -65,7 +67,7 @@ internal sealed class WorkspaceService : IWorkspaceService
             responses.Add(await MapWorkspaceAsync(membership, cancellationToken));
         }
 
-        return responses;
+        return SortWorkspaceResponses(responses);
     }
 
     public async Task<WorkspaceResponse> GetCurrentAsync(CancellationToken cancellationToken)
@@ -130,6 +132,7 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         if (request.Name is not null)
         {
+            EnsureSystemWorkspaceCanBeRenamed(workspace, request.Name);
             await EnsureWorkspaceNameIsAvailableAsync(
                 request.Name,
                 workspace.Id,
@@ -163,6 +166,7 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         if (request.Name is not null)
         {
+            EnsureSystemWorkspaceCanBeRenamed(workspace, request.Name);
             await EnsureWorkspaceNameIsAvailableAsync(
                 request.Name,
                 workspace.Id,
@@ -507,11 +511,16 @@ internal sealed class WorkspaceService : IWorkspaceService
 
     public async Task<bool> DeleteAsync(Guid workspaceId, CancellationToken cancellationToken)
     {
-        await RequireWorkspaceMembershipAsync(
+        var (workspace, _, _) = await RequireWorkspaceMembershipAsync(
             workspaceId,
             requireOwner: true,
             trackChanges: false,
             cancellationToken);
+
+        if (IsSystemAllTasksWorkspace(workspace))
+        {
+            throw new ValidationException("All tasks is a standard board and cannot be deleted.");
+        }
 
         var deleted = await _workspaceRepository.DeleteAsync(workspaceId, cancellationToken);
 
@@ -523,6 +532,85 @@ internal sealed class WorkspaceService : IWorkspaceService
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private static bool IsSystemAllTasksWorkspace(Workspace workspace)
+    {
+        return string.Equals(
+            workspace.Name.Trim(),
+            "All Tasks",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<WorkspaceResponse> SortWorkspaceResponses(
+        IEnumerable<WorkspaceResponse> workspaces)
+    {
+        return workspaces
+            .OrderBy(workspace => IsSystemAllTasksWorkspace(workspace) ? 0 : 1)
+            .ThenBy(workspace => workspace.AccessKind == WorkspaceAccessKinds.TaskShare ? 1 : 0)
+            .ThenBy(workspace => workspace.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool IsSystemAllTasksWorkspace(WorkspaceResponse workspace)
+    {
+        return workspace.AccessKind == WorkspaceAccessKinds.Membership &&
+            string.Equals(
+                workspace.Name.Trim(),
+                "All Tasks",
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<IReadOnlyList<UserWorkspaceMembership>> EnsureStandardWorkspaceAsync(
+        Guid userId,
+        IReadOnlyList<UserWorkspaceMembership> memberships,
+        CancellationToken cancellationToken)
+    {
+        var hasStandardWorkspace = memberships.Any(membership =>
+            membership.AccessKind == WorkspaceAccessKinds.Membership &&
+            string.Equals(
+                membership.Workspace.Name.Trim(),
+                "All Tasks",
+                StringComparison.OrdinalIgnoreCase));
+
+        if (hasStandardWorkspace)
+        {
+            return memberships;
+        }
+
+        var now = _clock.UtcNow;
+        var workspace = Workspace.Create("All Tasks", now);
+        var membership = WorkspaceMembership.Create(
+            workspace.Id,
+            userId,
+            WorkspaceMembershipRole.Owner,
+            now);
+
+        await _workspaceRepository.AddAsync(workspace, cancellationToken);
+        await _authRepository.AddWorkspaceMembershipAsync(membership, cancellationToken);
+        await _workspaceRepository.SaveChangesAsync(cancellationToken);
+
+        return await _authRepository.ListWorkspacesForUserAsync(
+            userId,
+            cancellationToken);
+    }
+
+    private static void EnsureSystemWorkspaceCanBeRenamed(
+        Workspace workspace,
+        string requestedName)
+    {
+        if (!IsSystemAllTasksWorkspace(workspace))
+        {
+            return;
+        }
+
+        if (!string.Equals(
+                requestedName.Trim(),
+                "All Tasks",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ValidationException("All tasks is a standard board and cannot be renamed.");
+        }
     }
 
     private async Task<Workspace> GetCurrentWorkspaceAsync(CancellationToken cancellationToken)

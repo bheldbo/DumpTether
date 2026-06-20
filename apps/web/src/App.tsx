@@ -47,6 +47,7 @@ import {
   isAbortError,
   isOwnerRole,
   isReadOnlyRole,
+  isSystemAllTasksWorkspace,
   isTaskShareWorkspace,
   isTextEditingTarget,
   pickSavedViewId,
@@ -485,6 +486,36 @@ function App() {
               workspaceId: null,
             });
         const selectedViewId = pickSavedViewId(views, preferredViewId);
+        const selectedView = views.find((view) => view.id === selectedViewId) ?? null;
+        const workspaceIsSystemAllTasks = isSystemAllTasksWorkspace(workspaceInfo);
+        const aggregateWorkspaces = workspaceIsSystemAllTasks
+          ? resolvedWorkspaceList
+          : [workspaceInfo];
+        const aggregateTaskQuery = selectedView?.filter.archive === 'Archived' ||
+          selectedView?.name.toLowerCase() === 'archive'
+          ? { scope: 'Archive' as const }
+          : { scope: 'Active' as const };
+        const listAggregateTasks = async (query: Parameters<typeof listTaskItems>[0]) => {
+          const taskLists = await Promise.all(
+            aggregateWorkspaces.map((candidateWorkspace) =>
+              listTaskItems(query, {
+                signal: controller.signal,
+                workspaceId: candidateWorkspace.id,
+              }).catch((error) => {
+                if (isAbortError(error)) {
+                  throw error;
+                }
+
+                return [];
+              })),
+          );
+          const taskItemsById = new Map<string, TaskItemSummaryResponse>();
+          taskLists.flat().forEach((taskItem) => {
+            taskItemsById.set(taskItem.id, taskItem);
+          });
+
+          return [...taskItemsById.values()];
+        };
         const resolvedWorkspaceCacheKey = buildWorkspaceCacheKey(
           workspaceInfo.id,
           selectedViewId ?? 'default',
@@ -504,14 +535,18 @@ function App() {
           })).then((details) =>
             details.filter((template): template is TaskTemplateDetailResponse =>
               template !== null)),
-          selectedViewId
-            ? listTaskItems({ viewId: selectedViewId }, workspaceRequestOptions)
-            : Promise.resolve([]),
+          workspaceIsSystemAllTasks
+            ? listAggregateTasks(aggregateTaskQuery)
+            : selectedViewId
+              ? listTaskItems({ viewId: selectedViewId }, workspaceRequestOptions)
+              : Promise.resolve([]),
           listTaskViewCounts(
             views.map((view) => view.id),
             workspaceRequestOptions,
           ),
-          listTaskItems({ archive: 'All' }, workspaceRequestOptions),
+          workspaceIsSystemAllTasks
+            ? listAggregateTasks({ archive: 'All' })
+            : listTaskItems({ archive: 'All' }, workspaceRequestOptions),
         ]);
         if (!isCurrentLoad()) {
           return;
@@ -1686,6 +1721,13 @@ function App() {
 
   const handleDeleteWorkspace = async (workspaceId: string) => {
     try {
+      const workspaceToDelete = workspaces.find((currentWorkspace) => currentWorkspace.id === workspaceId);
+
+      if (workspaceToDelete && isSystemAllTasksWorkspace(workspaceToDelete)) {
+        showToast(t('systemBoardCannotBeDeleted'), 'warning');
+        return;
+      }
+
       await deleteWorkspace(workspaceId);
       setWorkspaces((currentWorkspaces) =>
         currentWorkspaces.filter((currentWorkspace) => currentWorkspace.id !== workspaceId),
@@ -2130,10 +2172,11 @@ function Sidebar({
       <nav className="view-nav workspace-nav" aria-label={t('workspaces')}>
         {workspaces.map((candidate) => {
           const isSharedOnly = isTaskShareWorkspace(candidate);
+          const isSystemBoard = isSystemAllTasksWorkspace(candidate);
           const membership = workspaceMembershipsById.get(candidate.id);
           const isOwner = Boolean(membership && isOwnerRole(membership.role));
           const isSharedMembership = Boolean(membership && !isOwnerRole(membership.role));
-          const canDelete = Boolean(membership && isOwnerRole(membership.role) && !isSharedOnly);
+          const canDelete = Boolean(membership && isOwnerRole(membership.role) && !isSharedOnly && !isSystemBoard);
           const canEdit = canDelete;
           const canLeave = isSharedOnly ||
             isSharedMembership;

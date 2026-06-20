@@ -27,4 +27,5 @@ public sealed record UpsertFieldDefinitionRequest(
     int? LayoutRow = null,
     int? LayoutColumn = null,
     int? LayoutRowSpan = null,
-    int? LayoutColumnSpan = null);
+    int? LayoutColumnSpan = null,
+    double? LayoutWeight = null);

@@ -216,7 +216,6 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
 
     public async Task<TaskTemplate?> GetTaskTemplateByIdAsync(
         Guid id,
-        Guid workspaceId,
         bool includeDeleted,
         CancellationToken cancellationToken)
     {
@@ -224,9 +223,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .Include("_fieldDefinitions")
             .AsSplitQuery()
             .AsNoTracking()
-            .Where(template =>
-                template.Id == id &&
-                template.WorkspaceId == workspaceId);
+            .Where(template => template.Id == id);
 
         if (!includeDeleted)
         {
@@ -488,7 +485,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
     }
 
     public async Task<TaskTemplate?> GetDefaultTaskTemplateAsync(
-        Guid workspaceId,
+        Guid? ownerUserId,
         CancellationToken cancellationToken)
     {
         return await _dbContext.TaskTemplates
@@ -496,7 +493,7 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .AsSplitQuery()
             .AsNoTracking()
             .Where(template =>
-                template.WorkspaceId == workspaceId &&
+                template.OwnerUserId == ownerUserId &&
                 template.DeletedAt == null)
             .OrderByDescending(template => template.Name == "Basic Task")
             .ThenBy(template => template.Name)

@@ -3,7 +3,6 @@ import {
   type DragEvent,
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
-  useEffect,
   useState,
 } from 'react';
 import { Icon } from '../../components/Icon';
@@ -23,9 +22,33 @@ import type {
 } from '../../types';
 
 type TemplateLayoutRows = Record<FieldDefinitionScope, number[]>;
+type TemplateLayoutWeights = Record<FieldDefinitionScope, number[][]>;
+type TemplateFieldModalState = {
+  clientId?: string;
+  column: number;
+  row: number;
+  scope: FieldDefinitionScope;
+} | null;
+type TemplateFieldDraft = {
+  name: string;
+  optionsText: string;
+  required: boolean;
+  type: FieldDefinitionType;
+};
+type TemplateColumnRemovalState = {
+  boundaryIndex: number;
+  fieldNames: string[];
+  rowIndex: number;
+  scope: FieldDefinitionScope;
+} | null;
+type TemplateRowRemovalState = {
+  fieldNames: string[];
+  rowIndex: number;
+  scope: FieldDefinitionScope;
+} | null;
 
 const templateScopes: FieldDefinitionScope[] = ['Header', 'Entry'];
-const minimumColumnWeight = 0.35;
+const minimumColumnWeight = 0.12;
 
 function createTemplateLayoutRows(fields: EditableTemplateField[]): TemplateLayoutRows {
   return Object.fromEntries(
@@ -44,9 +67,7 @@ function createTemplateLayoutRows(fields: EditableTemplateField[]): TemplateLayo
         return Math.max(
           1,
           ...rowFields.map((field) =>
-            clampInteger(field.layoutColumn, 1, FIELD_LAYOUT_MAX_COLUMNS) +
-            clampInteger(field.layoutColumnSpan, 1, FIELD_LAYOUT_MAX_COLUMNS) -
-            1),
+            clampInteger(field.layoutColumn, 1, FIELD_LAYOUT_MAX_COLUMNS)),
         );
       });
 
@@ -55,47 +76,12 @@ function createTemplateLayoutRows(fields: EditableTemplateField[]): TemplateLayo
   ) as TemplateLayoutRows;
 }
 
-function findFirstOpenTemplateCell(
-  fields: EditableTemplateField[],
-  rows: number[],
-  scope: FieldDefinitionScope,
-): { row: number; column: number } | null {
-  const occupiedCells = new Set<string>();
-
-  fields
-    .filter((field) => field.scope === scope)
-    .forEach((field) => {
-      const row = clampInteger(field.layoutRow, 1, 24);
-      const column = clampInteger(field.layoutColumn, 1, FIELD_LAYOUT_MAX_COLUMNS);
-      const columnSpan = clampInteger(field.layoutColumnSpan, 1, FIELD_LAYOUT_MAX_COLUMNS);
-
-      for (let offset = 0; offset < columnSpan; offset += 1) {
-        occupiedCells.add(`${row}:${column + offset}`);
-      }
-    });
-
-  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-    const rowNumber = rowIndex + 1;
-    const columnCount = rows[rowIndex] ?? 1;
-
-    for (let columnNumber = 1; columnNumber <= columnCount; columnNumber += 1) {
-      if (!occupiedCells.has(`${rowNumber}:${columnNumber}`)) {
-        return { row: rowNumber, column: columnNumber };
-      }
-    }
-  }
-
-  return null;
-}
-
 function fieldOccupiesTemplateCell(
   field: EditableTemplateField,
   row: number,
   column: number,
 ) {
-  return field.layoutRow === row &&
-    column >= field.layoutColumn &&
-    column < field.layoutColumn + field.layoutColumnSpan;
+  return field.layoutRow === row && field.layoutColumn === column;
 }
 
 function normalizeFieldToLayoutRows(
@@ -105,11 +91,7 @@ function normalizeFieldToLayoutRows(
   const row = clampInteger(field.layoutRow, 1, Math.max(1, rows.length));
   const columnCount = rows[row - 1] ?? 1;
   const column = clampInteger(field.layoutColumn, 1, columnCount);
-  const columnSpan = clampInteger(
-    field.layoutColumnSpan,
-    1,
-    Math.max(1, columnCount - column + 1),
-  );
+  const columnSpan = 1;
 
   return {
     ...field,
@@ -117,6 +99,7 @@ function normalizeFieldToLayoutRows(
     layoutColumn: column,
     layoutColumnSpan: columnSpan,
     layoutRowSpan: 1,
+    layoutWeight: normalizeLayoutWeight(field.layoutWeight),
   };
 }
 
@@ -143,6 +126,38 @@ function normalizeColumnWeights(weights: number[] | undefined, columnCount: numb
   return weights
     .slice(0, columnCount)
     .map((weight) => Math.max(minimumColumnWeight, weight));
+}
+
+function normalizeLayoutWeight(weight: number | undefined) {
+  if (!Number.isFinite(weight)) {
+    return 1;
+  }
+
+  return Math.min(12, Math.max(minimumColumnWeight, weight ?? 1));
+}
+
+function createTemplateLayoutWeights(
+  fields: EditableTemplateField[],
+  rows: TemplateLayoutRows,
+): TemplateLayoutWeights {
+  return Object.fromEntries(
+    templateScopes.map((scope) => [
+      scope,
+      rows[scope].map((columnCount, rowIndex) => {
+        const rowNumber = rowIndex + 1;
+
+        return Array.from({ length: columnCount }, (_, columnIndex) => {
+          const columnNumber = columnIndex + 1;
+          const field = fields.find((candidate) =>
+            candidate.scope === scope &&
+            candidate.layoutRow === rowNumber &&
+            candidate.layoutColumn === columnNumber);
+
+          return normalizeLayoutWeight(field?.layoutWeight);
+        });
+      }),
+    ]),
+  ) as TemplateLayoutWeights;
 }
 
 function getColumnBoundaryPercent(weights: number[], boundaryIndex: number) {
@@ -194,73 +209,60 @@ export function TemplateEditor({
   const [fields, setFields] = useState<EditableTemplateField[]>(
     () => template?.fields.map(toEditableTemplateField) ?? [],
   );
+  const initialLayoutRows = createTemplateLayoutRows(
+    template?.fields.map(toEditableTemplateField) ?? [],
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draggedFieldId, setDraggedFieldId] = useState<string | null>(null);
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
-  const [layoutRows, setLayoutRows] = useState<TemplateLayoutRows>(
-    () => createTemplateLayoutRows(template?.fields.map(toEditableTemplateField) ?? []),
+  const [fieldModal, setFieldModal] = useState<TemplateFieldModalState>(null);
+  const [fieldDraft, setFieldDraft] = useState<TemplateFieldDraft>({
+    name: '',
+    optionsText: '',
+    required: false,
+    type: 'Text',
+  });
+  const [columnRemoval, setColumnRemoval] = useState<TemplateColumnRemovalState>(null);
+  const [rowRemoval, setRowRemoval] = useState<TemplateRowRemovalState>(null);
+  const [layoutRows, setLayoutRows] = useState<TemplateLayoutRows>(() => initialLayoutRows);
+  const [layoutWeights, setLayoutWeights] = useState<TemplateLayoutWeights>(
+    () => createTemplateLayoutWeights(template?.fields.map(toEditableTemplateField) ?? [], initialLayoutRows),
   );
 
-  const createFieldAtCell = (
+  const openFieldModal = (
     scope: FieldDefinitionScope,
     row: number,
     column: number,
-    rowsOverride = layoutRows[scope],
   ) => {
-    const clientId = crypto.randomUUID();
+    const existingField = fields.find((field) =>
+      field.scope === scope &&
+      fieldOccupiesTemplateCell(field, row, column));
 
-    setFields((currentFields) => {
-      const nextFields = [
-        ...currentFields.filter(
-          (field) => !(
-            field.scope === scope &&
-            fieldOccupiesTemplateCell(field, row, column)
-          ),
-        ),
-        normalizeFieldToLayoutRows({
-          clientId,
-          name: 'New field',
-          type: 'Text',
-          scope,
-          required: false,
-          sortOrder: currentFields.filter((field) => field.scope === scope).length,
-          optionsText: '',
-          layoutRow: row,
-          layoutColumn: column,
-          layoutRowSpan: 1,
-          layoutColumnSpan: 1,
-        }, rowsOverride),
-      ];
-
-      return renumberTemplateFields(nextFields);
-    });
-
-    setActiveFieldId(clientId);
-  };
-
-  const addField = (scope: FieldDefinitionScope) => {
-    const firstOpenCell = findFirstOpenTemplateCell(
-      fields,
-      layoutRows[scope],
-      scope,
-    );
-
-    if (firstOpenCell) {
-      createFieldAtCell(scope, firstOpenCell.row, firstOpenCell.column);
+    if (existingField) {
+      setActiveFieldId(existingField.clientId);
+      setFieldDraft({
+        name: existingField.name,
+        optionsText: existingField.optionsText,
+        required: existingField.required,
+        type: existingField.type,
+      });
+      setFieldModal({
+        clientId: existingField.clientId,
+        column: existingField.layoutColumn,
+        row: existingField.layoutRow,
+        scope: existingField.scope,
+      });
       return;
     }
 
-    const nextRowNumber = layoutRows[scope].length + 1;
-    const nextRows = [
-      ...layoutRows[scope],
-      layoutRows[scope][layoutRows[scope].length - 1] ?? 1,
-    ];
-
-    setLayoutRows((currentRows) => ({
-      ...currentRows,
-      [scope]: nextRows,
-    }));
-    createFieldAtCell(scope, nextRowNumber, 1, nextRows);
+    setActiveFieldId(null);
+    setFieldDraft({
+      name: '',
+      optionsText: '',
+      required: false,
+      type: 'Text',
+    });
+    setFieldModal({ column, row, scope });
   };
 
   const updateField = (
@@ -272,6 +274,86 @@ export function TemplateEditor({
         field.clientId === clientId
           ? normalizeFieldToLayoutRows({ ...field, ...update }, layoutRows[field.scope])
           : field,
+      ),
+    );
+  };
+
+  const removeLayoutColumn = (
+    scope: FieldDefinitionScope,
+    rowIndex: number,
+    boundaryIndex: number,
+    force = false,
+  ) => {
+    const columnCount = layoutRows[scope][rowIndex] ?? 1;
+
+    if (columnCount <= 1) {
+      return;
+    }
+
+    const rowNumber = rowIndex + 1;
+    const removedColumn = boundaryIndex + 2;
+    const fieldNamesInRemovedCell = fields
+      .filter((field) =>
+        field.scope === scope &&
+        field.layoutRow === rowNumber &&
+        fieldOccupiesTemplateCell(field, rowNumber, removedColumn))
+      .map((field) => field.name);
+
+    if (fieldNamesInRemovedCell.length > 0 && !force) {
+      setColumnRemoval({
+        boundaryIndex,
+        fieldNames: fieldNamesInRemovedCell,
+        rowIndex,
+        scope,
+      });
+      return;
+    }
+
+    const currentWeights = normalizeColumnWeights(
+      layoutWeights[scope][rowIndex],
+      columnCount,
+    );
+    const mergedWeights = currentWeights
+      .map((weight, index) =>
+        index === boundaryIndex
+          ? weight + (currentWeights[removedColumn - 1] ?? 0)
+          : weight)
+      .filter((_, index) => index !== removedColumn - 1);
+
+    setLayoutRows((currentRows) => ({
+      ...currentRows,
+      [scope]: currentRows[scope].map((currentColumnCount, index) =>
+        index === rowIndex ? Math.max(1, currentColumnCount - 1) : currentColumnCount),
+    }));
+    setLayoutWeights((currentWeightsByScope) => ({
+      ...currentWeightsByScope,
+      [scope]: currentWeightsByScope[scope].map((weights, index) =>
+        index === rowIndex ? mergedWeights : weights),
+    }));
+    setFields((currentFields) =>
+      renumberTemplateFields(
+        currentFields
+          .filter((field) =>
+            !(field.scope === scope &&
+              field.layoutRow === rowNumber &&
+              fieldOccupiesTemplateCell(field, rowNumber, removedColumn)))
+          .map((field) => {
+            if (
+              field.scope !== scope ||
+              field.layoutRow !== rowNumber ||
+              field.layoutColumn < removedColumn
+            ) {
+              return field;
+            }
+
+            return {
+              ...field,
+              layoutColumn: field.layoutColumn - 1,
+              layoutWeight: normalizeLayoutWeight(
+                mergedWeights[field.layoutColumn - 2] ?? field.layoutWeight,
+              ),
+            };
+          }),
       ),
     );
   };
@@ -289,7 +371,6 @@ export function TemplateEditor({
         return currentFields;
       }
 
-      const rowColumns = layoutRows[scope][row - 1] ?? 1;
       const sourceCell = {
         row: sourceField.layoutRow,
         column: sourceField.layoutColumn,
@@ -307,7 +388,7 @@ export function TemplateEditor({
                 ...field,
                 layoutRow: row,
                 layoutColumn: column,
-                layoutColumnSpan: Math.min(field.layoutColumnSpan, rowColumns - column + 1),
+                layoutColumnSpan: 1,
               },
               layoutRows[scope],
             );
@@ -331,6 +412,103 @@ export function TemplateEditor({
     setDraggedFieldId(null);
   };
 
+  const saveFieldModal = () => {
+    if (!fieldModal) {
+      return;
+    }
+
+    const trimmedName = fieldDraft.name.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    const layoutWeight = normalizeLayoutWeight(
+      layoutWeights[fieldModal.scope]?.[fieldModal.row - 1]?.[fieldModal.column - 1],
+    );
+
+    if (fieldModal.clientId) {
+      updateField(fieldModal.clientId, {
+        name: trimmedName,
+        optionsText: fieldDraft.optionsText,
+        required: fieldDraft.required,
+        type: fieldDraft.type,
+      });
+      setFieldModal(null);
+      return;
+    }
+
+    const clientId = crypto.randomUUID();
+    setFields((currentFields) =>
+      renumberTemplateFields([
+        ...currentFields.filter(
+          (field) => !(
+            field.scope === fieldModal.scope &&
+            fieldOccupiesTemplateCell(field, fieldModal.row, fieldModal.column)
+          ),
+        ),
+        normalizeFieldToLayoutRows({
+          clientId,
+          name: trimmedName,
+          type: fieldDraft.type,
+          scope: fieldModal.scope,
+          required: fieldDraft.required,
+          sortOrder: currentFields.filter((field) => field.scope === fieldModal.scope).length,
+          optionsText: fieldDraft.optionsText,
+          layoutRow: fieldModal.row,
+          layoutColumn: fieldModal.column,
+          layoutRowSpan: 1,
+          layoutColumnSpan: 1,
+          layoutWeight,
+        }, layoutRows[fieldModal.scope]),
+      ]),
+    );
+    setActiveFieldId(clientId);
+    setFieldModal(null);
+  };
+
+  const closeFieldModal = () => {
+    setFieldModal(null);
+    setActiveFieldId(null);
+  };
+
+  const removeFieldFromModal = () => {
+    if (!fieldModal?.clientId) {
+      closeFieldModal();
+      return;
+    }
+
+    removeField(fieldModal.clientId);
+    closeFieldModal();
+  };
+
+  const updateRowWeights = (
+    scope: FieldDefinitionScope,
+    rowIndex: number,
+    nextWeights: number[],
+  ) => {
+    const normalizedWeights = normalizeColumnWeights(
+      nextWeights,
+      layoutRows[scope][rowIndex] ?? 1,
+    );
+
+    setLayoutWeights((currentWeights) => ({
+      ...currentWeights,
+      [scope]: currentWeights[scope].map((weights, index) =>
+        index === rowIndex ? normalizedWeights : weights),
+    }));
+    setFields((currentFields) =>
+      currentFields.map((field) =>
+        field.scope === scope && field.layoutRow === rowIndex + 1
+          ? {
+              ...field,
+              layoutWeight: normalizeLayoutWeight(
+                normalizedWeights[field.layoutColumn - 1] ?? field.layoutWeight,
+              ),
+            }
+          : field),
+    );
+  };
+
   const updateLayoutRowsForScope = (
     scope: FieldDefinitionScope,
     getNextRows: (rows: number[]) => number[],
@@ -339,6 +517,11 @@ export function TemplateEditor({
       const nextScopeRows = getNextRows(currentRows[scope]).map((columnCount) =>
         clampInteger(columnCount, 1, FIELD_LAYOUT_MAX_COLUMNS));
 
+      setLayoutWeights((currentWeights) => ({
+        ...currentWeights,
+        [scope]: nextScopeRows.map((columnCount, rowIndex) =>
+          normalizeColumnWeights(currentWeights[scope]?.[rowIndex], columnCount)),
+      }));
       setFields((currentFields) =>
         currentFields.map((field) =>
           field.scope === scope
@@ -366,10 +549,22 @@ export function TemplateEditor({
       return;
     }
 
+    const nextRowWeights = insertColumnWeightAfter(
+      normalizeColumnWeights(layoutWeights[scope][rowIndex], currentColumnCount),
+      column - 1,
+    );
+
     setLayoutRows((currentRows) => ({
       ...currentRows,
       [scope]: currentRows[scope].map((columnCount, index) =>
         index === rowIndex ? columnCount + 1 : columnCount),
+    }));
+    setLayoutWeights((currentWeights) => ({
+      ...currentWeights,
+      [scope]: currentWeights[scope].map((weights, index) =>
+        index === rowIndex
+          ? nextRowWeights
+          : weights),
     }));
 
     setFields((currentFields) =>
@@ -386,6 +581,7 @@ export function TemplateEditor({
           return {
             ...field,
             layoutColumn: field.layoutColumn + 1,
+            layoutWeight: normalizeLayoutWeight(nextRowWeights[field.layoutColumn] ?? field.layoutWeight),
           };
         }),
       ),
@@ -406,13 +602,11 @@ export function TemplateEditor({
 
     updateLayoutRowsForScope(scope, (rows) => {
       if (nextRowCount > rows.length) {
-        const fallbackColumnCount = rows[rows.length - 1] ?? 1;
-
         return [
           ...rows,
           ...Array.from(
             { length: nextRowCount - rows.length },
-            () => fallbackColumnCount,
+            () => 1,
           ),
         ];
       }
@@ -421,18 +615,50 @@ export function TemplateEditor({
     });
   };
 
-  const removeLayoutRow = (scope: FieldDefinitionScope, rowIndex: number) => {
+  const removeLayoutRow = (
+    scope: FieldDefinitionScope,
+    rowIndex: number,
+    force = false,
+  ) => {
     const rowNumber = rowIndex + 1;
-    const rowHasFields = fields.some(
+    const rowFields = fields.filter(
       (field) => field.scope === scope && field.layoutRow === rowNumber,
     );
 
-    if (rowHasFields || layoutRows[scope].length <= 1) {
+    if (layoutRows[scope].length <= 1) {
       return;
     }
 
-    updateLayoutRowsForScope(scope, (rows) =>
-      rows.filter((_, index) => index !== rowIndex));
+    if (rowFields.length > 0 && !force) {
+      setRowRemoval({
+        fieldNames: rowFields.map((field) => field.name),
+        rowIndex,
+        scope,
+      });
+      return;
+    }
+
+    setLayoutRows((currentRows) => ({
+      ...currentRows,
+      [scope]: currentRows[scope].filter((_, index) => index !== rowIndex),
+    }));
+    setLayoutWeights((currentWeights) => ({
+      ...currentWeights,
+      [scope]: currentWeights[scope].filter((_, index) => index !== rowIndex),
+    }));
+    setFields((currentFields) =>
+      renumberTemplateFields(
+        currentFields
+          .filter((field) => !(field.scope === scope && field.layoutRow === rowNumber))
+          .map((field) =>
+            field.scope === scope && field.layoutRow > rowNumber
+              ? {
+                  ...field,
+                  layoutRow: field.layoutRow - 1,
+                }
+              : field),
+      ),
+    );
   };
 
   const removeField = (clientId: string) => {
@@ -472,7 +698,8 @@ export function TemplateEditor({
         layoutRow: field.layoutRow,
         layoutColumn: field.layoutColumn,
         layoutRowSpan: field.layoutRowSpan,
-        layoutColumnSpan: field.layoutColumnSpan,
+        layoutColumnSpan: 1,
+        layoutWeight: field.layoutWeight,
       })),
     );
     setIsSubmitting(false);
@@ -488,10 +715,6 @@ export function TemplateEditor({
       .sort((first, second) => first.sortOrder - second.sortOrder)
       .map((field) => normalizeFieldToLayoutRows(field, layoutRows.Header))
   );
-  const activeHeaderField =
-    headerPreviewFields.find((field) => field.clientId === activeFieldId) ?? null;
-  const activeEntryField =
-    entryPreviewFields.find((field) => field.clientId === activeFieldId) ?? null;
 
   return (
     <form className="template-editor" onSubmit={handleSubmit}>
@@ -524,15 +747,12 @@ export function TemplateEditor({
       </label>
 
       <section className="template-field-scope">
+        <TemplateScopeHelp />
         <div className="section-heading">
           <span>
             <h3>Task header fields</h3>
             <small>Click a cell to define a task-level field.</small>
           </span>
-          <button onClick={() => addField('Header')} type="button">
-            <Icon name="plus" />
-            <span>Add field</span>
-          </button>
         </div>
         <TemplateLayoutCanvas
           activeFieldId={activeFieldId}
@@ -540,38 +760,31 @@ export function TemplateEditor({
           emptyLabel="Title only"
           fields={headerPreviewFields}
           layoutRows={layoutRows.Header}
+          layoutWeights={layoutWeights.Header}
           onChangeRowCount={(rowCount) => setLayoutRowCount('Header', rowCount)}
-          onCreateField={(row, column) => createFieldAtCell('Header', row, column)}
+          onChangeRowWeights={(rowIndex, weights) =>
+            updateRowWeights('Header', rowIndex, weights)}
+          onCreateField={(row, column) => openFieldModal('Header', row, column)}
           onDropField={(sourceClientId, row, column) =>
             moveFieldToLayoutCell(sourceClientId, 'Header', row, column)}
           onEndDrag={() => setDraggedFieldId(null)}
           onRemoveRow={(rowIndex) => removeLayoutRow('Header', rowIndex)}
-          onSelectField={setActiveFieldId}
+          onRemoveColumn={(rowIndex, boundaryIndex) =>
+            removeLayoutColumn('Header', rowIndex, boundaryIndex)}
+          onSelectField={(field) => openFieldModal(field.scope, field.layoutRow, field.layoutColumn)}
           onSplitCell={(rowIndex, column) =>
             splitLayoutCell('Header', rowIndex, column)}
           onStartDrag={setDraggedFieldId}
         />
-        {!activeFieldId || activeHeaderField ? (
-          <TemplateCellFieldEditor
-            field={activeHeaderField}
-            layoutRows={layoutRows.Header}
-            onClose={() => setActiveFieldId(null)}
-            onRemoveField={removeField}
-            onUpdateField={updateField}
-          />
-        ) : null}
       </section>
 
       <section className="template-field-scope">
+        <TemplateScopeHelp />
         <div className="section-heading">
           <span>
             <h3>Entry fields</h3>
             <small>Click a cell to define what each note/entry captures.</small>
           </span>
-          <button onClick={() => addField('Entry')} type="button">
-            <Icon name="plus" />
-            <span>Add field</span>
-          </button>
         </div>
         <TemplateLayoutCanvas
           activeFieldId={activeFieldId}
@@ -579,26 +792,22 @@ export function TemplateEditor({
           emptyLabel="Plain note text"
           fields={entryPreviewFields}
           layoutRows={layoutRows.Entry}
+          layoutWeights={layoutWeights.Entry}
           onChangeRowCount={(rowCount) => setLayoutRowCount('Entry', rowCount)}
-          onCreateField={(row, column) => createFieldAtCell('Entry', row, column)}
+          onChangeRowWeights={(rowIndex, weights) =>
+            updateRowWeights('Entry', rowIndex, weights)}
+          onCreateField={(row, column) => openFieldModal('Entry', row, column)}
           onDropField={(sourceClientId, row, column) =>
             moveFieldToLayoutCell(sourceClientId, 'Entry', row, column)}
           onEndDrag={() => setDraggedFieldId(null)}
           onRemoveRow={(rowIndex) => removeLayoutRow('Entry', rowIndex)}
-          onSelectField={setActiveFieldId}
+          onRemoveColumn={(rowIndex, boundaryIndex) =>
+            removeLayoutColumn('Entry', rowIndex, boundaryIndex)}
+          onSelectField={(field) => openFieldModal(field.scope, field.layoutRow, field.layoutColumn)}
           onSplitCell={(rowIndex, column) =>
             splitLayoutCell('Entry', rowIndex, column)}
           onStartDrag={setDraggedFieldId}
         />
-        {!activeFieldId || activeEntryField ? (
-          <TemplateCellFieldEditor
-            field={activeEntryField}
-            layoutRows={layoutRows.Entry}
-            onClose={() => setActiveFieldId(null)}
-            onRemoveField={removeField}
-            onUpdateField={updateField}
-          />
-        ) : null}
       </section>
 
       <div className="dialog-actions">
@@ -606,120 +815,296 @@ export function TemplateEditor({
           Save template
         </button>
       </div>
+      {fieldModal ? (
+        <TemplateFieldDialog
+          draft={fieldDraft}
+          isExistingField={Boolean(fieldModal.clientId)}
+          onChange={setFieldDraft}
+          onClose={closeFieldModal}
+          onRemove={removeFieldFromModal}
+          onSave={saveFieldModal}
+          positionLabel={`Row ${fieldModal.row}, cell ${fieldModal.column}`}
+        />
+      ) : null}
+      {columnRemoval ? (
+        <TemplateColumnRemovalDialog
+          fieldNames={columnRemoval.fieldNames}
+          onClose={() => setColumnRemoval(null)}
+          onConfirm={() => {
+            removeLayoutColumn(
+              columnRemoval.scope,
+              columnRemoval.rowIndex,
+              columnRemoval.boundaryIndex,
+              true,
+            );
+            setColumnRemoval(null);
+          }}
+        />
+      ) : null}
+      {rowRemoval ? (
+        <TemplateRowRemovalDialog
+          fieldNames={rowRemoval.fieldNames}
+          onClose={() => setRowRemoval(null)}
+          onConfirm={() => {
+            removeLayoutRow(
+              rowRemoval.scope,
+              rowRemoval.rowIndex,
+              true,
+            );
+            setRowRemoval(null);
+          }}
+        />
+      ) : null}
     </form>
   );
 }
 
-function TemplateCellFieldEditor({
-  field,
-  layoutRows,
+function TemplateScopeHelp() {
+  return (
+    <span className="template-help">
+      <button className="template-help-button" type="button" aria-label="Template builder help">
+        ?
+      </button>
+      <span className="template-help-tooltip" role="tooltip">
+        Add rows, split a row by clicking a faint divider, drag the solid dividers to resize, then click a cell to choose its field label and type.
+      </span>
+    </span>
+  );
+}
+
+function TemplateFieldDialog({
+  draft,
+  isExistingField,
+  onChange,
   onClose,
-  onRemoveField,
-  onUpdateField,
+  onRemove,
+  onSave,
+  positionLabel,
 }: {
-  field: EditableTemplateField | null;
-  layoutRows: number[];
+  draft: TemplateFieldDraft;
+  isExistingField: boolean;
+  onChange: (draft: TemplateFieldDraft) => void;
   onClose: () => void;
-  onRemoveField: (clientId: string) => void;
-  onUpdateField: (clientId: string, update: Partial<EditableTemplateField>) => void;
+  onRemove: () => void;
+  onSave: () => void;
+  positionLabel: string;
 }) {
-  if (!field) {
+  return (
+    <div
+      className="dialog-backdrop template-field-dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section className="template-field-dialog" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="detail-header">
+          <div>
+            <p className="detail-kicker">{positionLabel}</p>
+            <h2>{isExistingField ? 'Edit field' : 'New field'}</h2>
+          </div>
+          <button className="tiny-icon-button" onClick={onClose} title="Close" type="button">
+            <Icon name="close" />
+          </button>
+        </div>
+        <label>
+          Field label
+          <input
+            autoFocus
+            onChange={(event) => onChange({ ...draft, name: event.target.value })}
+            placeholder="Example: Done, Person, Next step"
+            required
+            type="text"
+            value={draft.name}
+          />
+        </label>
+        <label>
+          Type
+          <select
+            onChange={(event) =>
+              onChange({ ...draft, type: event.target.value as FieldDefinitionType })}
+            value={draft.type}
+          >
+            {fieldTypes.map((fieldType) => (
+              <option key={fieldType} value={fieldType}>
+                {fieldType}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="checkbox-label">
+          <input
+            checked={draft.required}
+            onChange={(event) => onChange({ ...draft, required: event.target.checked })}
+            type="checkbox"
+          />
+          Required
+        </label>
+        {draft.type === 'Select' ? (
+          <label className="template-cell-options">
+            Options
+            <textarea
+              onChange={(event) => onChange({ ...draft, optionsText: event.target.value })}
+              placeholder="One option per line"
+              rows={4}
+              value={draft.optionsText}
+            />
+          </label>
+        ) : null}
+        <div className="dialog-actions">
+          {isExistingField ? (
+            <button className="danger-action" onClick={onRemove} type="button">
+              <Icon name="trash" />
+              <span>Remove field</span>
+            </button>
+          ) : null}
+          <button className="secondary-action" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button disabled={!draft.name.trim()} onClick={onSave} type="button">
+            Save field
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TemplateColumnRemovalDialog({
+  fieldNames,
+  onClose,
+  onConfirm,
+}: {
+  fieldNames: string[];
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="dialog-backdrop template-field-dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section className="template-field-dialog" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="detail-header">
+          <div>
+            <p className="detail-kicker">Remove divider</p>
+            <h2>Field in the cell to the right</h2>
+          </div>
+          <button className="tiny-icon-button" onClick={onClose} title="Close" type="button">
+            <Icon name="close" />
+          </button>
+        </div>
+        <p className="empty-copy">
+          Removing this divider also removes {fieldNames.join(', ')} from this template row.
+        </p>
+        <div className="dialog-actions">
+          <button className="secondary-action" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="danger-action" onClick={onConfirm} type="button">
+            <Icon name="trash" />
+            <span>Remove divider</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TemplateRowRemovalDialog({
+  fieldNames,
+  onClose,
+  onConfirm,
+}: {
+  fieldNames: string[];
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="dialog-backdrop template-field-dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section className="template-field-dialog" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="detail-header">
+          <div>
+            <p className="detail-kicker">Remove row</p>
+            <h2>Fields in this row</h2>
+          </div>
+          <button className="tiny-icon-button" onClick={onClose} title="Close" type="button">
+            <Icon name="close" />
+          </button>
+        </div>
+        <p className="empty-copy">
+          Removing this row also removes {fieldNames.join(', ')} from this template.
+        </p>
+        <div className="dialog-actions">
+          <button className="secondary-action" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="danger-action" onClick={onConfirm} type="button">
+            <Icon name="trash" />
+            <span>Remove row</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TemplateLayoutFieldPreview({
+  type,
+}: {
+  type: FieldDefinitionType;
+}) {
+  if (type === 'Checkbox') {
     return (
-      <div className="template-cell-editor template-cell-editor-empty">
-        <span>Click a layout cell to add a field, or click an existing field to edit it.</span>
-      </div>
+      <span className="template-layout-field-preview is-checkbox">
+        <span />
+        <small>Checkbox</small>
+      </span>
     );
   }
 
-  const rowColumnCount = layoutRows[field.layoutRow - 1] ?? 1;
-  const maxColumnSpan = Math.max(1, rowColumnCount - field.layoutColumn + 1);
+  if (type === 'LongText') {
+    return (
+      <span className="template-layout-field-preview is-long-text">
+        <span />
+        <span />
+        <span />
+      </span>
+    );
+  }
+
+  if (type === 'Date') {
+    return (
+      <span className="template-layout-field-preview is-pill">
+        Date
+      </span>
+    );
+  }
+
+  if (type === 'Select') {
+    return (
+      <span className="template-layout-field-preview is-pill">
+        Select
+      </span>
+    );
+  }
 
   return (
-    <div className="template-cell-editor">
-      <div className="template-cell-editor-title">
-        <span>
-          Row {field.layoutRow}, cell {field.layoutColumn}
-        </span>
-        <button
-          className="tiny-icon-button"
-          onClick={onClose}
-          title="Close"
-          type="button"
-        >
-          <Icon name="close" />
-        </button>
-      </div>
-      <label>
-        Field label
-        <input
-          onChange={(event) =>
-            onUpdateField(field.clientId, { name: event.target.value })}
-          required
-          type="text"
-          value={field.name}
-        />
-      </label>
-      <label>
-        Type
-        <select
-          onChange={(event) => {
-            const nextType = event.target.value as FieldDefinitionType;
-            onUpdateField(field.clientId, {
-              type: nextType,
-              layoutColumnSpan:
-                nextType === 'LongText'
-                  ? Math.min(Math.max(2, field.layoutColumnSpan), maxColumnSpan)
-                  : Math.min(field.layoutColumnSpan, maxColumnSpan),
-            });
-          }}
-          value={field.type}
-        >
-          {fieldTypes.map((fieldType) => (
-            <option key={fieldType} value={fieldType}>
-              {fieldType}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="checkbox-label">
-        <input
-          checked={field.required}
-          onChange={(event) =>
-            onUpdateField(field.clientId, { required: event.target.checked })}
-          type="checkbox"
-        />
-        Required
-      </label>
-      <TemplateLayoutStepper
-        label="Width"
-        max={maxColumnSpan}
-        min={1}
-        onChange={(value) => onUpdateField(field.clientId, { layoutColumnSpan: value })}
-        value={field.layoutColumnSpan}
-      />
-      {field.type === 'Select' ? (
-        <label className="template-cell-options">
-          Options
-          <textarea
-            onChange={(event) =>
-              onUpdateField(field.clientId, { optionsText: event.target.value })}
-            placeholder="One option per line"
-            rows={3}
-            value={field.optionsText}
-          />
-        </label>
-      ) : null}
-      <div className="template-cell-editor-actions">
-        <button
-          className="secondary-action"
-          onClick={() => onRemoveField(field.clientId)}
-          type="button"
-        >
-          <Icon name="trash" />
-          <span>Remove field</span>
-        </button>
-      </div>
-    </div>
+    <span className="template-layout-field-preview is-text">
+      <span />
+    </span>
   );
 }
 
@@ -729,10 +1114,13 @@ function TemplateLayoutCanvas({
   emptyLabel,
   fields,
   layoutRows,
+  layoutWeights,
   onChangeRowCount,
+  onChangeRowWeights,
   onCreateField,
   onDropField,
   onEndDrag,
+  onRemoveColumn,
   onRemoveRow,
   onSelectField,
   onSplitCell,
@@ -743,25 +1131,19 @@ function TemplateLayoutCanvas({
   emptyLabel: string;
   fields: EditableTemplateField[];
   layoutRows: number[];
+  layoutWeights: number[][];
   onChangeRowCount: (rowCount: number) => void;
+  onChangeRowWeights: (rowIndex: number, weights: number[]) => void;
   onCreateField: (row: number, column: number) => void;
   onDropField: (sourceClientId: string, row: number, column: number) => void;
   onEndDrag: () => void;
+  onRemoveColumn: (rowIndex: number, boundaryIndex: number) => void;
   onRemoveRow: (rowIndex: number) => void;
-  onSelectField: (clientId: string) => void;
+  onSelectField: (field: EditableTemplateField) => void;
   onSplitCell: (rowIndex: number, column: number) => void;
   onStartDrag: (clientId: string) => void;
 }) {
-  const [rowWeights, setRowWeights] = useState<number[][]>(
-    () => layoutRows.map((columnCount) => createColumnWeights(columnCount)),
-  );
-
-  useEffect(() => {
-    setRowWeights((currentWeights) =>
-      layoutRows.map((columnCount, rowIndex) =>
-        normalizeColumnWeights(currentWeights[rowIndex], columnCount)),
-    );
-  }, [layoutRows]);
+  const [lastResizeDragEndedAt, setLastResizeDragEndedAt] = useState(0);
 
   const handleCellDrop = (
     event: DragEvent<HTMLButtonElement>,
@@ -784,15 +1166,6 @@ function TemplateLayoutCanvas({
       return;
     }
 
-    setRowWeights((currentWeights) =>
-      currentWeights.map((weights, currentRowIndex) =>
-        currentRowIndex === rowIndex
-          ? insertColumnWeightAfter(
-              normalizeColumnWeights(weights, columnCount),
-              column - 1,
-            )
-          : weights),
-    );
     onSplitCell(rowIndex, column);
   };
 
@@ -812,9 +1185,10 @@ function TemplateLayoutCanvas({
 
     const rowBounds = rowElement.getBoundingClientRect();
     const initialWeights = normalizeColumnWeights(
-      rowWeights[rowIndex],
+      layoutWeights[rowIndex],
       layoutRows[rowIndex] ?? 1,
     );
+    const initialClientX = event.clientX;
     const totalWeight = initialWeights.reduce((sum, weight) => sum + weight, 0);
     const weightBeforePair = initialWeights
       .slice(0, boundaryIndex)
@@ -822,11 +1196,14 @@ function TemplateLayoutCanvas({
     const pairWeight = initialWeights[boundaryIndex] + initialWeights[boundaryIndex + 1];
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
-      const pointerRatio = clampInteger(
-        Math.round(((moveEvent.clientX - rowBounds.left) / rowBounds.width) * 1000),
-        1,
-        999,
-      ) / 1000;
+      if (Math.abs(moveEvent.clientX - initialClientX) > 3) {
+        setLastResizeDragEndedAt(Date.now());
+      }
+
+      const pointerRatio = Math.min(
+        0.995,
+        Math.max(0.005, (moveEvent.clientX - rowBounds.left) / rowBounds.width),
+      );
       const pointerWeight = pointerRatio * totalWeight;
       const nextLeftWeight = Math.min(
         pairWeight - minimumColumnWeight,
@@ -834,19 +1211,10 @@ function TemplateLayoutCanvas({
       );
       const nextRightWeight = pairWeight - nextLeftWeight;
 
-      setRowWeights((currentWeights) =>
-        currentWeights.map((weights, currentRowIndex) => {
-          if (currentRowIndex !== rowIndex) {
-            return weights;
-          }
-
-          const nextWeights = [...normalizeColumnWeights(weights, layoutRows[rowIndex] ?? 1)];
-          nextWeights[boundaryIndex] = nextLeftWeight;
-          nextWeights[boundaryIndex + 1] = nextRightWeight;
-
-          return nextWeights;
-        }),
-      );
+      const nextWeights = [...initialWeights];
+      nextWeights[boundaryIndex] = nextLeftWeight;
+      nextWeights[boundaryIndex + 1] = nextRightWeight;
+      onChangeRowWeights(rowIndex, nextWeights);
     };
 
     const handlePointerUp = () => {
@@ -874,8 +1242,7 @@ function TemplateLayoutCanvas({
         {layoutRows.map((columnCount, rowIndex) => {
           const rowNumber = rowIndex + 1;
           const rowFields = fields.filter((field) => field.layoutRow === rowNumber);
-          const rowHasFields = rowFields.length > 0;
-          const weights = normalizeColumnWeights(rowWeights[rowIndex], columnCount);
+          const weights = normalizeColumnWeights(layoutWeights[rowIndex], columnCount);
 
           return (
             <div className="template-layout-row" key={rowNumber}>
@@ -885,9 +1252,9 @@ function TemplateLayoutCanvas({
                   <span>{columnCount} {columnCount === 1 ? 'cell' : 'cells'}</span>
                   <button
                     className="tiny-icon-button"
-                    disabled={layoutRows.length <= 1 || rowHasFields}
+                    disabled={layoutRows.length <= 1}
                     onClick={() => onRemoveRow(rowIndex)}
-                    title={rowHasFields ? 'Move fields before removing row' : 'Remove row'}
+                    title="Remove row"
                     type="button"
                   >
                     <Icon name="trash" />
@@ -907,18 +1274,7 @@ function TemplateLayoutCanvas({
                     (rowField) => rowField.layoutColumn === columnNumber,
                   );
 
-                  if (rowFields.some((rowField) =>
-                    columnNumber > rowField.layoutColumn &&
-                    columnNumber < rowField.layoutColumn + rowField.layoutColumnSpan)) {
-                    return null;
-                  }
-
                   if (field) {
-                    const columnSpan = Math.min(
-                      field.layoutColumnSpan,
-                      columnCount - field.layoutColumn + 1,
-                    );
-
                     return (
                       <button
                         className="template-layout-field-cell"
@@ -928,7 +1284,7 @@ function TemplateLayoutCanvas({
                         key={field.clientId}
                         onClick={(event) => {
                           event.stopPropagation();
-                          onSelectField(field.clientId);
+                          onSelectField(field);
                         }}
                         onDragEnd={onEndDrag}
                         onDragOver={(event) => event.preventDefault()}
@@ -940,15 +1296,15 @@ function TemplateLayoutCanvas({
                         onDrop={(event) =>
                           handleCellDrop(event, field.layoutRow, field.layoutColumn)}
                         style={{
-                          gridColumn: `${field.layoutColumn} / span ${Math.max(1, columnSpan)}`,
+                          gridColumn: field.layoutColumn,
                         }}
                         type="button"
                       >
                         <span className="template-layout-field-label">{field.name}</span>
                         <span className="template-layout-field-meta">
                           {field.type}
-                          {columnSpan > 1 ? ` - ${columnSpan} cells` : ''}
                         </span>
+                        <TemplateLayoutFieldPreview type={field.type} />
                       </button>
                     );
                   }
@@ -993,12 +1349,20 @@ function TemplateLayoutCanvas({
                         aria-label={`Resize row ${rowNumber} columns ${boundaryIndex + 1} and ${boundaryIndex + 2}`}
                         className="template-layout-resize-handle"
                         key={`resize:${rowNumber}:${boundaryIndex}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (Date.now() - lastResizeDragEndedAt < 250) {
+                            return;
+                          }
+
+                          onRemoveColumn(rowIndex, boundaryIndex);
+                        }}
                         onPointerDown={(event) =>
                           startColumnResize(event, rowIndex, boundaryIndex)}
                         style={{
                           left: `${getColumnBoundaryPercent(weights, boundaryIndex)}%`,
                         }}
-                        title="Drag to resize columns"
+                        title="Drag to resize, click to remove divider"
                         type="button"
                       />
                     ))

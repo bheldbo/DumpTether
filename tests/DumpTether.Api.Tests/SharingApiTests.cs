@@ -526,6 +526,81 @@ public sealed class SharingApiTests
     }
 
     [Fact]
+    public async Task Workspace_OwnerCannotDeleteStandardAllTasksBoard()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "delete-standard-board-owner@example.com",
+            "correct horse battery");
+        var standardWorkspace = Assert.Single(
+            owner.Workspaces,
+            workspace => workspace.Name == "All Tasks");
+
+        var deleteResponse = await ownerClient.DeleteAsync($"/api/workspaces/{standardWorkspace.Id}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, deleteResponse.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+
+        Assert.True(await dbContext.Workspaces.AnyAsync(candidate => candidate.Id == standardWorkspace.Id));
+    }
+
+    [Fact]
+    public async Task Workspace_OwnerCannotRenameStandardAllTasksBoard()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "rename-standard-board-owner@example.com",
+            "correct horse battery");
+        var standardWorkspace = Assert.Single(
+            owner.Workspaces,
+            workspace => workspace.Name == "All Tasks");
+
+        var renameResponse = await ownerClient.PatchAsJsonAsync(
+            $"/api/workspaces/{standardWorkspace.Id}",
+            new
+            {
+                name = "Renamed standard board"
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, renameResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Workspace_ListBackfillsMissingStandardAllTasksBoard()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "backfill-standard-board-owner@example.com",
+            "correct horse battery");
+        var standardWorkspace = Assert.Single(
+            owner.Workspaces,
+            workspace => workspace.Name == "All Tasks");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+            var workspace = await dbContext.Workspaces.SingleAsync(
+                candidate => candidate.Id == standardWorkspace.Id);
+            workspace.Rename("Old renamed board");
+            await dbContext.SaveChangesAsync();
+        }
+
+        var workspaces = await ownerClient.GetFromJsonAsync<List<WorkspaceResponse>>("/api/workspaces");
+
+        Assert.NotNull(workspaces);
+        Assert.Equal("All Tasks", workspaces![0].Name);
+        Assert.Contains(workspaces, workspace => workspace.Name == "Old renamed board");
+    }
+
+    [Fact]
     public async Task Workspace_MemberCannotDeleteSharedBoard()
     {
         using var factory = new DumpTetherApiFactory();
@@ -1293,6 +1368,187 @@ public sealed class SharingApiTests
         Assert.Equal(template.Id, copiedTask.TaskTemplateId);
         Assert.Equal(customerField.Id, copiedField.FieldDefinitionId);
         Assert.Contains("Northwind", copiedField.ValueJson);
+    }
+
+    [Fact]
+    public async Task TaskTemplates_UserOwnedTemplateCanBeUsedAcrossOwnedBoards()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        await RegisterAndLoginAsync(
+            client,
+            "template-global-owner@example.com",
+            "correct horse battery");
+        var destinationWorkspace = await CreateWorkspaceAsync(client, "Template destination board");
+        var template = await CreateTemplateAsync(
+            client,
+            "User global template",
+            [
+                new
+                {
+                    name = "Reference",
+                    type = "Text",
+                    scope = "Header",
+                    required = false,
+                    sortOrder = 0,
+                    layoutRow = 1,
+                    layoutColumn = 1,
+                    layoutWeight = 2,
+                    options = Array.Empty<string>()
+                }
+            ]);
+        var referenceField = Assert.Single(template.Fields);
+
+        SetWorkspaceHeader(client, destinationWorkspace.Id);
+        var createResponse = await client.PostAsJsonAsync(
+            "/api/tasks",
+            new
+            {
+                title = "Uses global template",
+                taskTemplateId = template.Id,
+                fieldValues = new Dictionary<Guid, object?>
+                {
+                    [referenceField.Id] = "Shared across boards"
+                }
+            });
+        createResponse.EnsureSuccessStatusCode();
+        var created = (await createResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+        var templates = await GetRequiredJsonAsync<List<TaskTemplateSummaryResponse>>(
+            client,
+            "/api/templates");
+
+        Assert.Equal(destinationWorkspace.Id, created.WorkspaceId);
+        Assert.Equal(template.Id, created.TaskTemplateId);
+        Assert.Contains(templates!, candidate => candidate.Id == template.Id);
+        Assert.Contains("Shared across boards", Assert.Single(created.FieldValues).ValueJson);
+    }
+
+    [Fact]
+    public async Task TaskCopy_FromSharedTaskImportsTemplateIntoReceivingUserLibrary()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var sharedClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "copy-shared-template-owner@example.com",
+            "correct horse battery");
+        var sharedUser = await RegisterAndLoginAsync(
+            sharedClient,
+            "copy-shared-template-user@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+        var destinationWorkspaceId = sharedUser.Workspaces.Single().Id;
+        var template = await CreateTemplateAsync(
+            ownerClient,
+            "Shared Todo Template",
+            [
+                new
+                {
+                    name = "Context",
+                    type = "Text",
+                    scope = "Header",
+                    required = false,
+                    sortOrder = 0,
+                    layoutRow = 1,
+                    layoutColumn = 1,
+                    layoutWeight = 3,
+                    options = Array.Empty<string>()
+                },
+                new
+                {
+                    name = "Done",
+                    type = "Checkbox",
+                    scope = "Entry",
+                    required = false,
+                    sortOrder = 1,
+                    layoutRow = 1,
+                    layoutColumn = 2,
+                    layoutWeight = 1,
+                    options = Array.Empty<string>()
+                }
+            ]);
+        var contextField = template.Fields.Single(field => field.Name == "Context");
+        var doneField = template.Fields.Single(field => field.Name == "Done");
+        var sourceTaskResponse = await ownerClient.PostAsJsonAsync(
+            "/api/tasks",
+            new
+            {
+                title = "Shared template source",
+                taskTemplateId = template.Id,
+                fieldValues = new Dictionary<Guid, object?>
+                {
+                    [contextField.Id] = "Owner-side context"
+                }
+            });
+        sourceTaskResponse.EnsureSuccessStatusCode();
+        var sourceTask = (await sourceTaskResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+        var noteResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{sourceTask.Id}/timeline",
+            new
+            {
+                note = "Owner-side progress",
+                fieldValues = new Dictionary<Guid, object?>
+                {
+                    [doneField.Id] = true
+                }
+            });
+        noteResponse.EnsureSuccessStatusCode();
+
+        var shareResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{sourceTask.Id}/share-links",
+            new
+            {
+                email = sharedUser.User.Email
+            });
+        shareResponse.EnsureSuccessStatusCode();
+        var shareLink = (await shareResponse.Content.ReadFromJsonAsync<TaskShareLinkResponse>())!;
+        var acceptResponse = await sharedClient.PostAsJsonAsync(
+            "/api/share-links/accept",
+            new
+            {
+                token = shareLink.Token
+            });
+        acceptResponse.EnsureSuccessStatusCode();
+
+        SetWorkspaceHeader(sharedClient, ownerWorkspaceId);
+        var copyResponse = await sharedClient.PostAsJsonAsync(
+            "/api/tasks/copy",
+            new
+            {
+                taskItemIds = new[] { sourceTask.Id },
+                destinationWorkspaceId,
+                includeTimeline = true
+            });
+        copyResponse.EnsureSuccessStatusCode();
+        var copy = (await copyResponse.Content.ReadFromJsonAsync<CopyTaskItemsResponse>())!;
+        var copiedTask = Assert.Single(copy.Tasks);
+        var copiedTemplate = copiedTask.Template!;
+        var copiedContextField = copiedTemplate.Fields.Single(field => field.Name == "Context");
+        var copiedDoneField = copiedTemplate.Fields.Single(field => field.Name == "Done");
+        var copiedContextValue = Assert.Single(copiedTask.FieldValues);
+
+        SetWorkspaceHeader(sharedClient, destinationWorkspaceId);
+        var sharedUserTemplates = await GetRequiredJsonAsync<List<TaskTemplateSummaryResponse>>(
+            sharedClient,
+            "/api/templates");
+
+        Assert.Equal(destinationWorkspaceId, copiedTask.WorkspaceId);
+        Assert.NotEqual(template.Id, copiedTask.TaskTemplateId);
+        Assert.Equal(copiedTask.TaskTemplateId, copiedTemplate.Id);
+        Assert.Contains("Shared Todo Template", copiedTemplate.Name);
+        Assert.NotEqual(contextField.Id, copiedContextField.Id);
+        Assert.Equal(3, copiedContextField.LayoutWeight);
+        Assert.Equal(copiedContextField.Id, copiedContextValue.FieldDefinitionId);
+        Assert.Contains("Owner-side context", copiedContextValue.ValueJson);
+        Assert.NotEqual(doneField.Id, copiedDoneField.Id);
+        Assert.Contains(
+            copiedTask.TimelineEntries,
+            entry => entry.Details == "Owner-side progress" &&
+                entry.FieldValues.Any(value =>
+                    value.FieldDefinitionId == copiedDoneField.Id &&
+                    value.ValueJson == "true"));
+        Assert.Contains(sharedUserTemplates!, candidate => candidate.Id == copiedTask.TaskTemplateId);
     }
 
     private static async Task<LoginUserResponse> RegisterAndLoginAsync(

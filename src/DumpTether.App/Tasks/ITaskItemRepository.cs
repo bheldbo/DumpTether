@@ -85,12 +85,11 @@ public interface ITaskItemRepository
 
     Task<TaskTemplate?> GetTaskTemplateByIdAsync(
         Guid id,
-        Guid workspaceId,
         bool includeDeleted,
         CancellationToken cancellationToken);
 
     Task<TaskTemplate?> GetDefaultTaskTemplateAsync(
-        Guid workspaceId,
+        Guid? ownerUserId,
         CancellationToken cancellationToken);
 
     Task<ArchiveResolution?> GetArchiveResolutionByIdAsync(

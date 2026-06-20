@@ -9,9 +9,8 @@ import { Icon } from '../../components/Icon';
 import { toFieldValueMap } from '../../fieldValues';
 import { type Translate } from '../../localization';
 import {
-  getEditableTemplateFieldGridStyle,
-  getTemplateLayoutGridStyle,
-  normalizeTemplateLayoutFields,
+  getTemplateLayoutCellStyle,
+  getTemplateLayoutRows,
 } from '../../templateLayout';
 import {
   entryFieldsHaveContent,
@@ -373,27 +372,28 @@ function EntryFieldEditorRow({
   onChange: (field: FieldDefinitionResponse, value: FieldValuePrimitive) => void;
   values: FieldValueMap;
 }) {
-  const arrangedFields = normalizeTemplateLayoutFields(fields);
+  const layoutRows = getTemplateLayoutRows(fields);
 
   return (
-    <div
-      className="entry-field-editor-row"
-      style={getTemplateLayoutGridStyle(arrangedFields)}
-    >
-      {arrangedFields.map((field) => (
-        <label
-          className="entry-field-editor-cell"
-          data-field-type={field.type}
-          data-empty={fieldValueIsEmpty(values[field.id] ?? null)}
-          key={field.id}
-          style={getEditableTemplateFieldGridStyle(field)}
-        >
-          <EntryFieldControl
-            field={field}
-            onChange={(value) => onChange(field, value)}
-            value={values[field.id] ?? (field.type === 'Checkbox' ? false : '')}
-          />
-        </label>
+    <div className="entry-field-editor-layout">
+      {layoutRows.map((row) => (
+        <div className="entry-field-editor-row" key={row.row} style={row.style}>
+          {row.fields.map((field) => (
+            <label
+              className="entry-field-editor-cell"
+              data-field-type={field.type}
+              data-empty={fieldValueIsEmpty(values[field.id] ?? null)}
+              key={field.id}
+              style={getTemplateLayoutCellStyle(field)}
+            >
+              <EntryFieldControl
+                field={field}
+                onChange={(value) => onChange(field, value)}
+                value={values[field.id] ?? (field.type === 'Checkbox' ? false : '')}
+              />
+            </label>
+          ))}
+        </div>
       ))}
     </div>
   );
@@ -457,7 +457,7 @@ function EntryFieldControl({
           onChange={(event) => onChange(event.target.value)}
           placeholder={label}
           required={field.required}
-          rows={1}
+          rows={2}
           value={typeof value === 'string' ? value : ''}
         />
       );

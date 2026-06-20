@@ -47,6 +47,11 @@ export function isTaskShareWorkspace(workspace: Pick<WorkspaceResponse, 'accessK
   return workspace.accessKind === 'TaskShare';
 }
 
+export function isSystemAllTasksWorkspace(workspace: Pick<WorkspaceResponse, 'name' | 'accessKind'>) {
+  return workspace.accessKind !== 'TaskShare' &&
+    workspace.name.trim().toLowerCase() === 'all tasks';
+}
+
 export function formatOAuthProvider(provider: string, t: Translate) {
   const normalizedProvider = provider.toLowerCase();
   const providerName = normalizedProvider === 'google'

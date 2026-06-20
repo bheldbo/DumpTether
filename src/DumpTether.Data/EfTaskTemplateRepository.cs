@@ -19,7 +19,7 @@ internal sealed class EfTaskTemplateRepository : ITaskTemplateRepository
     }
 
     public async Task<IReadOnlyList<TaskTemplate>> ListAsync(
-        Guid workspaceId,
+        Guid? ownerUserId,
         CancellationToken cancellationToken)
     {
         return await _dbContext.TaskTemplates
@@ -27,7 +27,7 @@ internal sealed class EfTaskTemplateRepository : ITaskTemplateRepository
             .Include("_fieldDefinitions")
             .AsSplitQuery()
             .Where(template =>
-                template.WorkspaceId == workspaceId &&
+                template.OwnerUserId == ownerUserId &&
                 template.DeletedAt == null)
             .OrderBy(template => template.Name)
             .ToListAsync(cancellationToken);
@@ -35,7 +35,7 @@ internal sealed class EfTaskTemplateRepository : ITaskTemplateRepository
 
     public async Task<TaskTemplate?> GetByIdAsync(
         Guid id,
-        Guid workspaceId,
+        Guid? ownerUserId,
         bool trackChanges,
         bool includeDeleted,
         CancellationToken cancellationToken)
@@ -45,7 +45,7 @@ internal sealed class EfTaskTemplateRepository : ITaskTemplateRepository
             .AsSplitQuery()
             .Where(template =>
                 template.Id == id &&
-                template.WorkspaceId == workspaceId);
+                template.OwnerUserId == ownerUserId);
 
         if (!includeDeleted)
         {
@@ -61,7 +61,7 @@ internal sealed class EfTaskTemplateRepository : ITaskTemplateRepository
     }
 
     public async Task<bool> AnyActiveWithNameAsync(
-        Guid workspaceId,
+        Guid? ownerUserId,
         string name,
         Guid? excludedTemplateId,
         CancellationToken cancellationToken)
@@ -69,7 +69,7 @@ internal sealed class EfTaskTemplateRepository : ITaskTemplateRepository
         return await _dbContext.TaskTemplates
             .AnyAsync(
                 template =>
-                    template.WorkspaceId == workspaceId &&
+                    template.OwnerUserId == ownerUserId &&
                     template.DeletedAt == null &&
                     template.Name == name &&
                     (!excludedTemplateId.HasValue || template.Id != excludedTemplateId.Value),

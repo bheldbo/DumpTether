@@ -288,10 +288,6 @@ internal sealed class EfWorkspaceRepository : IWorkspaceRepository
             .Where(taskItem => taskItem.WorkspaceId == workspaceId)
             .Select(taskItem => taskItem.Id)
             .ToListAsync(cancellationToken);
-        var templateIds = await _dbContext.TaskTemplates
-            .Where(template => template.WorkspaceId == workspaceId)
-            .Select(template => template.Id)
-            .ToListAsync(cancellationToken);
 
         if (taskIds.Count > 0)
         {
@@ -323,18 +319,6 @@ internal sealed class EfWorkspaceRepository : IWorkspaceRepository
             _dbContext.TaskItems.RemoveRange(
                 await _dbContext.TaskItems
                     .Where(taskItem => taskIds.Contains(taskItem.Id))
-                    .ToListAsync(cancellationToken));
-        }
-
-        if (templateIds.Count > 0)
-        {
-            _dbContext.FieldDefinitions.RemoveRange(
-                await _dbContext.FieldDefinitions
-                    .Where(field => templateIds.Contains(field.TaskTemplateId))
-                    .ToListAsync(cancellationToken));
-            _dbContext.TaskTemplates.RemoveRange(
-                await _dbContext.TaskTemplates
-                    .Where(template => templateIds.Contains(template.Id))
                     .ToListAsync(cancellationToken));
         }
 

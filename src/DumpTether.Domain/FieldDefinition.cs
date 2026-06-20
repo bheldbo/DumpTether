@@ -19,7 +19,8 @@ public sealed class FieldDefinition
         int layoutRow,
         int layoutColumn,
         int layoutRowSpan,
-        int layoutColumnSpan)
+        int layoutColumnSpan,
+        double layoutWeight)
     {
         Id = id;
         TaskTemplateId = taskTemplateId;
@@ -34,6 +35,7 @@ public sealed class FieldDefinition
         LayoutColumn = layoutColumn;
         LayoutRowSpan = layoutRowSpan;
         LayoutColumnSpan = layoutColumnSpan;
+        LayoutWeight = layoutWeight;
     }
 
     public Guid Id { get; private set; }
@@ -62,6 +64,8 @@ public sealed class FieldDefinition
 
     public int LayoutColumnSpan { get; private set; } = 1;
 
+    public double LayoutWeight { get; private set; } = 1;
+
     public DateTimeOffset? DeactivatedAt { get; private set; }
 
     public bool IsActive => DeactivatedAt is null;
@@ -78,11 +82,13 @@ public sealed class FieldDefinition
         int layoutRow = 1,
         int layoutColumn = 1,
         int layoutRowSpan = 1,
-        int layoutColumnSpan = 1)
+        int layoutColumnSpan = 1,
+        double layoutWeight = 1)
     {
         DomainGuards.NotEmpty(taskTemplateId, nameof(taskTemplateId));
         ValidateOptions(type, optionsJson);
         ValidateLayout(layoutRow, layoutColumn, layoutRowSpan, layoutColumnSpan);
+        ValidateLayoutWeight(layoutWeight);
 
         return new FieldDefinition(
             Guid.NewGuid(),
@@ -97,7 +103,8 @@ public sealed class FieldDefinition
             layoutRow,
             layoutColumn,
             layoutRowSpan,
-            layoutColumnSpan);
+            layoutColumnSpan,
+            layoutWeight);
     }
 
     public void Update(
@@ -111,10 +118,12 @@ public sealed class FieldDefinition
         int layoutRow = 1,
         int layoutColumn = 1,
         int layoutRowSpan = 1,
-        int layoutColumnSpan = 1)
+        int layoutColumnSpan = 1,
+        double layoutWeight = 1)
     {
         ValidateOptions(type, optionsJson);
         ValidateLayout(layoutRow, layoutColumn, layoutRowSpan, layoutColumnSpan);
+        ValidateLayoutWeight(layoutWeight);
 
         Key = DomainGuards.NotBlank(key, nameof(key));
         Label = DomainGuards.NotBlank(label, nameof(label));
@@ -127,6 +136,7 @@ public sealed class FieldDefinition
         LayoutColumn = layoutColumn;
         LayoutRowSpan = layoutRowSpan;
         LayoutColumnSpan = layoutColumnSpan;
+        LayoutWeight = layoutWeight;
         DeactivatedAt = null;
     }
 
@@ -169,6 +179,18 @@ public sealed class FieldDefinition
         if (layoutColumnSpan is < 1 or > 12)
         {
             throw new ArgumentOutOfRangeException(nameof(layoutColumnSpan), "Layout column span must be between 1 and 12.");
+        }
+    }
+
+    private static void ValidateLayoutWeight(double layoutWeight)
+    {
+        if (double.IsNaN(layoutWeight) ||
+            double.IsInfinity(layoutWeight) ||
+            layoutWeight is < 0.1 or > 12)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(layoutWeight),
+                "Layout weight must be between 0.1 and 12.");
         }
     }
 }

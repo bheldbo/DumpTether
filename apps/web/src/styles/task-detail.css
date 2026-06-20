@@ -815,14 +815,24 @@
 
 .field-list,
 .field-editor-list {
+  min-width: 0;
   display: grid;
   gap: 10px;
 }
 
-.field-row {
+.field-value-layout-row,
+.field-editor-layout-row {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
   gap: 10px;
+  align-items: stretch;
+}
+
+.field-row {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
   padding: 10px;
   border: 1px solid #e0e6ec;
   border-radius: 8px;
@@ -848,6 +858,12 @@
   display: grid;
   gap: 6px;
   align-content: start;
+  padding: 0;
+}
+
+.field-editor[data-field-type="LongText"] textarea {
+  min-height: 108px;
+  resize: vertical;
 }
 
 .field-editor input[type="checkbox"] {
@@ -1004,6 +1020,12 @@
   gap: 4px;
 }
 
+.entry-field-editor-layout {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
 .entry-field-editor-row {
   min-width: 0;
   display: grid;
@@ -1097,8 +1119,8 @@
 }
 
 .entry-field-editor-cell[data-field-type="LongText"] textarea {
-  min-height: 48px;
-  resize: none;
+  min-height: 72px;
+  resize: vertical;
 }
 
 .entry-field-editor-cell[data-empty="true"] input::placeholder,

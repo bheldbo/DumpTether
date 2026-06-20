@@ -71,6 +71,11 @@ internal sealed class FieldDefinitionConfiguration : IEntityTypeConfiguration<Fi
             .HasDefaultValue(1)
             .IsRequired();
 
+        builder.Property(fieldDefinition => fieldDefinition.LayoutWeight)
+            .HasColumnName("layout_weight")
+            .HasDefaultValue(1.0)
+            .IsRequired();
+
         builder.Property(fieldDefinition => fieldDefinition.OptionsJson)
             .HasColumnName("options")
             .HasColumnType("jsonb");

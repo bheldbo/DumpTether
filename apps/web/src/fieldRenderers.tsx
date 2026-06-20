@@ -6,9 +6,8 @@ import type {
 } from './types';
 import { toFieldValueMap } from './fieldValues';
 import {
-  getEditableTemplateFieldGridStyle,
-  getTemplateLayoutGridStyle,
-  normalizeTemplateLayoutFields,
+  getTemplateLayoutCellStyle,
+  getTemplateLayoutRows,
 } from './templateLayout';
 
 interface FieldValueListProps {
@@ -24,6 +23,7 @@ interface FieldEditorListProps {
 
 export function FieldValueList({ fields, fieldValues }: FieldValueListProps) {
   const valueMap = toFieldValueMap(fieldValues);
+  const layoutRows = getTemplateLayoutRows(fields);
 
   if (fields.length === 0) {
     return (
@@ -35,13 +35,22 @@ export function FieldValueList({ fields, fieldValues }: FieldValueListProps) {
   }
 
   return (
-    <dl className="field-list">
-      {fields.map((field) => (
-        <div className="field-row" key={field.id}>
-          <dt>{field.name}</dt>
-          <dd>
-            <FieldValue field={field} value={valueMap[field.id] ?? null} />
-          </dd>
+    <dl className="field-list field-value-layout">
+      {layoutRows.map((row) => (
+        <div className="field-value-layout-row" key={row.row} style={row.style}>
+          {row.fields.map((field) => (
+            <div
+              className="field-row"
+              data-field-type={field.type}
+              key={field.id}
+              style={getTemplateLayoutCellStyle(field)}
+            >
+              <dt>{field.name}</dt>
+              <dd>
+                <FieldValue field={field} value={valueMap[field.id] ?? null} />
+              </dd>
+            </div>
+          ))}
         </div>
       ))}
     </dl>
@@ -53,29 +62,31 @@ export function FieldEditorList({ fields, values, onChange }: FieldEditorListPro
     return <p className="empty-copy">This template has no custom fields.</p>;
   }
 
-  const arrangedFields = normalizeTemplateLayoutFields(fields);
+  const layoutRows = getTemplateLayoutRows(fields);
 
   return (
-    <div
-      className="field-editor-list"
-      style={getTemplateLayoutGridStyle(arrangedFields)}
-    >
-      {arrangedFields.map((field) => (
-        <label
-          className="field-editor"
-          key={field.id}
-          style={getEditableTemplateFieldGridStyle(field)}
-        >
-          <span>
-            {field.name}
-            {field.required ? <strong aria-label="required"> *</strong> : null}
-          </span>
-          <FieldEditor
-            field={field}
-            onChange={(value) => onChange(field.id, value)}
-            value={values[field.id] ?? getEmptyValue(field)}
-          />
-        </label>
+    <div className="field-editor-list">
+      {layoutRows.map((row) => (
+        <div className="field-editor-layout-row" key={row.row} style={row.style}>
+          {row.fields.map((field) => (
+            <label
+              className="field-editor"
+              data-field-type={field.type}
+              key={field.id}
+              style={getTemplateLayoutCellStyle(field)}
+            >
+              <span>
+                {field.name}
+                {field.required ? <strong aria-label="required"> *</strong> : null}
+              </span>
+              <FieldEditor
+                field={field}
+                onChange={(value) => onChange(field.id, value)}
+                value={values[field.id] ?? getEmptyValue(field)}
+              />
+            </label>
+          ))}
+        </div>
       ))}
     </div>
   );

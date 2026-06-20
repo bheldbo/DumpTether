@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.Domain;
 
@@ -10,15 +11,18 @@ internal sealed class TaskTemplateService : ITaskTemplateService
     private static readonly JsonSerializerOptions JsonSerializerOptions = new(JsonSerializerDefaults.Web);
 
     private readonly IClock _clock;
+    private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
     private readonly ITaskTemplateRepository _taskTemplateRepository;
 
     public TaskTemplateService(
         IClock clock,
+        ICurrentUserSessionProvider currentUserSessionProvider,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
         ITaskTemplateRepository taskTemplateRepository)
     {
         _clock = clock;
+        _currentUserSessionProvider = currentUserSessionProvider;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _taskTemplateRepository = taskTemplateRepository;
     }
@@ -26,9 +30,11 @@ internal sealed class TaskTemplateService : ITaskTemplateService
     public async Task<IReadOnlyList<TaskTemplateSummaryResponse>> ListAsync(
         CancellationToken cancellationToken)
     {
-        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var ownerUserId = await GetTemplateOwnerUserIdAsync(
+            requireWritableDevelopmentWorkspace: false,
+            cancellationToken);
         var templates = await _taskTemplateRepository.ListAsync(
-            context.WorkspaceId,
+            ownerUserId,
             cancellationToken);
 
         return templates
@@ -40,10 +46,12 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         Guid id,
         CancellationToken cancellationToken)
     {
-        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var ownerUserId = await GetTemplateOwnerUserIdAsync(
+            requireWritableDevelopmentWorkspace: false,
+            cancellationToken);
         var template = await _taskTemplateRepository.GetByIdAsync(
             id,
-            context.WorkspaceId,
+            ownerUserId,
             trackChanges: false,
             includeDeleted: false,
             cancellationToken);
@@ -57,17 +65,18 @@ internal sealed class TaskTemplateService : ITaskTemplateService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
-        EnsureCanWriteWorkspace(context);
+        var ownerUserId = await GetTemplateOwnerUserIdAsync(
+            requireWritableDevelopmentWorkspace: true,
+            cancellationToken);
         var name = NormalizeName(request.Name);
         await EnsureUniqueActiveNameAsync(
-            context.WorkspaceId,
+            ownerUserId,
             name,
             excludedTemplateId: null,
             cancellationToken);
 
         var now = _clock.UtcNow;
-        var template = TaskTemplate.Create(context.WorkspaceId, name, now);
+        var template = TaskTemplate.Create(ownerUserId, name, now);
 
         foreach (var field in NormalizeFields(request.Fields))
         {
@@ -82,7 +91,8 @@ internal sealed class TaskTemplateService : ITaskTemplateService
                 field.LayoutRow,
                 field.LayoutColumn,
                 field.LayoutRowSpan,
-                field.LayoutColumnSpan);
+                field.LayoutColumnSpan,
+                field.LayoutWeight);
         }
 
         await _taskTemplateRepository.AddAsync(template, cancellationToken);
@@ -98,11 +108,12 @@ internal sealed class TaskTemplateService : ITaskTemplateService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
-        EnsureCanWriteWorkspace(context);
+        var ownerUserId = await GetTemplateOwnerUserIdAsync(
+            requireWritableDevelopmentWorkspace: true,
+            cancellationToken);
         var template = await _taskTemplateRepository.GetByIdAsync(
             id,
-            context.WorkspaceId,
+            ownerUserId,
             trackChanges: true,
             includeDeleted: false,
             cancellationToken);
@@ -118,7 +129,7 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         {
             var name = NormalizeName(request.Name);
             await EnsureUniqueActiveNameAsync(
-                context.WorkspaceId,
+                ownerUserId,
                 name,
                 template.Id,
                 cancellationToken);
@@ -139,11 +150,12 @@ internal sealed class TaskTemplateService : ITaskTemplateService
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
-        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
-        EnsureCanWriteWorkspace(context);
+        var ownerUserId = await GetTemplateOwnerUserIdAsync(
+            requireWritableDevelopmentWorkspace: true,
+            cancellationToken);
         var template = await _taskTemplateRepository.GetByIdAsync(
             id,
-            context.WorkspaceId,
+            ownerUserId,
             trackChanges: true,
             includeDeleted: false,
             cancellationToken);
@@ -159,11 +171,32 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         return true;
     }
 
-    private static void EnsureCanWriteWorkspace(DevelopmentWorkspaceContext context)
+    private async Task<Guid?> GetTemplateOwnerUserIdAsync(
+        bool requireWritableDevelopmentWorkspace,
+        CancellationToken cancellationToken)
+    {
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        if (currentSession is not null)
+        {
+            return currentSession.UserId;
+        }
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+
+        if (requireWritableDevelopmentWorkspace)
+        {
+            EnsureCanWriteDevelopmentWorkspace(context);
+        }
+
+        return null;
+    }
+
+    private static void EnsureCanWriteDevelopmentWorkspace(DevelopmentWorkspaceContext context)
     {
         if (!context.CanWriteWorkspace)
         {
-            throw new ValidationException("Read-only board access cannot change templates.");
+            throw new ValidationException("Read-only board access cannot change the development template library.");
         }
     }
 
@@ -198,7 +231,8 @@ internal sealed class TaskTemplateService : ITaskTemplateService
                     requestedField.LayoutRow,
                     requestedField.LayoutColumn,
                     requestedField.LayoutRowSpan,
-                    requestedField.LayoutColumnSpan);
+                    requestedField.LayoutColumnSpan,
+                    requestedField.LayoutWeight);
 
                 requestedExistingIds.Add(existingField.Id);
                 continue;
@@ -215,7 +249,8 @@ internal sealed class TaskTemplateService : ITaskTemplateService
                 requestedField.LayoutRow,
                 requestedField.LayoutColumn,
                 requestedField.LayoutRowSpan,
-                requestedField.LayoutColumnSpan);
+                requestedField.LayoutColumnSpan,
+                requestedField.LayoutWeight);
         }
 
         foreach (var activeField in activeFields.Values)
@@ -228,13 +263,13 @@ internal sealed class TaskTemplateService : ITaskTemplateService
     }
 
     private async Task EnsureUniqueActiveNameAsync(
-        Guid workspaceId,
+        Guid? ownerUserId,
         string name,
         Guid? excludedTemplateId,
         CancellationToken cancellationToken)
     {
         var exists = await _taskTemplateRepository.AnyActiveWithNameAsync(
-            workspaceId,
+            ownerUserId,
             name,
             excludedTemplateId,
             cancellationToken);
@@ -315,9 +350,10 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             label: "layout row span");
         var layoutColumnSpan = NormalizeLayoutValue(
             request.LayoutColumnSpan,
-            defaultValue: type == FieldDefinitionType.LongText ? 2 : 1,
+            defaultValue: 1,
             maxValue: 12,
             label: "layout column span");
+        var layoutWeight = NormalizeLayoutWeight(request.LayoutWeight);
 
         return new NormalizedFieldDefinition(
             request.Id == Guid.Empty ? null : request.Id,
@@ -333,7 +369,8 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             layoutRow,
             layoutColumn,
             layoutRowSpan,
-            layoutColumnSpan);
+            layoutColumnSpan,
+            layoutWeight);
     }
 
     private static IReadOnlyList<string> NormalizeOptions(
@@ -414,7 +451,8 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             fieldDefinition.LayoutRow,
             fieldDefinition.LayoutColumn,
             fieldDefinition.LayoutRowSpan,
-            fieldDefinition.LayoutColumnSpan);
+            fieldDefinition.LayoutColumnSpan,
+            fieldDefinition.LayoutWeight);
     }
 
     internal static IReadOnlyList<string> ParseOptions(string? optionsJson)
@@ -449,7 +487,8 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         int LayoutRow,
         int LayoutColumn,
         int LayoutRowSpan,
-        int LayoutColumnSpan);
+        int LayoutColumnSpan,
+        double LayoutWeight);
 
     private sealed record FieldKey(FieldDefinitionScope Scope, string Key);
 
@@ -486,5 +525,19 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         }
 
         return normalizedValue;
+    }
+
+    private static double NormalizeLayoutWeight(double? value)
+    {
+        var normalizedValue = value ?? 1;
+
+        if (double.IsNaN(normalizedValue) ||
+            double.IsInfinity(normalizedValue) ||
+            normalizedValue is < 0.1 or > 12)
+        {
+            throw new ValidationException("Field layout weight must be between 0.1 and 12.");
+        }
+
+        return Math.Round(normalizedValue, 4);
     }
 }

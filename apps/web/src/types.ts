@@ -375,6 +375,7 @@ export interface FieldDefinitionResponse {
   layoutColumn: number;
   layoutRowSpan: number;
   layoutColumnSpan: number;
+  layoutWeight: number;
 }
 
 export interface UpsertFieldDefinitionRequest {
@@ -389,6 +390,7 @@ export interface UpsertFieldDefinitionRequest {
   layoutColumn?: number | null;
   layoutRowSpan?: number | null;
   layoutColumnSpan?: number | null;
+  layoutWeight?: number | null;
 }
 
 export interface CreateTaskTemplateRequest {

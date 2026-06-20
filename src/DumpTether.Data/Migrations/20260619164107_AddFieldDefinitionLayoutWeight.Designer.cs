@@ -3,6 +3,7 @@ using System;
 using DumpTether.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DumpTether.Data.Migrations
 {
     [DbContext(typeof(DumpTetherDbContext))]
-    partial class DumpTetherDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260619164107_AddFieldDefinitionLayoutWeight")]
+    partial class AddFieldDefinitionLayoutWeight
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -623,17 +626,17 @@ namespace DumpTether.Data.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
-                    b.Property<Guid?>("OwnerUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("owner_user_id");
-
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workspace_id");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("OwnerUserId", "Name");
+                    b.HasIndex("WorkspaceId", "Name");
 
                     b.ToTable("task_templates", (string)null);
                 });
@@ -1028,10 +1031,11 @@ namespace DumpTether.Data.Migrations
 
             modelBuilder.Entity("DumpTether.Domain.TaskTemplate", b =>
                 {
-                    b.HasOne("DumpTether.Domain.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("OwnerUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("DumpTether.Domain.Workspace", null)
+                        .WithMany("_taskTemplates")
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("DumpTether.Domain.TaskTimelineEntry", b =>
@@ -1137,6 +1141,8 @@ namespace DumpTether.Data.Migrations
                     b.Navigation("_projects");
 
                     b.Navigation("_savedViews");
+
+                    b.Navigation("_taskTemplates");
                 });
 #pragma warning restore 612, 618
         }

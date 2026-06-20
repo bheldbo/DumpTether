@@ -16,6 +16,7 @@ export interface EditableTemplateField {
   layoutColumn: number;
   layoutRowSpan: number;
   layoutColumnSpan: number;
+  layoutWeight: number;
 }
 
 export const fieldTypes: FieldDefinitionType[] = [

@@ -26,4 +26,5 @@ public sealed record FieldDefinitionResponse(
     int LayoutRow,
     int LayoutColumn,
     int LayoutRowSpan,
-    int LayoutColumnSpan);
+    int LayoutColumnSpan,
+    double LayoutWeight);
