@@ -4,6 +4,7 @@ import { type Translate } from '../../localization';
 import { TemplateEditor } from './TemplateEditor';
 import type {
   TaskTemplateDetailResponse,
+  TaskTemplateLayoutResponse,
   UpsertFieldDefinitionRequest,
 } from '../../types';
 
@@ -20,6 +21,7 @@ export function TemplatesPage({
     id: string | null,
     name: string,
     fields: UpsertFieldDefinitionRequest[],
+    layout: TaskTemplateLayoutResponse,
   ) => Promise<TaskTemplateDetailResponse | null>;
   t: Translate;
   templates: TaskTemplateDetailResponse[];
@@ -57,8 +59,9 @@ export function TemplatesPage({
     id: string | null,
     templateName: string,
     fields: UpsertFieldDefinitionRequest[],
+    layout: TaskTemplateLayoutResponse,
   ) => {
-    const savedTemplate = await onSaveTemplate(id, templateName, fields);
+    const savedTemplate = await onSaveTemplate(id, templateName, fields, layout);
 
     if (savedTemplate) {
       setSelectedTemplateId(savedTemplate.id);

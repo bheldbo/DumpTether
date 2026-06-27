@@ -3,6 +3,7 @@ using System;
 using DumpTether.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DumpTether.Data.Migrations
 {
     [DbContext(typeof(DumpTetherDbContext))]
-    partial class DumpTetherDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260620104718_UserOwnedTaskTemplates")]
+    partial class UserOwnedTaskTemplates
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -616,20 +619,6 @@ namespace DumpTether.Data.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
-
-                    b.Property<string>("EntryLayoutJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("entry_layout_json")
-                        .HasDefaultValue("[]");
-
-                    b.Property<string>("HeaderLayoutJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("header_layout_json")
-                        .HasDefaultValue("[]");
 
                     b.Property<string>("Name")
                         .IsRequired()

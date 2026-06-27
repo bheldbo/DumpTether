@@ -219,12 +219,14 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             }
         }
 
+        var templateOwnerUserId = currentSession?.UserId;
+
         foreach (var templateDefinition in DevelopmentTaskTemplates)
         {
             var exists = await _dbContext.TaskTemplates
                 .AnyAsync(
                     candidate =>
-                        candidate.WorkspaceId == workspace.Id &&
+                        candidate.OwnerUserId == templateOwnerUserId &&
                         candidate.Name == templateDefinition.Name &&
                         candidate.DeletedAt == null,
                     cancellationToken);
@@ -232,7 +234,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             if (!exists)
             {
                 var taskTemplate = TaskTemplate.Create(
-                    workspace.Id,
+                    templateOwnerUserId,
                     templateDefinition.Name,
                     _clock.UtcNow);
 
@@ -258,8 +260,8 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             }
         }
 
-        await DeactivateDuplicateDevelopmentTemplatesAsync(workspace.Id, cancellationToken);
-        await DeactivateLegacyDevelopmentTemplatesAsync(workspace.Id, cancellationToken);
+        await DeactivateDuplicateDevelopmentTemplatesAsync(templateOwnerUserId, cancellationToken);
+        await DeactivateLegacyDevelopmentTemplatesAsync(templateOwnerUserId, cancellationToken);
         await SeedDevelopmentSavedViewsAsync(workspace.Id, projects, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -387,14 +389,14 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     }
 
     private async Task DeactivateDuplicateDevelopmentTemplatesAsync(
-        Guid workspaceId,
+        Guid? ownerUserId,
         CancellationToken cancellationToken)
     {
         foreach (var templateName in DevelopmentTaskTemplates.Select(template => template.Name))
         {
             var matchingTemplates = await _dbContext.TaskTemplates
                 .Where(template =>
-                    template.WorkspaceId == workspaceId &&
+                    template.OwnerUserId == ownerUserId &&
                     template.Name == templateName &&
                     template.DeletedAt == null)
                 .ToListAsync(cancellationToken);
@@ -410,12 +412,12 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     }
 
     private async Task DeactivateLegacyDevelopmentTemplatesAsync(
-        Guid workspaceId,
+        Guid? ownerUserId,
         CancellationToken cancellationToken)
     {
         var legacyTemplates = await _dbContext.TaskTemplates
             .Where(template =>
-                template.WorkspaceId == workspaceId &&
+                template.OwnerUserId == ownerUserId &&
                 template.DeletedAt == null &&
                 LegacyDevelopmentTaskTemplateNames.Contains(template.Name))
             .ToListAsync(cancellationToken);

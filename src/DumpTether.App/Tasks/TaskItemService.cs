@@ -24,6 +24,7 @@ internal sealed class TaskItemService : ITaskItemService
     private readonly ISavedViewRepository _savedViewRepository;
     private readonly ISessionTokenService _sessionTokenService;
     private readonly ITaskItemRepository _taskItemRepository;
+    private readonly ITaskTemplateRepository _taskTemplateRepository;
     private readonly IOptions<UsageOptions> _usageOptions;
 
     public TaskItemService(
@@ -36,6 +37,7 @@ internal sealed class TaskItemService : ITaskItemService
         ISavedViewRepository savedViewRepository,
         ISessionTokenService sessionTokenService,
         ITaskItemRepository taskItemRepository,
+        ITaskTemplateRepository taskTemplateRepository,
         IOptions<UsageOptions> usageOptions)
     {
         _clock = clock;
@@ -47,6 +49,7 @@ internal sealed class TaskItemService : ITaskItemService
         _savedViewRepository = savedViewRepository;
         _sessionTokenService = sessionTokenService;
         _taskItemRepository = taskItemRepository;
+        _taskTemplateRepository = taskTemplateRepository;
         _usageOptions = usageOptions;
     }
 
@@ -66,7 +69,6 @@ internal sealed class TaskItemService : ITaskItemService
         await EnsureTaskQuotaAsync(context.WorkspaceId, cancellationToken);
         var now = _clock.UtcNow;
         var taskTemplate = await ResolveTaskTemplateForCreateAsync(
-            context.WorkspaceId,
             request.TaskTemplateId,
             cancellationToken);
         var project = await ResolveProjectAsync(
@@ -387,26 +389,38 @@ internal sealed class TaskItemService : ITaskItemService
 
         var now = _clock.UtcNow;
         var copiedTasks = new List<TaskItemDetailResponse>();
+        var copiedTemplatesBySourceId = new Dictionary<Guid, CopiedTemplate>();
 
         foreach (var sourceTask in sourceTasks.OrderBy(task =>
                      Array.IndexOf(requestedTaskIds, task.Id)))
         {
             await EnsureTaskQuotaAsync(request.DestinationWorkspaceId, cancellationToken);
 
+            var sourceTemplate = await ResolveTaskTemplateForDetailAsync(
+                sourceTask,
+                includeDeleted: false,
+                cancellationToken);
+            CopiedTemplate? templateCopy = null;
+
+            if (sourceTemplate is not null &&
+                !copiedTemplatesBySourceId.TryGetValue(sourceTemplate.Id, out templateCopy))
+            {
+                templateCopy = await ResolveTemplateForCopiedTaskAsync(
+                    sourceTemplate,
+                    currentSession.UserId,
+                    now,
+                    cancellationToken);
+                copiedTemplatesBySourceId[sourceTemplate.Id] = templateCopy;
+            }
+
             var copyWithinSameWorkspace = sourceTask.WorkspaceId == request.DestinationWorkspaceId;
-            var sourceTemplate = copyWithinSameWorkspace
-                ? await ResolveTaskTemplateForDetailAsync(
-                    sourceTask,
-                    includeDeleted: false,
-                    cancellationToken)
-                : null;
             var destinationProjectId = copyWithinSameWorkspace ? sourceTask.ProjectId : null;
             var copiedTask = TaskItem.Create(
                 request.DestinationWorkspaceId,
                 destinationProjectId,
                 sourceTask.Title,
                 now,
-                sourceTemplate?.Id);
+                templateCopy?.Template.Id);
 
             if (!string.IsNullOrWhiteSpace(sourceTask.Category))
             {
@@ -428,20 +442,20 @@ internal sealed class TaskItemService : ITaskItemService
                 copiedTask.SetFollowUp(sourceTask.FollowUpAt.Value, now);
             }
 
-            if (sourceTemplate is not null)
+            if (templateCopy is not null)
             {
-                CopyFieldValues(sourceTask, copiedTask, sourceTemplate, now);
+                CopyFieldValues(sourceTask, copiedTask, templateCopy.FieldMap, now);
             }
 
             copiedTask.AddNote($"Copied from \"{sourceTask.Title}\".", now);
 
             if (request.IncludeTimeline)
             {
-                CopyTimelineNotes(sourceTask, copiedTask, now);
+                CopyTimelineNotes(sourceTask, copiedTask, templateCopy?.FieldMap, now);
             }
 
             await _taskItemRepository.AddAsync(copiedTask, cancellationToken);
-            copiedTasks.Add(MapDetail(copiedTask, sourceTemplate));
+            copiedTasks.Add(MapDetail(copiedTask, templateCopy?.Template));
         }
 
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
@@ -1451,24 +1465,29 @@ internal sealed class TaskItemService : ITaskItemService
 
 
     private async Task<TaskTemplate?> ResolveTaskTemplateForCreateAsync(
-        Guid workspaceId,
         Guid? requestedTemplateId,
         CancellationToken cancellationToken)
     {
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var ownerUserId = currentSession?.UserId;
+
         if (requestedTemplateId.HasValue && requestedTemplateId.Value != Guid.Empty)
         {
             var requestedTemplate = await _taskItemRepository.GetTaskTemplateByIdAsync(
                 requestedTemplateId.Value,
-                workspaceId,
                 includeDeleted: false,
                 cancellationToken);
 
-            return requestedTemplate ??
+            if (requestedTemplate is null || requestedTemplate.OwnerUserId != ownerUserId)
+            {
                 throw new ValidationException("Task template was not found.");
+            }
+
+            return requestedTemplate;
         }
 
         return await _taskItemRepository.GetDefaultTaskTemplateAsync(
-            workspaceId,
+            ownerUserId,
             cancellationToken);
     }
 
@@ -1484,9 +1503,83 @@ internal sealed class TaskItemService : ITaskItemService
 
         return await _taskItemRepository.GetTaskTemplateByIdAsync(
             taskItem.TaskTemplateId.Value,
-            taskItem.WorkspaceId,
             includeDeleted,
             cancellationToken);
+    }
+
+    private async Task<CopiedTemplate> ResolveTemplateForCopiedTaskAsync(
+        TaskTemplate sourceTemplate,
+        Guid destinationOwnerUserId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (sourceTemplate.OwnerUserId == destinationOwnerUserId)
+        {
+            return new CopiedTemplate(
+                sourceTemplate,
+                sourceTemplate.FieldDefinitions.ToDictionary(
+                    field => field.Id,
+                    field => field));
+        }
+
+        var templateName = await GenerateImportedTemplateNameAsync(
+            destinationOwnerUserId,
+            sourceTemplate.Name,
+            cancellationToken);
+        var copiedTemplate = TaskTemplate.Create(destinationOwnerUserId, templateName, now);
+        copiedTemplate.UpdateLayout(
+            sourceTemplate.HeaderLayoutJson,
+            sourceTemplate.EntryLayoutJson,
+            now);
+        var fieldMap = new Dictionary<Guid, FieldDefinition>();
+
+        foreach (var sourceField in sourceTemplate.FieldDefinitions
+                     .Where(field => field.IsActive)
+                     .OrderBy(field => field.Scope)
+                     .ThenBy(field => field.SortOrder)
+                     .ThenBy(field => field.Label))
+        {
+            var copiedField = copiedTemplate.AddFieldDefinition(
+                sourceField.Key,
+                sourceField.Label,
+                sourceField.Type,
+                sourceField.Scope,
+                sourceField.IsRequired,
+                sourceField.SortOrder,
+                sourceField.OptionsJson,
+                sourceField.LayoutRow,
+                sourceField.LayoutColumn,
+                sourceField.LayoutRowSpan,
+                sourceField.LayoutColumnSpan,
+                sourceField.LayoutWeight);
+            fieldMap[sourceField.Id] = copiedField;
+        }
+
+        await _taskTemplateRepository.AddAsync(copiedTemplate, cancellationToken);
+
+        return new CopiedTemplate(copiedTemplate, fieldMap);
+    }
+
+    private async Task<string> GenerateImportedTemplateNameAsync(
+        Guid ownerUserId,
+        string sourceName,
+        CancellationToken cancellationToken)
+    {
+        var baseName = $"{sourceName} (imported)";
+        var candidateName = baseName;
+        var suffix = 2;
+
+        while (await _taskTemplateRepository.AnyActiveWithNameAsync(
+                   ownerUserId,
+                   candidateName,
+                   excludedTemplateId: null,
+                   cancellationToken))
+        {
+            candidateName = $"{baseName} {suffix}";
+            suffix += 1;
+        }
+
+        return candidateName;
     }
 
     private async Task<Project?> ResolveProjectAsync(
@@ -1660,16 +1753,13 @@ internal sealed class TaskItemService : ITaskItemService
     private static void CopyFieldValues(
         TaskItem sourceTask,
         TaskItem copiedTask,
-        TaskTemplate taskTemplate,
+        IReadOnlyDictionary<Guid, FieldDefinition> fieldMap,
         DateTimeOffset occurredAt)
     {
-        var definitions = taskTemplate.FieldDefinitions
-            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Header)
-            .ToDictionary(field => field.Id);
-
         foreach (var fieldValue in sourceTask.FieldValues)
         {
-            if (definitions.TryGetValue(fieldValue.FieldDefinitionId, out var definition))
+            if (fieldMap.TryGetValue(fieldValue.FieldDefinitionId, out var definition) &&
+                definition.Scope == FieldDefinitionScope.Header)
             {
                 copiedTask.SetFieldValue(definition, fieldValue.ValueJson, occurredAt);
             }
@@ -1679,6 +1769,7 @@ internal sealed class TaskItemService : ITaskItemService
     private static void CopyTimelineNotes(
         TaskItem sourceTask,
         TaskItem copiedTask,
+        IReadOnlyDictionary<Guid, FieldDefinition>? fieldMap,
         DateTimeOffset occurredAt)
     {
         foreach (var entry in sourceTask.TimelineEntries
@@ -1688,7 +1779,25 @@ internal sealed class TaskItemService : ITaskItemService
                          !string.IsNullOrWhiteSpace(entry.Details))
                      .OrderBy(entry => entry.OccurredAt))
         {
-            copiedTask.AddNote(entry.Details!, occurredAt);
+            var copiedEntry = copiedTask.AddNote(entry.Details!, occurredAt);
+
+            if (fieldMap is null)
+            {
+                continue;
+            }
+
+            foreach (var fieldValue in entry.FieldValues)
+            {
+                if (fieldMap.TryGetValue(fieldValue.FieldDefinitionId, out var definition) &&
+                    definition.Scope == FieldDefinitionScope.Entry)
+                {
+                    copiedTask.SetTimelineEntryFieldValue(
+                        copiedEntry.Id,
+                        definition,
+                        fieldValue.ValueJson,
+                        occurredAt);
+                }
+            }
         }
     }
 
@@ -1979,6 +2088,8 @@ internal sealed class TaskItemService : ITaskItemService
             taskTemplate.Name,
             taskTemplate.CreatedAt,
             taskTemplate.UpdatedAt,
+            TaskTemplateService.MapLayout(taskTemplate, taskTemplate.FieldDefinitions
+                .Where(field => field.IsActive || fieldValueDefinitionIds.Contains(field.Id))),
             taskTemplate.FieldDefinitions
                 .Where(field => field.IsActive || fieldValueDefinitionIds.Contains(field.Id))
                 .OrderBy(field => field.Scope)
@@ -1987,4 +2098,8 @@ internal sealed class TaskItemService : ITaskItemService
                 .Select(TaskTemplateService.MapField)
                 .ToList());
     }
+
+    private sealed record CopiedTemplate(
+        TaskTemplate Template,
+        IReadOnlyDictionary<Guid, FieldDefinition> FieldMap);
 }

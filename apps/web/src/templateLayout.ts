@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import type { TaskTemplateLayoutRow as TemplateLayoutConfigRow } from './types';
 
 export const FIELD_LAYOUT_MAX_COLUMNS = 6;
 const FIELD_LAYOUT_MAX_ROWS = 24;
@@ -13,6 +14,7 @@ export interface FieldLayoutShape {
   layoutColumn?: number | null;
   layoutRowSpan?: number | null;
   layoutColumnSpan?: number | null;
+  layoutWeight?: number | null;
 }
 
 export type NormalizedFieldLayout<T extends FieldLayoutShape> = T & {
@@ -22,6 +24,15 @@ export type NormalizedFieldLayout<T extends FieldLayoutShape> = T & {
   layoutColumnSpan: number;
   layoutWasAdjusted: boolean;
 };
+
+export interface TemplateLayoutRow<T extends FieldLayoutShape> {
+  columnCount: number;
+  fields: NormalizedFieldLayout<T>[];
+  height: number;
+  row: number;
+  style: CSSProperties;
+  weights: number[];
+}
 
 export function normalizeTemplateLayoutFields<T extends FieldLayoutShape>(
   fields: T[],
@@ -51,11 +62,7 @@ export function normalizeTemplateLayoutFields<T extends FieldLayoutShape>(
     .forEach(({ field, index }) => {
       const requestedRow = cleanInteger(field.layoutRow, 1, FIELD_LAYOUT_MAX_ROWS);
       const requestedRowSpan = cleanInteger(field.layoutRowSpan, 1, 8);
-      const requestedColumnSpan = cleanInteger(
-        field.layoutColumnSpan,
-        defaultColumnSpan(field),
-        FIELD_LAYOUT_MAX_COLUMNS,
-      );
+      const requestedColumnSpan = 1;
       const columnSpan = Math.min(requestedColumnSpan, FIELD_LAYOUT_MAX_COLUMNS);
       const requestedColumn = Math.min(
         cleanInteger(field.layoutColumn, 1, FIELD_LAYOUT_MAX_COLUMNS),
@@ -93,7 +100,7 @@ export function normalizeTemplateLayoutFields<T extends FieldLayoutShape>(
           row !== requestedRow ||
           column !== requestedColumn ||
           requestedRowSpan !== (field.layoutRowSpan ?? 1) ||
-          columnSpan !== (field.layoutColumnSpan ?? defaultColumnSpan(field)),
+          columnSpan !== 1,
       });
     });
 
@@ -102,8 +109,69 @@ export function normalizeTemplateLayoutFields<T extends FieldLayoutShape>(
     layoutRow: 1,
     layoutColumn: 1,
     layoutRowSpan: 1,
-    layoutColumnSpan: defaultColumnSpan(field),
+    layoutColumnSpan: 1,
     layoutWasAdjusted: false,
+  });
+}
+
+export function getTemplateLayoutRows<T extends FieldLayoutShape>(
+  fields: T[],
+  layoutRows: TemplateLayoutConfigRow[] = [],
+): TemplateLayoutRow<T>[] {
+  const normalizedFields = normalizeTemplateLayoutFields(fields);
+  const layoutRowsByNumber = new Map(
+    layoutRows
+      .map((row) => ({
+        ...row,
+        row: cleanInteger(row.row, 1, FIELD_LAYOUT_MAX_ROWS),
+      }))
+      .filter((row) => row.row >= 1)
+      .map((row) => [row.row, row]),
+  );
+  const rowCount = Math.max(
+    1,
+    ...normalizedFields.map((field) => field.layoutRow),
+    ...layoutRowsByNumber.keys(),
+  );
+
+  return Array.from({ length: rowCount }, (_, rowIndex) => {
+    const row = rowIndex + 1;
+    const layoutRow = layoutRowsByNumber.get(row);
+    const rowFields = normalizedFields
+      .filter((field) => field.layoutRow === row)
+      .sort((first, second) =>
+        first.layoutColumn - second.layoutColumn ||
+        (first.sortOrder ?? 0) - (second.sortOrder ?? 0));
+    const columnCount = Math.max(
+      1,
+      layoutRow?.columnWeights.length ?? 0,
+      ...rowFields.map((field) => field.layoutColumn + field.layoutColumnSpan - 1),
+    );
+    const weights = Array.from({ length: columnCount }, (_, columnIndex) => {
+      const field = rowFields.find(
+        (candidate) => candidate.layoutColumn === columnIndex + 1,
+      );
+
+      return cleanWeight(layoutRow?.columnWeights[columnIndex] ?? field?.layoutWeight);
+    });
+    const height = cleanRowHeight(
+      layoutRow?.height,
+      rowFields.some((field) => field.type === 'LongText') ? 190 : 132,
+    );
+
+    return {
+      columnCount,
+      fields: rowFields,
+      height,
+      row,
+      style: {
+        '--template-layout-columns': columnCount,
+        '--template-layout-row-height': `${Math.round(height)}px`,
+        gridTemplateColumns: weights.map((weight) => `${weight}fr`).join(' '),
+        minHeight: `var(--template-layout-row-height)`,
+      } as CSSProperties,
+      weights,
+    };
   });
 }
 
@@ -122,16 +190,22 @@ export function getTemplateLayoutGridStyle(
   } as CSSProperties;
 }
 
+export function getTemplateLayoutCellStyle(
+  field: FieldLayoutShape,
+): CSSProperties {
+  const layoutColumn = cleanInteger(field.layoutColumn, 1, FIELD_LAYOUT_MAX_COLUMNS);
+
+  return {
+    gridColumn: layoutColumn,
+  };
+}
+
 export function getEditableTemplateFieldGridStyle(
   field: FieldLayoutShape,
 ): CSSProperties {
   const layoutRow = cleanInteger(field.layoutRow, 1, FIELD_LAYOUT_MAX_ROWS);
   const layoutRowSpan = cleanInteger(field.layoutRowSpan, 1, 8);
-  const layoutColumnSpan = cleanInteger(
-    field.layoutColumnSpan,
-    defaultColumnSpan(field),
-    FIELD_LAYOUT_MAX_COLUMNS,
-  );
+  const layoutColumnSpan = 1;
   const layoutColumn = Math.min(
     cleanInteger(field.layoutColumn, 1, FIELD_LAYOUT_MAX_COLUMNS),
     FIELD_LAYOUT_MAX_COLUMNS - layoutColumnSpan + 1,
@@ -175,14 +249,26 @@ function occupyLayoutCells(
   }
 }
 
-function defaultColumnSpan(field: FieldLayoutShape) {
-  return field.type === 'LongText' ? 2 : 1;
-}
-
 function cleanInteger(value: number | null | undefined, fallback: number, max: number) {
   if (!Number.isFinite(value)) {
     return fallback;
   }
 
   return Math.min(max, Math.max(1, Math.round(value!)));
+}
+
+function cleanWeight(value: number | null | undefined) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+
+  return Math.min(12, Math.max(0.1, value!));
+}
+
+function cleanRowHeight(value: number | null | undefined, fallback: number) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(420, Math.max(72, value!));
 }

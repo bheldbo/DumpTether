@@ -111,6 +111,119 @@ public sealed class TaskTemplatesApiTests
     }
 
     [Fact]
+    public async Task PostAndPatchTemplates_PersistLayoutRows()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/templates",
+            new
+            {
+                name = "Layout Test",
+                layout = new
+                {
+                    header = new[]
+                    {
+                        new
+                        {
+                            row = 1,
+                            columnWeights = new[] { 3.0, 1.0 },
+                            height = 240.0
+                        }
+                    },
+                    entry = new[]
+                    {
+                        new
+                        {
+                            row = 1,
+                            columnWeights = new[] { 4.0, 0.75 },
+                            height = 150.0
+                        },
+                        new
+                        {
+                            row = 2,
+                            columnWeights = new[] { 1.0 },
+                            height = 220.0
+                        }
+                    }
+                },
+                fields = new object[]
+                {
+                    new
+                    {
+                        name = "Description",
+                        type = "LongText",
+                        scope = "Header",
+                        required = false,
+                        sortOrder = 0,
+                        layoutRow = 1,
+                        layoutColumn = 1,
+                        options = Array.Empty<string>()
+                    },
+                    new
+                    {
+                        name = "Done",
+                        type = "Checkbox",
+                        scope = "Entry",
+                        required = false,
+                        sortOrder = 0,
+                        layoutRow = 1,
+                        layoutColumn = 2,
+                        options = Array.Empty<string>()
+                    }
+                }
+            });
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            response.StatusCode == HttpStatusCode.Created,
+            $"Expected Created, got {response.StatusCode}. Body: {body}");
+
+        var created = await response.Content.ReadFromJsonAsync<TaskTemplateDetailResponse>();
+        Assert.NotNull(created);
+        Assert.Equal(240.0, created.Layout.Header.Single().Height, 2);
+        Assert.Collection(
+            created.Layout.Header.Single().ColumnWeights,
+            first => Assert.Equal(3.0, first, 2),
+            second => Assert.Equal(1.0, second, 2));
+        Assert.Equal(0.75, created.Layout.Entry.First().ColumnWeights[1], 2);
+        Assert.Equal(220.0, created.Layout.Entry.Last().Height, 2);
+
+        var updated = await PatchTemplateAsync(
+            client,
+            created.Id,
+            new
+            {
+                layout = new
+                {
+                    header = new[]
+                    {
+                        new
+                        {
+                            row = 1,
+                            columnWeights = new[] { 1.0 },
+                            height = 180.0
+                        }
+                    },
+                    entry = new[]
+                    {
+                        new
+                        {
+                            row = 1,
+                            columnWeights = new[] { 2.5, 1.5 },
+                            height = 260.0
+                        }
+                    }
+                }
+            });
+
+        Assert.Equal(180.0, updated.Layout.Header.Single().Height, 2);
+        Assert.Equal(1.0, Assert.Single(updated.Layout.Header.Single().ColumnWeights), 2);
+        Assert.Equal(2.5, updated.Layout.Entry.Single().ColumnWeights[0], 2);
+        Assert.Equal(260.0, updated.Layout.Entry.Single().Height, 2);
+    }
+
+    [Fact]
     public async Task PostTaskItems_CreatesTaskFromTemplate()
     {
         using var factory = new DumpTetherApiFactory();

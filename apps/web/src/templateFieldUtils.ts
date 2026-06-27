@@ -53,7 +53,8 @@ export function toEditableTemplateField(
     layoutRow: field.layoutRow ?? 1,
     layoutColumn: field.layoutColumn ?? 1,
     layoutRowSpan: field.layoutRowSpan ?? 1,
-    layoutColumnSpan: field.layoutColumnSpan ?? (field.type === 'LongText' ? 2 : 1),
+    layoutColumnSpan: 1,
+    layoutWeight: field.layoutWeight ?? 1,
   };
 }
 

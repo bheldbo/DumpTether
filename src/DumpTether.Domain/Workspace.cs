@@ -6,7 +6,6 @@ public sealed class Workspace
     private readonly List<WorkspaceMembership> _memberships = [];
     private readonly List<Project> _projects = [];
     private readonly List<SavedView> _savedViews = [];
-    private readonly List<TaskTemplate> _taskTemplates = [];
 
     private Workspace()
     {
@@ -28,8 +27,6 @@ public sealed class Workspace
     public DateTimeOffset CreatedAt { get; private set; }
 
     public IReadOnlyCollection<Project> Projects => _projects.AsReadOnly();
-
-    public IReadOnlyCollection<TaskTemplate> TaskTemplates => _taskTemplates.AsReadOnly();
 
     public IReadOnlyCollection<ArchiveResolution> ArchiveResolutions => _archiveResolutions.AsReadOnly();
 
@@ -72,14 +69,6 @@ public sealed class Workspace
         _projects.Add(project);
 
         return project;
-    }
-
-    public TaskTemplate AddTaskTemplate(string name, DateTimeOffset createdAt)
-    {
-        var taskTemplate = TaskTemplate.Create(Id, name, createdAt);
-        _taskTemplates.Add(taskTemplate);
-
-        return taskTemplate;
     }
 
     public ArchiveResolution AddArchiveResolution(

@@ -815,14 +815,25 @@
 
 .field-list,
 .field-editor-list {
+  min-width: 0;
   display: grid;
   gap: 10px;
 }
 
-.field-row {
+.field-value-layout-row,
+.field-editor-layout-row {
+  min-width: 0;
+  min-height: var(--template-layout-row-height, auto);
   display: grid;
-  grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
   gap: 10px;
+  align-items: stretch;
+}
+
+.field-row {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
   padding: 10px;
   border: 1px solid #e0e6ec;
   border-radius: 8px;
@@ -838,6 +849,22 @@
   overflow-wrap: anywhere;
 }
 
+.field-row[data-field-type="LongText"] {
+  min-height: max(132px, var(--template-layout-row-height, 132px));
+}
+
+.field-row[data-field-type="LongText"] dd {
+  min-height: 0;
+}
+
+.field-long-text {
+  display: block;
+  max-height: max(108px, calc(var(--template-layout-row-height, 132px) - 54px));
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
 .field-empty {
   display: inline-block;
   min-height: 1em;
@@ -848,6 +875,18 @@
   display: grid;
   gap: 6px;
   align-content: start;
+  padding: 0;
+}
+
+.field-editor[data-field-type="LongText"] {
+  align-content: stretch;
+}
+
+.field-editor[data-field-type="LongText"] textarea {
+  min-height: max(108px, calc(var(--template-layout-row-height, 132px) - 46px));
+  height: 100%;
+  overflow: auto;
+  resize: vertical;
 }
 
 .field-editor input[type="checkbox"] {
@@ -1004,10 +1043,17 @@
   gap: 4px;
 }
 
-.entry-field-editor-row {
+.entry-field-editor-layout {
   min-width: 0;
   display: grid;
-  grid-auto-rows: minmax(48px, auto);
+  gap: 8px;
+}
+
+.entry-field-editor-row {
+  min-width: 0;
+  min-height: var(--template-layout-row-height, 48px);
+  display: grid;
+  grid-auto-rows: minmax(var(--template-layout-row-height, 48px), auto);
   align-items: stretch;
   overflow: hidden;
   border: 1px solid rgba(24, 33, 44, 0.1);
@@ -1049,6 +1095,10 @@
   min-width: 0;
 }
 
+.entry-field-editor-cell[data-field-type="LongText"] {
+  align-content: stretch;
+}
+
 .entry-field-editor-cell[data-field-type="Checkbox"] {
   min-width: 0;
 }
@@ -1060,7 +1110,7 @@
 
 .entry-checkbox-display {
   min-width: 0;
-  min-height: 48px;
+  min-height: min(var(--template-layout-row-height, 48px), 86px);
   display: inline-flex;
   gap: 10px;
   align-items: center;
@@ -1082,7 +1132,7 @@
 .entry-field-editor-cell textarea {
   width: 100%;
   min-width: 0;
-  min-height: 48px;
+  min-height: var(--template-layout-row-height, 48px);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1097,8 +1147,10 @@
 }
 
 .entry-field-editor-cell[data-field-type="LongText"] textarea {
-  min-height: 48px;
-  resize: none;
+  min-height: max(72px, calc(var(--template-layout-row-height, 132px) - 2px));
+  height: 100%;
+  overflow: auto;
+  resize: vertical;
 }
 
 .entry-field-editor-cell[data-empty="true"] input::placeholder,

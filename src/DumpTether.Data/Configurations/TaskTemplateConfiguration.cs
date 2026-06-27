@@ -16,13 +16,24 @@ internal sealed class TaskTemplateConfiguration : IEntityTypeConfiguration<TaskT
             .HasColumnName("id")
             .ValueGeneratedNever();
 
-        builder.Property(taskTemplate => taskTemplate.WorkspaceId)
-            .HasColumnName("workspace_id")
-            .IsRequired();
+        builder.Property(taskTemplate => taskTemplate.OwnerUserId)
+            .HasColumnName("owner_user_id");
 
         builder.Property(taskTemplate => taskTemplate.Name)
             .HasColumnName("name")
             .HasMaxLength(200)
+            .IsRequired();
+
+        builder.Property(taskTemplate => taskTemplate.HeaderLayoutJson)
+            .HasColumnName("header_layout_json")
+            .HasColumnType("jsonb")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
+        builder.Property(taskTemplate => taskTemplate.EntryLayoutJson)
+            .HasColumnName("entry_layout_json")
+            .HasColumnType("jsonb")
+            .HasDefaultValue("[]")
             .IsRequired();
 
         builder.Property(taskTemplate => taskTemplate.CreatedAt)
@@ -41,13 +52,13 @@ internal sealed class TaskTemplateConfiguration : IEntityTypeConfiguration<TaskT
 
         builder.HasIndex(taskTemplate => new
             {
-                taskTemplate.WorkspaceId,
+                taskTemplate.OwnerUserId,
                 taskTemplate.Name
             });
 
-        builder.HasOne<Workspace>()
-            .WithMany("_taskTemplates")
-            .HasForeignKey(taskTemplate => taskTemplate.WorkspaceId)
+        builder.HasOne<AppUser>()
+            .WithMany()
+            .HasForeignKey(taskTemplate => taskTemplate.OwnerUserId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
