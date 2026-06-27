@@ -24,6 +24,18 @@ internal sealed class TaskTemplateConfiguration : IEntityTypeConfiguration<TaskT
             .HasMaxLength(200)
             .IsRequired();
 
+        builder.Property(taskTemplate => taskTemplate.HeaderLayoutJson)
+            .HasColumnName("header_layout_json")
+            .HasColumnType("jsonb")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
+        builder.Property(taskTemplate => taskTemplate.EntryLayoutJson)
+            .HasColumnName("entry_layout_json")
+            .HasColumnType("jsonb")
+            .HasDefaultValue("[]")
+            .IsRequired();
+
         builder.Property(taskTemplate => taskTemplate.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();

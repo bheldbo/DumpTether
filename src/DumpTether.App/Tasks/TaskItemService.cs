@@ -1507,7 +1507,7 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
     }
 
-    private async Task<CopiedTemplate?> ResolveTemplateForCopiedTaskAsync(
+    private async Task<CopiedTemplate> ResolveTemplateForCopiedTaskAsync(
         TaskTemplate sourceTemplate,
         Guid destinationOwnerUserId,
         DateTimeOffset now,
@@ -1527,6 +1527,10 @@ internal sealed class TaskItemService : ITaskItemService
             sourceTemplate.Name,
             cancellationToken);
         var copiedTemplate = TaskTemplate.Create(destinationOwnerUserId, templateName, now);
+        copiedTemplate.UpdateLayout(
+            sourceTemplate.HeaderLayoutJson,
+            sourceTemplate.EntryLayoutJson,
+            now);
         var fieldMap = new Dictionary<Guid, FieldDefinition>();
 
         foreach (var sourceField in sourceTemplate.FieldDefinitions
@@ -2084,6 +2088,8 @@ internal sealed class TaskItemService : ITaskItemService
             taskTemplate.Name,
             taskTemplate.CreatedAt,
             taskTemplate.UpdatedAt,
+            TaskTemplateService.MapLayout(taskTemplate, taskTemplate.FieldDefinitions
+                .Where(field => field.IsActive || fieldValueDefinitionIds.Contains(field.Id))),
             taskTemplate.FieldDefinitions
                 .Where(field => field.IsActive || fieldValueDefinitionIds.Contains(field.Id))
                 .OrderBy(field => field.Scope)

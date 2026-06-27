@@ -18,11 +18,14 @@ import type {
   FieldDefinitionScope,
   FieldDefinitionType,
   TaskTemplateDetailResponse,
+  TaskTemplateLayoutResponse,
+  TaskTemplateLayoutRow,
   UpsertFieldDefinitionRequest,
 } from '../../types';
 
 type TemplateLayoutRows = Record<FieldDefinitionScope, number[]>;
 type TemplateLayoutWeights = Record<FieldDefinitionScope, number[][]>;
+type TemplateLayoutHeights = Record<FieldDefinitionScope, number[]>;
 type TemplateFieldModalState = {
   clientId?: string;
   column: number;
@@ -49,23 +52,43 @@ type TemplateRowRemovalState = {
 
 const templateScopes: FieldDefinitionScope[] = ['Header', 'Entry'];
 const minimumColumnWeight = 0.12;
+const defaultRowHeight = 132;
+const longTextRowHeight = 190;
+const minRowHeight = 72;
+const maxRowHeight = 420;
 
-function createTemplateLayoutRows(fields: EditableTemplateField[]): TemplateLayoutRows {
+function getStoredLayoutRows(
+  template: TaskTemplateDetailResponse | null,
+  scope: FieldDefinitionScope,
+) {
+  return scope === 'Header'
+    ? template?.layout?.header ?? []
+    : template?.layout?.entry ?? [];
+}
+
+function createTemplateLayoutRows(
+  fields: EditableTemplateField[],
+  template: TaskTemplateDetailResponse | null,
+): TemplateLayoutRows {
   return Object.fromEntries(
     templateScopes.map((scope) => {
       const scopedFields = fields.filter((field) => field.scope === scope);
+      const storedRows = getStoredLayoutRows(template, scope);
       const maxRow = Math.max(
         1,
         ...scopedFields.map((field) => clampInteger(field.layoutRow, 1, 24)),
+        ...storedRows.map((row) => clampInteger(row.row, 1, 24)),
       );
       const rows = Array.from({ length: maxRow }, (_, rowIndex) => {
         const rowNumber = rowIndex + 1;
+        const storedRow = storedRows.find((row) => row.row === rowNumber);
         const rowFields = scopedFields.filter(
           (field) => clampInteger(field.layoutRow, 1, 24) === rowNumber,
         );
 
         return Math.max(
           1,
+          storedRow?.columnWeights.length ?? 0,
           ...rowFields.map((field) =>
             clampInteger(field.layoutColumn, 1, FIELD_LAYOUT_MAX_COLUMNS)),
         );
@@ -136,15 +159,36 @@ function normalizeLayoutWeight(weight: number | undefined) {
   return Math.min(12, Math.max(minimumColumnWeight, weight ?? 1));
 }
 
+function normalizeLayoutHeight(height: number | undefined, fallback = defaultRowHeight) {
+  if (!Number.isFinite(height)) {
+    return fallback;
+  }
+
+  return Math.min(maxRowHeight, Math.max(minRowHeight, height ?? fallback));
+}
+
+function getDefaultRowHeight(fields: EditableTemplateField[]) {
+  return fields.some((field) => field.type === 'LongText')
+    ? longTextRowHeight
+    : defaultRowHeight;
+}
+
 function createTemplateLayoutWeights(
   fields: EditableTemplateField[],
   rows: TemplateLayoutRows,
+  template: TaskTemplateDetailResponse | null,
 ): TemplateLayoutWeights {
   return Object.fromEntries(
     templateScopes.map((scope) => [
       scope,
       rows[scope].map((columnCount, rowIndex) => {
         const rowNumber = rowIndex + 1;
+        const storedRow = getStoredLayoutRows(template, scope)
+          .find((row) => row.row === rowNumber);
+
+        if (storedRow?.columnWeights.length) {
+          return normalizeColumnWeights(storedRow.columnWeights, columnCount);
+        }
 
         return Array.from({ length: columnCount }, (_, columnIndex) => {
           const columnNumber = columnIndex + 1;
@@ -158,6 +202,49 @@ function createTemplateLayoutWeights(
       }),
     ]),
   ) as TemplateLayoutWeights;
+}
+
+function createTemplateLayoutHeights(
+  fields: EditableTemplateField[],
+  rows: TemplateLayoutRows,
+  template: TaskTemplateDetailResponse | null,
+): TemplateLayoutHeights {
+  return Object.fromEntries(
+    templateScopes.map((scope) => [
+      scope,
+      rows[scope].map((_, rowIndex) => {
+        const rowNumber = rowIndex + 1;
+        const storedRow = getStoredLayoutRows(template, scope)
+          .find((row) => row.row === rowNumber);
+        const rowFields = fields.filter((field) =>
+          field.scope === scope &&
+          field.layoutRow === rowNumber);
+
+        return normalizeLayoutHeight(storedRow?.height, getDefaultRowHeight(rowFields));
+      }),
+    ]),
+  ) as TemplateLayoutHeights;
+}
+
+function buildTemplateLayoutRequest(
+  rows: TemplateLayoutRows,
+  weights: TemplateLayoutWeights,
+  heights: TemplateLayoutHeights,
+): TaskTemplateLayoutResponse {
+  const buildRows = (scope: FieldDefinitionScope): TaskTemplateLayoutRow[] =>
+    rows[scope].map((columnCount, rowIndex) => ({
+      row: rowIndex + 1,
+      columnWeights: normalizeColumnWeights(
+        weights[scope]?.[rowIndex],
+        columnCount,
+      ).map((weight) => Number(weight.toFixed(4))),
+      height: Number(normalizeLayoutHeight(heights[scope]?.[rowIndex]).toFixed(2)),
+    }));
+
+  return {
+    header: buildRows('Header'),
+    entry: buildRows('Entry'),
+  };
 }
 
 function getColumnBoundaryPercent(weights: number[], boundaryIndex: number) {
@@ -202,6 +289,7 @@ export function TemplateEditor({
     id: string | null,
     name: string,
     fields: UpsertFieldDefinitionRequest[],
+    layout: TaskTemplateLayoutResponse,
   ) => Promise<TaskTemplateDetailResponse | null>;
   template: TaskTemplateDetailResponse | null;
 }) {
@@ -209,8 +297,10 @@ export function TemplateEditor({
   const [fields, setFields] = useState<EditableTemplateField[]>(
     () => template?.fields.map(toEditableTemplateField) ?? [],
   );
+  const initialFields = template?.fields.map(toEditableTemplateField) ?? [];
   const initialLayoutRows = createTemplateLayoutRows(
-    template?.fields.map(toEditableTemplateField) ?? [],
+    initialFields,
+    template,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draggedFieldId, setDraggedFieldId] = useState<string | null>(null);
@@ -226,7 +316,10 @@ export function TemplateEditor({
   const [rowRemoval, setRowRemoval] = useState<TemplateRowRemovalState>(null);
   const [layoutRows, setLayoutRows] = useState<TemplateLayoutRows>(() => initialLayoutRows);
   const [layoutWeights, setLayoutWeights] = useState<TemplateLayoutWeights>(
-    () => createTemplateLayoutWeights(template?.fields.map(toEditableTemplateField) ?? [], initialLayoutRows),
+    () => createTemplateLayoutWeights(initialFields, initialLayoutRows, template),
+  );
+  const [layoutHeights, setLayoutHeights] = useState<TemplateLayoutHeights>(
+    () => createTemplateLayoutHeights(initialFields, initialLayoutRows, template),
   );
 
   const openFieldModal = (
@@ -325,11 +418,11 @@ export function TemplateEditor({
       [scope]: currentRows[scope].map((currentColumnCount, index) =>
         index === rowIndex ? Math.max(1, currentColumnCount - 1) : currentColumnCount),
     }));
-    setLayoutWeights((currentWeightsByScope) => ({
-      ...currentWeightsByScope,
-      [scope]: currentWeightsByScope[scope].map((weights, index) =>
-        index === rowIndex ? mergedWeights : weights),
-    }));
+      setLayoutWeights((currentWeightsByScope) => ({
+        ...currentWeightsByScope,
+        [scope]: currentWeightsByScope[scope].map((weights, index) =>
+          index === rowIndex ? mergedWeights : weights),
+      }));
     setFields((currentFields) =>
       renumberTemplateFields(
         currentFields
@@ -522,6 +615,11 @@ export function TemplateEditor({
         [scope]: nextScopeRows.map((columnCount, rowIndex) =>
           normalizeColumnWeights(currentWeights[scope]?.[rowIndex], columnCount)),
       }));
+      setLayoutHeights((currentHeights) => ({
+        ...currentHeights,
+        [scope]: nextScopeRows.map((_, rowIndex) =>
+          normalizeLayoutHeight(currentHeights[scope]?.[rowIndex])),
+      }));
       setFields((currentFields) =>
         currentFields.map((field) =>
           field.scope === scope
@@ -646,6 +744,10 @@ export function TemplateEditor({
       ...currentWeights,
       [scope]: currentWeights[scope].filter((_, index) => index !== rowIndex),
     }));
+    setLayoutHeights((currentHeights) => ({
+      ...currentHeights,
+      [scope]: currentHeights[scope].filter((_, index) => index !== rowIndex),
+    }));
     setFields((currentFields) =>
       renumberTemplateFields(
         currentFields
@@ -671,6 +773,18 @@ export function TemplateEditor({
       currentActiveFieldId === clientId ? null : currentActiveFieldId);
   };
 
+  const updateLayoutRowHeight = (
+    scope: FieldDefinitionScope,
+    rowIndex: number,
+    height: number,
+  ) => {
+    setLayoutHeights((currentHeights) => ({
+      ...currentHeights,
+      [scope]: currentHeights[scope].map((currentHeight, index) =>
+        index === rowIndex ? normalizeLayoutHeight(height) : currentHeight),
+    }));
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -680,7 +794,21 @@ export function TemplateEditor({
     }
 
     const fieldsForSave = renumberTemplateFields(
-      fields.map((field) => normalizeFieldToLayoutRows(field, layoutRows[field.scope])),
+      fields.map((field) => normalizeFieldToLayoutRows(
+        {
+          ...field,
+          layoutWeight: normalizeLayoutWeight(
+            layoutWeights[field.scope]?.[field.layoutRow - 1]?.[field.layoutColumn - 1] ??
+              field.layoutWeight,
+          ),
+        },
+        layoutRows[field.scope],
+      )),
+    );
+    const layout = buildTemplateLayoutRequest(
+      layoutRows,
+      layoutWeights,
+      layoutHeights,
     );
 
     setIsSubmitting(true);
@@ -701,6 +829,7 @@ export function TemplateEditor({
         layoutColumnSpan: 1,
         layoutWeight: field.layoutWeight,
       })),
+      layout,
     );
     setIsSubmitting(false);
   };
@@ -759,9 +888,12 @@ export function TemplateEditor({
           draggedFieldId={draggedFieldId}
           emptyLabel="Title only"
           fields={headerPreviewFields}
+          layoutHeights={layoutHeights.Header}
           layoutRows={layoutRows.Header}
           layoutWeights={layoutWeights.Header}
           onChangeRowCount={(rowCount) => setLayoutRowCount('Header', rowCount)}
+          onChangeRowHeight={(rowIndex, height) =>
+            updateLayoutRowHeight('Header', rowIndex, height)}
           onChangeRowWeights={(rowIndex, weights) =>
             updateRowWeights('Header', rowIndex, weights)}
           onCreateField={(row, column) => openFieldModal('Header', row, column)}
@@ -791,9 +923,12 @@ export function TemplateEditor({
           draggedFieldId={draggedFieldId}
           emptyLabel="Plain note text"
           fields={entryPreviewFields}
+          layoutHeights={layoutHeights.Entry}
           layoutRows={layoutRows.Entry}
           layoutWeights={layoutWeights.Entry}
           onChangeRowCount={(rowCount) => setLayoutRowCount('Entry', rowCount)}
+          onChangeRowHeight={(rowIndex, height) =>
+            updateLayoutRowHeight('Entry', rowIndex, height)}
           onChangeRowWeights={(rowIndex, weights) =>
             updateRowWeights('Entry', rowIndex, weights)}
           onCreateField={(row, column) => openFieldModal('Entry', row, column)}
@@ -1113,9 +1248,11 @@ function TemplateLayoutCanvas({
   draggedFieldId,
   emptyLabel,
   fields,
+  layoutHeights,
   layoutRows,
   layoutWeights,
   onChangeRowCount,
+  onChangeRowHeight,
   onChangeRowWeights,
   onCreateField,
   onDropField,
@@ -1130,9 +1267,11 @@ function TemplateLayoutCanvas({
   draggedFieldId: string | null;
   emptyLabel: string;
   fields: EditableTemplateField[];
+  layoutHeights: number[];
   layoutRows: number[];
   layoutWeights: number[][];
   onChangeRowCount: (rowCount: number) => void;
+  onChangeRowHeight: (rowIndex: number, height: number) => void;
   onChangeRowWeights: (rowIndex: number, weights: number[]) => void;
   onCreateField: (row: number, column: number) => void;
   onDropField: (sourceClientId: string, row: number, column: number) => void;
@@ -1226,6 +1365,31 @@ function TemplateLayoutCanvas({
     window.addEventListener('pointerup', handlePointerUp);
   };
 
+  const startRowResize = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    rowIndex: number,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const initialClientY = event.clientY;
+    const initialHeight = normalizeLayoutHeight(layoutHeights[rowIndex]);
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextHeight = initialHeight + moveEvent.clientY - initialClientY;
+      onChangeRowHeight(rowIndex, nextHeight);
+      setLastResizeDragEndedAt(Date.now());
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  };
+
   return (
     <div className="template-layout-designer">
       <div className="template-layout-toolbar">
@@ -1243,6 +1407,10 @@ function TemplateLayoutCanvas({
           const rowNumber = rowIndex + 1;
           const rowFields = fields.filter((field) => field.layoutRow === rowNumber);
           const weights = normalizeColumnWeights(layoutWeights[rowIndex], columnCount);
+          const rowHeight = normalizeLayoutHeight(
+            layoutHeights[rowIndex],
+            getDefaultRowHeight(rowFields),
+          );
 
           return (
             <div className="template-layout-row" key={rowNumber}>
@@ -1265,7 +1433,9 @@ function TemplateLayoutCanvas({
                 className="template-layout-grid-row"
                 style={{
                   '--template-layout-columns': columnCount,
+                  '--template-layout-row-height': `${Math.round(rowHeight)}px`,
                   gridTemplateColumns: weights.map((weight) => `${weight}fr`).join(' '),
+                  minHeight: `var(--template-layout-row-height)`,
                 } as CSSProperties}
               >
                 {Array.from({ length: columnCount }, (_, columnIndex) => {
@@ -1367,6 +1537,13 @@ function TemplateLayoutCanvas({
                       />
                     ))
                   : null}
+                <button
+                  aria-label={`Resize row ${rowNumber} height`}
+                  className="template-layout-row-resize-handle"
+                  onPointerDown={(event) => startRowResize(event, rowIndex)}
+                  title="Drag to resize row height"
+                  type="button"
+                />
               </div>
             </div>
           );

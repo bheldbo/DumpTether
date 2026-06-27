@@ -12,7 +12,17 @@ public sealed record TaskTemplateDetailResponse(
     string Name,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
+    TaskTemplateLayoutResponse Layout,
     IReadOnlyList<FieldDefinitionResponse> Fields);
+
+public sealed record TaskTemplateLayoutResponse(
+    IReadOnlyList<TaskTemplateLayoutRowResponse> Header,
+    IReadOnlyList<TaskTemplateLayoutRowResponse> Entry);
+
+public sealed record TaskTemplateLayoutRowResponse(
+    int Row,
+    IReadOnlyList<double> ColumnWeights,
+    double Height);
 
 public sealed record FieldDefinitionResponse(
     Guid Id,

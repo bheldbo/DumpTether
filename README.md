@@ -1,252 +1,121 @@
 # DumpTether
 
-DumpTether is a lightweight personal task-and-note system that turns messy working notes into a plain task wall with structured notes, templates, searchability and archive reasons.
+DumpTether is a plain personal task wall for messy work notes.
 
-This repository is the initial Minimal Viable Product (MVP) and my learning experience with agentic warfare.
+Everything is a task. A task can be a TODO, a note, a follow-up, a tiny case file, or a sticky reminder. Templates add structure when you need it; colors, categories, follow-up dates, statuses and filters help you find things again without turning the app into Jira.
 
-## MVP Boundaries
+The current MVP is a web app backed by ASP.NET Core and PostgreSQL. The planned local app should reuse the same React UI and C# domain/application logic, with a local ASP.NET Core sidecar and SQLite for offline state.
 
-- Everything will be modeled as a task.
-- Tasks will have structured fields and compact note history.
-- Templates, views, projects, and archive reasons are core concepts.
-- The product should feel like a personal task wall, not a Jira clone, timeline-heavy audit system, or complex import/parser tool.
-- AI, MCP, email, calendar, sharing, and desktop support are outside the MVP.
+## What It Does Today
 
-See `docs/product/product-principles.md` and `docs/product/ui-principles.md` for the product and task-wall UX direction.
+- Create boards. A board is the main space for a set of tasks.
+- Use walls inside a board: `All tasks` and `Archive`.
+- Create task templates with header fields and per-entry fields.
+- Build simple note/TODO-like entry layouts from template rows and cells.
+- Add tasks as sticky-note style cards.
+- Color-code tasks and boards.
+- Add one or more categories to a task.
+- Set custom statuses and follow-up dates.
+- Filter by text, status, category, color, follow-up, stale/not touched and sharing.
+- Add structured notes to tasks.
+- Archive and reopen tasks with archive reasons.
+- Share boards or tasks when online.
+- Use Owner, Member and Read-only/Guest-style access.
+- Use English or Danish UI text.
+- Run locally with Docker PostgreSQL, ASP.NET Core and Vite.
+- Run the API in Docker for server deployment.
 
-## Repository Layout
+## Product Direction
+
+The product should feel like:
+
+- a wall of personal sticky notes
+- structured notes inside each task
+- powerful filtering when needed
+- fast dumping, updating and moving on
+
+It should not become:
+
+- a Jira clone
+- a kanban-first system
+- a timeline-heavy audit tool
+- a generic notes app
+- an import/parser project
+
+Future goals:
+
+- desktop/local app using the same React UI
+- SQLite offline state
+- login and optional sync to a hosted server
+- OAuth login
+- email confirmation/MFA
+- better live collaboration
+- image attachments
+- sharing hardening
+- backups/export as `.dumptether`
+
+AI, MCP, email scanning and calendar integrations are future extensions, not MVP behavior.
+
+## Architecture
+
+DumpTether is a modular monolith.
 
 ```text
 apps/web/                 React + TypeScript + Vite frontend
-src/DumpTether.Api/       ASP.NET Core API host
+src/DumpTether.Api/       ASP.NET Core HTTP API
 src/DumpTether.App/       Application services and use cases
-src/DumpTether.Data/      EF Core persistence
 src/DumpTether.Domain/    Domain model and business rules
-docs/adr/                 Architecture decision records
-docs/deployment/          Deployment notes and examples
-docs/security/            Security principles
+src/DumpTether.Data/      EF Core + PostgreSQL persistence
+docs/                     ADRs, security notes, deployment notes
 deploy/docker/            Production Docker Compose examples
 ```
 
-## Prerequisites
+Design principles:
 
-- .NET SDK 8 or later
-- Node.js 24 LTS or later, with npm
+- Keep business rules in C#.
+- Keep React focused on interaction and presentation.
+- Keep backend authorization authoritative.
+- Keep core concepts relational.
+- Use JSON only where flexibility makes sense, such as field values/layout config.
+- Prefer one API shape for web, hosted server and future desktop sidecar.
+- Avoid duplicated business logic between web, server and future desktop.
+
+Current shortcomings:
+
+- Desktop/offline mode is designed, not implemented.
+- Email confirmation/OAuth plumbing exists, but provider setup is still rough.
+- Sharing works as an MVP flow, but permissions and notifications need more polish.
+- Live updates are early and should be hardened before real multi-user use.
+- Attachments/images are not implemented yet.
+- The frontend is being actively refactored out of the older giant `App.tsx`.
+
+## Run It Locally
+
+Prerequisites:
+
+- .NET SDK 8+
+- Node.js 24 LTS+ with npm
 - Docker Desktop or Docker Engine with Compose
 - Git
 
-## Getting Started
-
-Restore local .NET tools:
+Fast path:
 
 ```powershell
 dotnet tool restore
+.\scripts\dev.ps1 -Target Both -OpenBrowser
 ```
 
-Start PostgreSQL:
+That starts PostgreSQL, applies EF migrations, runs the API and starts Vite.
+
+Manual path:
 
 ```powershell
 docker compose up -d
-```
-
-The local Docker Compose database uses this development-only pattern:
-
-```text
-Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password
-```
-
-Visual Studio and `dotnet run --launch-profile DumpTether.Api` use the local Compose connection string from `src/DumpTether.Api/Properties/launchSettings.json`.
-
-For terminal sessions that do not use the launch profile, configure the API through an environment variable:
-
-```powershell
-$env:ConnectionStrings__DumpTether = "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
-```
-
-Alternatively, copy the shape from `appsettings.example.json` into an uncommitted `src/DumpTether.Api/appsettings.Development.json`. The example file is documentation only; do not put real secrets in source control.
-
-Apply EF Core migrations:
-
-```powershell
 dotnet tool run dotnet-ef database update --project src/DumpTether.Data --startup-project src/DumpTether.Data
-```
-
-Run the API:
-
-```powershell
 dotnet run --project src/DumpTether.Api --launch-profile DumpTether.Api
 ```
 
-Local and hosted requests now use the same user/session/workspace boundary. The API requires authentication by default; the remaining anonymous workspace path is only an explicit test/development escape hatch.
-
-### Authentication Foundation
-
-The first auth foundation is intentionally small and first-party. It stores password hashes only, stores hashed session tokens, and scopes workspace access through `workspace_memberships`.
-
-For UI testing, start the API and web app, open `http://localhost:5173`, and use the login/register panel. In the Visual Studio development profile, the API also enables a development-only button that creates or signs in as:
-
-- Email: `dev@dumptether.local`
-- Password: `dumptether-dev-password`
-
-That dev account is a normal `AppUser` with a normal `UserSession` and workspace membership. Production config disables the dev login endpoint.
-
-Temporary guest sessions are also available for trying the wall without registering. They use the same backend session/workspace boundary, but the browser keeps the token in tab-scoped storage and the UI warns the user to sign up or log in to keep the work.
-
-Email confirmation now uses the Brevo transactional email API when enabled. OAuth login is wired for Google, Microsoft, and Facebook when each provider has client configuration. Email MFA is still a future flow, but its config is validated before it can be enabled. If one of these auth features is enabled without the required settings, the API fails startup with a clear `DumpTether configuration is incomplete` exception listing the missing keys.
-
-Basic abuse guardrails are in place for the MVP:
-
-- Auth endpoints are rate limited.
-- Task write endpoints are rate limited.
-- A workspace is capped at 1,000 active tasks and 5,000 total tasks by default.
-
-These are safety defaults, not a billing model. Real paid/free plans can later move these limits into persisted workspace/account configuration.
-
-Register a user and default workspace:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/auth/register `
-  -H "Content-Type: application/json" `
-  -d "{\"email\":\"you@example.com\",\"password\":\"change-this-password\",\"displayName\":\"You\"}"
-```
-
-Login and copy the returned `sessionToken` for API testing:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/auth/login `
-  -H "Content-Type: application/json" `
-  -d "{\"email\":\"you@example.com\",\"password\":\"change-this-password\",\"deviceName\":\"local dev\"}"
-```
-
-Call authenticated endpoints with the opaque session token:
-
-```powershell
-curl.exe http://localhost:55868/api/auth/me `
-  -H "Authorization: Bearer {session-token}"
-```
-
-Logout revokes the current session:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/auth/logout `
-  -H "Authorization: Bearer {session-token}"
-```
-
-Create a task item:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/tasks `
-  -H "Content-Type: application/json" `
-  -d "{\"title\":\"Capture launch notes\"}"
-```
-
-List task items:
-
-```powershell
-curl.exe http://localhost:55868/api/tasks
-```
-
-Get one task item:
-
-```powershell
-curl.exe http://localhost:55868/api/tasks/{id}
-```
-
-Update a task item:
-
-```powershell
-curl.exe -X PATCH http://localhost:55868/api/tasks/{id} `
-  -H "Content-Type: application/json" `
-  -d "{\"title\":\"Capture launch notes v2\",\"status\":\"In Progress\",\"followUpAt\":\"2026-05-22T09:00:00Z\"}"
-```
-
-Add a timeline note:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/tasks/{id}/timeline `
-  -H "Content-Type: application/json" `
-  -d "{\"note\":\"Captured the source note.\"}"
-```
-
-Archive a task item:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/tasks/{id}/archive `
-  -H "Content-Type: application/json" `
-  -d "{\"archiveResolutionId\":\"{archive-resolution-id}\",\"note\":\"Finished and verified.\"}"
-```
-
-Reopen an archived task item:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/tasks/{id}/reopen `
-  -H "Content-Type: application/json" `
-  -d "{\"note\":\"Needs another pass.\"}"
-```
-
-List task templates:
-
-```powershell
-curl.exe http://localhost:55868/api/templates
-```
-
-Create a task template with custom fields:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/templates `
-  -H "Content-Type: application/json" `
-  -d "{\"name\":\"Research Note\",\"fields\":[{\"name\":\"Source\",\"type\":\"Text\",\"required\":true,\"sortOrder\":0,\"options\":[]},{\"name\":\"Confidence\",\"type\":\"Select\",\"required\":false,\"sortOrder\":1,\"options\":[\"Low\",\"Medium\",\"High\"]}]}"
-```
-
-Create a task from a template:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/tasks `
-  -H "Content-Type: application/json" `
-  -d "{\"title\":\"Check upgrade note\",\"taskTemplateId\":\"{template-id}\",\"fieldValues\":{\"{source-field-id}\":\"Release notes\",\"{confidence-field-id}\":\"High\"}}"
-```
-
-Update task field values:
-
-```powershell
-curl.exe -X PATCH http://localhost:55868/api/tasks/{id} `
-  -H "Content-Type: application/json" `
-  -d "{\"fieldValues\":{\"{confidence-field-id}\":\"Medium\"}}"
-```
-
-List saved views:
-
-```powershell
-curl.exe http://localhost:55868/api/views
-```
-
-Create a saved view for waiting tasks:
-
-```powershell
-curl.exe -X POST http://localhost:55868/api/views `
-  -H "Content-Type: application/json" `
-  -d "{\"name\":\"Waiting work\",\"filter\":{\"status\":\"Waiting\",\"archive\":\"Active\"},\"sort\":{\"field\":\"lastTouchedAt\",\"direction\":\"desc\"},\"sortOrder\":20}"
-```
-
-Use a saved view to query tasks:
-
-```powershell
-curl.exe "http://localhost:55868/api/tasks?viewId={view-id}"
-```
-
-Use equivalent task filters directly:
-
-```powershell
-curl.exe "http://localhost:55868/api/tasks?archive=Active&status=Waiting"
-curl.exe "http://localhost:55868/api/tasks?notViewedSinceDays=7"
-curl.exe "http://localhost:55868/api/tasks?notTouchedSinceDays=14"
-curl.exe "http://localhost:55868/api/tasks?followUp=Today"
-curl.exe "http://localhost:55868/api/tasks?text=upgrade&sort=followUpAt&direction=asc"
-```
-
-Open a task detail with `GET /api/tasks/{id}` to update `LastViewedAt`. This does not update `LastTouchedAt`; only meaningful edits, timeline entries, archive/reopen events, and field changes touch the task.
-
-Run the frontend:
+Then in another terminal:
 
 ```powershell
 cd apps/web
@@ -254,115 +123,178 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-Use `npm.cmd` from PowerShell if the `npm.ps1` shim is blocked by local execution policy.
+Open:
 
-### Docker
+```text
+http://localhost:5173
+```
 
-The API has a multi-stage Dockerfile at `src/DumpTether.Api/Dockerfile`. The container listens on port `8080` and does not require the .NET SDK on the server.
+API health:
 
-For local containerized API + PostgreSQL:
+```text
+http://localhost:55868/health
+```
+
+## Visual Studio
+
+Open `DumpTether.sln` in Visual Studio 2022.
+
+The API project has launch profiles:
+
+```text
+DumpTether.Api        API only
+DumpTether.Backend    PostgreSQL + migrations + API
+DumpTether.Web        Vite frontend only
+DumpTether.FullStack  PostgreSQL + migrations + API + Vite
+DumpTether.Database   PostgreSQL + migrations only
+```
+
+For backend debugging, use `DumpTether.Api` and start the web app separately.
+
+For a quick full stack run, use `DumpTether.FullStack`.
+
+The frontend lives in `apps/web`. Visual Studio is fine for the solution/backend; Vite is still the normal frontend dev server.
+
+## Configuration
+
+Two files matter most:
+
+- `appsettings*.json`: committed, non-secret defaults and app behavior.
+- `.env`: uncommitted runtime/secrets, especially Docker and production-like runs.
+
+Do not commit real secrets.
+
+Common local PostgreSQL defaults:
+
+```text
+Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password
+```
+
+Useful runtime settings:
+
+```text
+ConnectionStrings__DumpTether
+Auth__RequireAuthentication
+Auth__AllowGuestSessions
+Auth__EnableDevelopmentLogin
+Auth__SessionDays
+Auth__SessionCleanupDays
+Archive__RetentionDays
+EmailConfirmation__Enabled
+EmailConfirmation__PublicBaseUrl
+Email__FromEmail
+Email__BrevoApi__Enabled
+Email__BrevoApi__ApiKey
+OAuth__Google__Enabled
+OAuth__Microsoft__Enabled
+OAuth__Facebook__Enabled
+Usage__MaxActiveTasksPerWorkspace
+Usage__MaxTotalTasksPerWorkspace
+```
+
+The `scripts/dev.ps1` helper reads root `.env` values and maps `DUMPTETHER_*` variables to ASP.NET configuration keys. Visual Studio launch profiles do not automatically import `.env`, so use launch settings, user secrets or local environment variables for F5-only runs.
+
+## Docker And Production
+
+Local PostgreSQL only:
+
+```powershell
+docker compose up -d
+```
+
+Local API + PostgreSQL in Docker:
 
 ```powershell
 Copy-Item .env.example .env
 docker compose -f docker-compose.local.yml up --build
 ```
 
-`docker-compose.local.yml` exposes PostgreSQL on `localhost:5432` for developer tools and exposes the API on `http://localhost:55868`. It applies migrations on API startup for local convenience.
+Production example files:
 
-For local PostgreSQL only, keep using:
-
-```powershell
-docker compose up -d
+```text
+deploy/docker/docker-compose.prod.example.yml
+deploy/docker/.env.prod.example
+deploy/docker/Caddyfile.example
+docs/deployment/docker-compose-production.md
 ```
 
-For production, use `deploy/docker/docker-compose.prod.example.yml` as the canonical starting point and provide real values through an uncommitted `.env.prod` or host secret store:
+Production rules:
+
+- API runs as a Docker image.
+- PostgreSQL runs as a separate Docker service.
+- PostgreSQL uses a persistent Docker volume.
+- PostgreSQL should not publish port `5432` publicly.
+- Secrets live on the server, not in GitHub.
+- Caddy/nginx should terminate public HTTP/HTTPS.
+- Run migrations intentionally, not accidentally.
+
+Validate production compose shape:
 
 ```powershell
 docker compose --env-file deploy/docker/.env.prod.example -f deploy/docker/docker-compose.prod.example.yml config
 ```
 
-The production example includes PostgreSQL, the API, and a Caddy reverse proxy placeholder. It does not publish the PostgreSQL port. The API reaches PostgreSQL through the Docker network using `Host=postgres`. Keep `DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP=false` in normal production operation unless you intentionally run a controlled migration step.
+## Database
 
-See `docs/deployment/docker-compose-production.md` for image build, server `.env.prod`, logs, API restart, PostgreSQL backup, and future GHCR deployment notes.
+PostgreSQL is the server database.
 
-## Visual Studio
+The schema is mostly normalized relational data:
 
-Open `DumpTether.sln` in Visual Studio 2022.
+- users
+- sessions
+- workspaces
+- workspace memberships
+- projects/categories
+- task items
+- task shares
+- task templates
+- field definitions
+- field values
+- timeline/note entries
+- archive resolutions
 
-The repository includes `.vsconfig`, so Visual Studio can prompt for the required ASP.NET, Node.js, and Docker tooling workloads if they are missing.
+Flexible pieces such as template layout and field values use JSON where it keeps the product adaptable.
 
-The `DumpTether.Api` project includes several launch profiles in the debug target dropdown next to the Start button:
+Inspect local PostgreSQL with pgAdmin:
 
 ```text
-DumpTether.Api        Debug the API only. Uses the local PostgreSQL connection string.
-DumpTether.Backend    Start PostgreSQL, apply migrations, then run the API from PowerShell.
-DumpTether.Web        Run the Vite frontend only. Use this when the API is already running.
-DumpTether.FullStack  Start PostgreSQL, apply migrations, run API + Vite, then open the web UI.
-DumpTether.Database   Start PostgreSQL and apply migrations only.
+Host: localhost
+Port: 5432
+Database: dumptether
+Username: dumptether
+Password: dumptether_dev_password
 ```
 
-For API debugging from Visual Studio:
-
-1. Start Docker Desktop.
-2. Run `.\scripts\dev.ps1 -Target Migrate` once to start PostgreSQL and apply migrations.
-3. Set `DumpTether.Api` as the startup project and choose the `DumpTether.Api` launch profile.
-4. Press F5.
-
-The API opens at `http://localhost:55868/health`.
-
-For the easiest full-stack run from Visual Studio:
-
-1. Set `DumpTether.Api` as the startup project.
-2. Choose the `DumpTether.FullStack` launch profile.
-3. Press Ctrl+F5 or F5.
-
-That profile opens separate PowerShell windows for the API and Vite frontend and opens `http://127.0.0.1:5173`. The script waits for the API health endpoint before starting Vite so the frontend proxy does not race the backend startup. It is a run helper, not an API debugger attach. For backend breakpoints, use `DumpTether.Api` and start the frontend separately with `DumpTether.Web` or `.\scripts\dev.ps1 -Target Web -OpenBrowser`.
-
-Visual Studio's true "Multiple startup projects" selection is stored in local `.vs`/`.suo` state, so it is not a good repo setting to commit. The committed launch profiles above are the portable version.
-
-To run the full local stack from a terminal:
+Clear only task/note/share data from the local dev database:
 
 ```powershell
-.\scripts\dev.ps1 -Target Both -OpenBrowser
+docker exec -i dumptether-postgres psql -U dumptether -d dumptether -c "TRUNCATE TABLE task_timeline_entry_field_values, task_timeline_entries, field_values, task_item_shares, task_items RESTART IDENTITY CASCADE;"
 ```
 
-This starts PostgreSQL, applies migrations, and opens separate API and web dev server windows.
+This keeps users, sessions, boards, categories, templates and settings.
 
-### Docker Desktop Troubleshooting
+## Security Notes
 
-If Docker Desktop says virtualization support was not detected:
+Current security posture:
 
-1. Enable these Windows features from an elevated terminal:
+- Passwords are hashed.
+- Session tokens are random and stored hashed.
+- Workspace/task access is scoped server-side.
+- Backend authorization is authoritative.
+- Auth/task write endpoints have rate limiting.
+- Production PostgreSQL should stay private to the Docker network.
+- Real secrets are ignored and must not be committed.
 
-   ```powershell
-   dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
-   dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
-   ```
+Before a real public MVP:
 
-2. Restart Windows. The `/norestart` flag means the feature changes are not fully active yet.
-3. If Docker still reports missing virtualization, enable CPU virtualization in BIOS/UEFI, usually called Intel VT-x, Intel Virtualization Technology, AMD-V, or SVM.
-4. Start Docker Desktop and verify:
+- Re-check CORS allowed origins.
+- Rotate any secrets that were ever pasted into chat, logs or files.
+- Confirm production cookies/session settings.
+- Confirm HTTPS at the reverse proxy.
+- Review auth error logging so it helps debugging without leaking tokens.
+- Harden sharing and live update authorization paths.
 
-   ```powershell
-   wsl --status
-   docker info
-   ```
-
-## First GitHub Push
-
-This folder is configured for `https://github.com/bheldbo/DumpTether.git` as the `origin` remote.
-
-After reviewing the files:
-
-```powershell
-git add .
-git commit -m "Initial DumpTether monorepo"
-git push -u origin main
-```
-
-Open pull requests against `main`. Pull requests use the template in `.github/pull_request_template.md` and run backend, frontend, and CodeQL workflows.
-
-## Verification
+## Testing
 
 Backend:
 
@@ -381,93 +313,79 @@ npm.cmd run typecheck
 npm.cmd run build
 ```
 
-Docker Compose validation:
+Docker compose:
 
 ```powershell
 docker compose config
 ```
 
-## Configuration
+## Git And CI Flow
 
-Configuration is split into deployment/runtime configuration, user/workspace configuration, and integration configuration. Real secrets must not be committed to source control.
-
-Useful local/runtime environment variables:
-
-- `ConnectionStrings__DumpTether`: PostgreSQL connection string.
-- `Auth__RequireAuthentication`: requires a session for the app.
-- `Auth__AllowGuestSessions`: allows temporary browser-tab sessions.
-- `Auth__EnableDevelopmentLogin`: local-only dev login button.
-- `Auth__SessionDays`: how long a normal session lasts; default is `30`.
-- `Auth__SessionCleanupDays`: how old expired/revoked sessions must be before deletion; default is `90`.
-- `Auth__SessionCleanupIntervalHours`: periodic server cleanup interval; default is `24`.
-- `Archive__RetentionDays`: planned archive retention window before permanent cleanup; default is `30`.
-- `EmailConfirmation__Enabled`: requires newly registered email/password users to confirm their email before login.
-- `EmailConfirmation__PublicBaseUrl`: public API base URL used to build confirmation links.
-- `Email__FromEmail`: sender address for transactional email.
-- `Email__Smtp__Enabled`: enables SMTP config validation.
-- `Email__Smtp__Host`: SMTP host, for Brevo usually `smtp-relay.brevo.com`.
-- `Email__Smtp__Port`: SMTP port, usually `587`.
-- `Email__Smtp__Username`: SMTP login, store only in `.env` or server secrets.
-- `Email__Smtp__Password`: SMTP password, store only in `.env` or server secrets.
-- `Email__BrevoApi__Enabled` and `Email__BrevoApi__ApiKey`: Brevo transactional email API mode.
-- `Mfa__Email__Enabled`: future email MFA for suspicious logins.
-- `OAuth__Google__Enabled`, `OAuth__Microsoft__Enabled`, `OAuth__Facebook__Enabled`: OAuth providers.
-- `OAuth__Google__ClientId`, `OAuth__Google__ClientSecret`, `OAuth__Microsoft__ClientId`, `OAuth__Microsoft__ClientSecret`, `OAuth__Facebook__ClientId`, `OAuth__Facebook__ClientSecret`: OAuth secrets.
-
-If you paste or commit an SMTP/API password by accident, rotate it in the provider dashboard before using it again.
-
-### Brevo Email Confirmation
-
-For Brevo API mode, you do not need the SMTP login/password. Set the API values in your uncommitted `.env`:
-
-```powershell
-DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true
-DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL=http://localhost:55868
-DUMPTETHER_EMAIL_FROM=your-verified-sender@example.com
-DUMPTETHER_EMAIL_BREVO_API_ENABLED=true
-DUMPTETHER_EMAIL_BREVO_API_KEY=your-rotated-brevo-api-key
-```
-
-`DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true` means DumpTether will require confirmation before email/password login. `DUMPTETHER_EMAIL_BREVO_API_ENABLED=true` means the email sender is Brevo's transactional API. They are separate on purpose so the same sender can later be used for password reset or email MFA without forcing every environment to require email confirmation.
-
-The sender address in `DUMPTETHER_EMAIL_FROM` must be verified/allowed in Brevo. The confirmation link is built from `DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL`, so local development usually points at the API, for example `http://localhost:55868`.
-
-Restart the API, then test the provider directly in local development:
-
-```powershell
-curl.exe -X POST "http://localhost:55868/api/auth/test-email" -H "Content-Type: application/json" --data-raw '{ "email": "you@example.com" }'
-```
-
-The test email subject is `DumpTether email test` and the body says the Brevo API configuration can send email. The real registration email subject is `Confirm your DumpTether email`; it contains a confirmation link and a note that the link expires.
-
-Then test the real confirmation flow by registering a new account. The email link opens `/api/auth/confirm-email?token=...`, marks the user confirmed, and invalidates the token.
-
-Root `.env` files are read by Docker Compose through `env_file`. Visual Studio launch profiles do not automatically import the root `.env`; for local F5 testing, use environment variables, user secrets, or an ignored `appsettings.Local.json`. Keep real API keys and SMTP passwords out of committed `appsettings*.json` files.
-
-Forgot password is not implemented yet. It should use the same Brevo sender with a separate password-reset token table and one-time, expiring links.
-
-### OAuth Setup
-
-OAuth is available only for providers explicitly enabled in runtime config. Register these redirect URIs with the providers:
+Preferred flow:
 
 ```text
-http://localhost:55868/api/auth/oauth/google/callback
-http://localhost:55868/api/auth/oauth/microsoft/callback
-http://localhost:55868/api/auth/oauth/facebook/callback
+branch -> pull request -> checks -> squash merge to main
 ```
 
-Production should use the same paths on the production API origin. Example local config:
+Branch names should be feature/issue shaped. Codex-created branches normally use `codex/`.
 
-```powershell
-DUMPTETHER_OAUTH_GOOGLE_ENABLED=true
-DUMPTETHER_OAUTH_GOOGLE_CLIENT_ID=...
-DUMPTETHER_OAUTH_GOOGLE_CLIENT_SECRET=...
-DUMPTETHER_OAUTH_MICROSOFT_ENABLED=true
-DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID=...
-DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET=...
-DUMPTETHER_OAUTH_FACEBOOK_ENABLED=true
-DUMPTETHER_OAUTH_FACEBOOK_CLIENT_ID=...
-DUMPTETHER_OAUTH_FACEBOOK_CLIENT_SECRET=...
-```
+Pull requests should include:
 
-OAuth-created users are treated as email-confirmed because the external provider is the login proof for that route.
+- summary
+- what changed
+- tests run
+- risks
+- follow-up work
+
+CI currently covers backend restore/build/test, frontend lint/typecheck/build, CodeQL and Docker build validation where configured.
+
+Release direction:
+
+1. Merge to `main`.
+2. Tag a release when the MVP state is worth preserving.
+3. Build/publish API image.
+4. Server pulls the new image.
+5. Run migrations intentionally.
+6. Restart API with Docker Compose.
+
+Automatic deployment is intentionally not wired yet.
+
+## AI Disclosure
+
+This repository is being developed with AI coding assistance. DumpTether itself does not currently include AI features in the MVP product.
+
+If AI summaries, daily digests or MCP integrations are added later, they should be explicit opt-in features with clear privacy boundaries.
+
+## FAQ
+
+### Why does Vite say `ECONNREFUSED` for `/api/...`?
+
+Vite is running, but the ASP.NET API is not running or not reachable at the configured proxy target. Start the API with Visual Studio, `dotnet run`, or `.\scripts\dev.ps1 -Target Both`.
+
+### Do I use `appsettings` or `.env`?
+
+Use `appsettings` for committed non-secret defaults. Use `.env`, environment variables, user secrets or server secrets for local/prod secrets and runtime overrides.
+
+### Can I inspect the database with pgAdmin?
+
+Yes. Use `localhost:5432`, database `dumptether`, user `dumptether`, password `dumptether_dev_password` for the local Docker Compose database.
+
+### Why not JSON files as the main offline save format?
+
+The planned desktop/local app should use SQLite for live local state. JSON is better for small config and export/import bundles.
+
+### Does the desktop app duplicate the web app?
+
+No. The intended design is one React UI and one C# domain/application/API shape. Website uses hosted ASP.NET Core + PostgreSQL. Desktop uses local ASP.NET Core sidecar + SQLite.
+
+### Can I run without an account?
+
+Guest sessions exist for trying the app, but the UI warns that you should register/login to keep data.
+
+### Is sharing available offline?
+
+No. Shared boards/tasks are online concepts. Future desktop sync should show local tasks offline and sync/share when logged in and connected.
+
+### Where should longer docs live?
+
+Versioned technical docs should stay in `docs/` so they travel with the code. A GitHub Wiki can later mirror user-facing guides, but the repo docs should remain the source of truth.

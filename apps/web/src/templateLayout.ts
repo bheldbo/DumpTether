@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import type { TaskTemplateLayoutRow as TemplateLayoutConfigRow } from './types';
 
 export const FIELD_LAYOUT_MAX_COLUMNS = 6;
 const FIELD_LAYOUT_MAX_ROWS = 24;
@@ -27,6 +28,7 @@ export type NormalizedFieldLayout<T extends FieldLayoutShape> = T & {
 export interface TemplateLayoutRow<T extends FieldLayoutShape> {
   columnCount: number;
   fields: NormalizedFieldLayout<T>[];
+  height: number;
   row: number;
   style: CSSProperties;
   weights: number[];
@@ -114,15 +116,27 @@ export function normalizeTemplateLayoutFields<T extends FieldLayoutShape>(
 
 export function getTemplateLayoutRows<T extends FieldLayoutShape>(
   fields: T[],
+  layoutRows: TemplateLayoutConfigRow[] = [],
 ): TemplateLayoutRow<T>[] {
   const normalizedFields = normalizeTemplateLayoutFields(fields);
+  const layoutRowsByNumber = new Map(
+    layoutRows
+      .map((row) => ({
+        ...row,
+        row: cleanInteger(row.row, 1, FIELD_LAYOUT_MAX_ROWS),
+      }))
+      .filter((row) => row.row >= 1)
+      .map((row) => [row.row, row]),
+  );
   const rowCount = Math.max(
     1,
     ...normalizedFields.map((field) => field.layoutRow),
+    ...layoutRowsByNumber.keys(),
   );
 
   return Array.from({ length: rowCount }, (_, rowIndex) => {
     const row = rowIndex + 1;
+    const layoutRow = layoutRowsByNumber.get(row);
     const rowFields = normalizedFields
       .filter((field) => field.layoutRow === row)
       .sort((first, second) =>
@@ -130,6 +144,7 @@ export function getTemplateLayoutRows<T extends FieldLayoutShape>(
         (first.sortOrder ?? 0) - (second.sortOrder ?? 0));
     const columnCount = Math.max(
       1,
+      layoutRow?.columnWeights.length ?? 0,
       ...rowFields.map((field) => field.layoutColumn + field.layoutColumnSpan - 1),
     );
     const weights = Array.from({ length: columnCount }, (_, columnIndex) => {
@@ -137,16 +152,23 @@ export function getTemplateLayoutRows<T extends FieldLayoutShape>(
         (candidate) => candidate.layoutColumn === columnIndex + 1,
       );
 
-      return cleanWeight(field?.layoutWeight);
+      return cleanWeight(layoutRow?.columnWeights[columnIndex] ?? field?.layoutWeight);
     });
+    const height = cleanRowHeight(
+      layoutRow?.height,
+      rowFields.some((field) => field.type === 'LongText') ? 190 : 132,
+    );
 
     return {
       columnCount,
       fields: rowFields,
+      height,
       row,
       style: {
         '--template-layout-columns': columnCount,
+        '--template-layout-row-height': `${Math.round(height)}px`,
         gridTemplateColumns: weights.map((weight) => `${weight}fr`).join(' '),
+        minHeight: `var(--template-layout-row-height)`,
       } as CSSProperties,
       weights,
     };
@@ -241,4 +263,12 @@ function cleanWeight(value: number | null | undefined) {
   }
 
   return Math.min(12, Math.max(0.1, value!));
+}
+
+function cleanRowHeight(value: number | null | undefined, fallback: number) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(420, Math.max(72, value!));
 }

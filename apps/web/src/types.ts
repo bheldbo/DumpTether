@@ -359,7 +359,19 @@ export interface TaskTemplateDetailResponse {
   name: string;
   createdAt: string;
   updatedAt: string;
+  layout: TaskTemplateLayoutResponse;
   fields: FieldDefinitionResponse[];
+}
+
+export interface TaskTemplateLayoutResponse {
+  header: TaskTemplateLayoutRow[];
+  entry: TaskTemplateLayoutRow[];
+}
+
+export interface TaskTemplateLayoutRow {
+  row: number;
+  columnWeights: number[];
+  height: number;
 }
 
 export interface FieldDefinitionResponse {
@@ -396,11 +408,13 @@ export interface UpsertFieldDefinitionRequest {
 export interface CreateTaskTemplateRequest {
   name: string;
   fields: UpsertFieldDefinitionRequest[];
+  layout?: TaskTemplateLayoutResponse | null;
 }
 
 export interface UpdateTaskTemplateRequest {
   name?: string;
   fields?: UpsertFieldDefinitionRequest[];
+  layout?: TaskTemplateLayoutResponse | null;
 }
 
 export type FieldValuePrimitive = string | boolean | null;

@@ -93,6 +93,27 @@ Never commit real secrets.
 - Prefer simple list/table/detail views before kanban.
 - The task detail page must support structured fields and compact note history.
 
+## Frontend architecture rules
+
+- Treat `apps/web/src/App.tsx` as app composition and cross-feature orchestration. Do not add large feature UI directly to it.
+- Put feature-owned UI in `apps/web/src/features/<feature>/`.
+- Put reusable primitives in `apps/web/src/components/`.
+- Keep API access in `apps/web/src/api.ts`; feature components should receive data and callbacks through props.
+- Keep shared formatting, filtering, layout and field logic in narrow utility modules instead of duplicating it inside components.
+- Keep localization strings in the localization module; do not hardcode user-facing English or Danish inside feature components.
+- Prefer typed DTOs from `apps/web/src/types.ts` over feature-local response shapes.
+- Use toasts for recoverable user-facing errors. Use blocking page errors only when the page cannot function.
+- Backend authorization and validation are authoritative. Frontend checks are only for a smoother user experience.
+- Responsive work must be checked across desktop, tablet and phone widths when the affected UI is visible there.
+
+When adding a feature:
+
+1. Add backend/domain/app/data behavior and tests when the feature changes business behavior.
+2. Add or update API DTOs and client API functions before wiring UI.
+3. Add the UI as a feature module, with small reusable components extracted when they cross feature boundaries.
+4. Add localization keys for visible text.
+5. Run the backend and frontend checks listed below, or explain why a check could not run.
+
 ## Database rules
 
 - Use PostgreSQL.

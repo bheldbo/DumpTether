@@ -23,11 +23,13 @@ import type {
   FieldValuePrimitive,
   TaskItemDetailResponse,
   TaskTemplateDetailResponse,
+  TaskTemplateLayoutRow,
 } from '../../types';
 import { formatDateTime } from '../../appUtils';
 
 export function TimelinePanel({
   entryFields,
+  entryLayoutRows,
   onAddTimelineEntry,
   onQueueDeleteTimelineEntry,
   onUndoDeleteTimelineEntry,
@@ -37,6 +39,7 @@ export function TimelinePanel({
   timelineEntries,
 }: {
   entryFields: TaskTemplateDetailResponse['fields'];
+  entryLayoutRows?: TaskTemplateLayoutRow[];
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   onQueueDeleteTimelineEntry: (entryId: string) => void;
   onUndoDeleteTimelineEntry: (entryId: string) => void;
@@ -60,6 +63,7 @@ export function TimelinePanel({
 
       <AddTimelineEntryForm
         entryFields={entryFields}
+        entryLayoutRows={entryLayoutRows ?? []}
         onAddTimelineEntry={onAddTimelineEntry}
         t={t}
       />
@@ -70,6 +74,7 @@ export function TimelinePanel({
           <NoteEntry
             entry={entry}
             entryFields={entryFields}
+            entryLayoutRows={entryLayoutRows ?? []}
             isPendingDelete={pendingDeletedNoteIds.includes(entry.id)}
             key={entry.id}
             onQueueDeleteTimelineEntry={onQueueDeleteTimelineEntry}
@@ -86,6 +91,7 @@ export function TimelinePanel({
 function NoteEntry({
   entry,
   entryFields,
+  entryLayoutRows,
   isPendingDelete,
   onQueueDeleteTimelineEntry,
   onUndoDeleteTimelineEntry,
@@ -94,6 +100,7 @@ function NoteEntry({
 }: {
   entry: TaskItemDetailResponse['timelineEntries'][number];
   entryFields: TaskTemplateDetailResponse['fields'];
+  entryLayoutRows: TaskTemplateLayoutRow[];
   isPendingDelete: boolean;
   onQueueDeleteTimelineEntry: (entryId: string) => void;
   onUndoDeleteTimelineEntry: (entryId: string) => void;
@@ -152,6 +159,7 @@ function NoteEntry({
         <InlineEntryFieldRow
           entry={entry}
           fields={entryFields}
+          layoutRows={entryLayoutRows}
           onSavingChange={setEntryFieldsAreSaving}
           onUpdateTimelineEntry={onUpdateTimelineEntry}
         />
@@ -251,11 +259,13 @@ function NoteEntry({
 function InlineEntryFieldRow({
   entry,
   fields,
+  layoutRows,
   onSavingChange,
   onUpdateTimelineEntry,
 }: {
   entry: TaskItemDetailResponse['timelineEntries'][number];
   fields: FieldDefinitionResponse[];
+  layoutRows: TaskTemplateLayoutRow[];
   onSavingChange: (isSaving: boolean) => void;
   onUpdateTimelineEntry: (
     entryId: string,
@@ -356,6 +366,7 @@ function InlineEntryFieldRow({
     >
       <EntryFieldEditorRow
         fields={fields}
+        layoutRows={layoutRows}
         onChange={updateField}
         values={fieldDraft}
       />
@@ -365,18 +376,20 @@ function InlineEntryFieldRow({
 
 function EntryFieldEditorRow({
   fields,
+  layoutRows,
   onChange,
   values,
 }: {
   fields: FieldDefinitionResponse[];
+  layoutRows: TaskTemplateLayoutRow[];
   onChange: (field: FieldDefinitionResponse, value: FieldValuePrimitive) => void;
   values: FieldValueMap;
 }) {
-  const layoutRows = getTemplateLayoutRows(fields);
+  const renderedLayoutRows = getTemplateLayoutRows(fields, layoutRows);
 
   return (
     <div className="entry-field-editor-layout">
-      {layoutRows.map((row) => (
+      {renderedLayoutRows.map((row) => (
         <div className="entry-field-editor-row" key={row.row} style={row.style}>
           {row.fields.map((field) => (
             <label
@@ -478,10 +491,12 @@ function EntryFieldControl({
 
 function AddTimelineEntryForm({
   entryFields,
+  entryLayoutRows,
   onAddTimelineEntry,
   t,
 }: {
   entryFields: TaskTemplateDetailResponse['fields'];
+  entryLayoutRows: TaskTemplateLayoutRow[];
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   t: Translate;
 }) {
@@ -519,6 +534,7 @@ function AddTimelineEntryForm({
       {hasEntryFields ? (
         <EntryFieldEditorRow
           fields={entryFields}
+          layoutRows={entryLayoutRows}
           onChange={(field, value) =>
             setFieldValues((currentValues) => ({
               ...currentValues,

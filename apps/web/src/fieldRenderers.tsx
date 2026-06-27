@@ -3,6 +3,7 @@ import type {
   FieldValueMap,
   FieldValuePrimitive,
   FieldValueResponse,
+  TaskTemplateLayoutRow,
 } from './types';
 import { toFieldValueMap } from './fieldValues';
 import {
@@ -13,17 +14,19 @@ import {
 interface FieldValueListProps {
   fields: FieldDefinitionResponse[];
   fieldValues: FieldValueResponse[];
+  layoutRows?: TaskTemplateLayoutRow[];
 }
 
 interface FieldEditorListProps {
   fields: FieldDefinitionResponse[];
+  layoutRows?: TaskTemplateLayoutRow[];
   values: FieldValueMap;
   onChange: (fieldId: string, value: FieldValuePrimitive) => void;
 }
 
-export function FieldValueList({ fields, fieldValues }: FieldValueListProps) {
+export function FieldValueList({ fields, fieldValues, layoutRows: storedLayoutRows = [] }: FieldValueListProps) {
   const valueMap = toFieldValueMap(fieldValues);
-  const layoutRows = getTemplateLayoutRows(fields);
+  const layoutRows = getTemplateLayoutRows(fields, storedLayoutRows);
 
   if (fields.length === 0) {
     return (
@@ -57,12 +60,17 @@ export function FieldValueList({ fields, fieldValues }: FieldValueListProps) {
   );
 }
 
-export function FieldEditorList({ fields, values, onChange }: FieldEditorListProps) {
+export function FieldEditorList({
+  fields,
+  layoutRows: storedLayoutRows = [],
+  values,
+  onChange,
+}: FieldEditorListProps) {
   if (fields.length === 0) {
     return <p className="empty-copy">This template has no custom fields.</p>;
   }
 
-  const layoutRows = getTemplateLayoutRows(fields);
+  const layoutRows = getTemplateLayoutRows(fields, storedLayoutRows);
 
   return (
     <div className="field-editor-list">
@@ -209,6 +217,10 @@ function FieldValue({
 
   if (field.type === 'Date' && typeof value === 'string') {
     return <span>{value}</span>;
+  }
+
+  if (field.type === 'LongText') {
+    return <span className="field-long-text">{String(value)}</span>;
   }
 
   return <span>{String(value)}</span>;
