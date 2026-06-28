@@ -327,41 +327,45 @@ export function copyTaskItems(
 export function updateTaskItem(
   id: string,
   requestBody: UpdateTaskItemRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function addTaskTimelineEntry(
   id: string,
   requestBody: AddTaskTimelineEntryRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/timeline`, {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function archiveTaskItem(
   id: string,
   requestBody: ArchiveTaskItemRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/archive`, {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function reopenTaskItem(
   id: string,
   requestBody: ReopenTaskItemRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/reopen`, {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function reopenTaskItems(
@@ -600,6 +604,7 @@ export function updateTaskTimelineEntry(
   taskItemId: string,
   entryId: string,
   requestBody: UpdateTaskTimelineEntryRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(
     `/api/tasks/${taskItemId}/timeline/${entryId}`,
@@ -607,18 +612,21 @@ export function updateTaskTimelineEntry(
       method: 'PATCH',
       body: JSON.stringify(requestBody),
     },
+    options,
   );
 }
 
 export function deleteTaskTimelineEntry(
   taskItemId: string,
   entryId: string,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(
     `/api/tasks/${taskItemId}/timeline/${entryId}`,
     {
       method: 'DELETE',
     },
+    options,
   );
 }
 
@@ -639,11 +647,12 @@ export function createTaskShare(
 export function createTaskShareLink(
   id: string,
   requestBody: CreateTaskShareRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskShareLinkResponse> {
   return request<TaskShareLinkResponse>(`/api/tasks/${id}/share-links`, {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function createTaskShareLinks(
@@ -658,21 +667,23 @@ export function createTaskShareLinks(
 export function revokeTaskShare(
   id: string,
   shareId: string,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/shares/${shareId}`, {
     method: 'DELETE',
-  });
+  }, options);
 }
 
 export function updateTaskShareRole(
   id: string,
   shareId: string,
   requestBody: UpdateTaskShareRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/shares/${shareId}`, {
     method: 'PATCH',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function listIncomingTaskShares(): Promise<TaskShareInboxResponse[]> {

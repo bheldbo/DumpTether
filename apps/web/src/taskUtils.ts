@@ -210,21 +210,25 @@ export function getTaskCardStyle(color: string | null) {
   } as CSSProperties;
 }
 
-export function getWorkspaceHeaderStyle(
-  workspaceColor: string | null,
-  projectColor: string | null,
-) {
+export function getWorkspaceHeaderStyle(workspaceColor: string | null) {
   const baseColor = workspaceColor && isHexColor(workspaceColor)
     ? workspaceColor
     : '#E8F3F0';
-  const accentColor = projectColor && isHexColor(projectColor)
-    ? projectColor
-    : baseColor;
+  const textColor = getReadableTextColor(baseColor);
 
   return {
     '--workspace-color': baseColor,
-    '--project-color': accentColor,
-    '--workspace-text': getReadableTextColor(baseColor),
+    '--workspace-text': textColor,
+    '--workspace-muted-text':
+      textColor === '#FFFFFF' ? 'rgba(255, 255, 255, 0.78)' : 'rgba(24, 33, 44, 0.7)',
+    '--workspace-chip-bg':
+      textColor === '#FFFFFF' ? 'rgba(255, 255, 255, 0.18)' : 'rgba(255, 255, 255, 0.62)',
+    '--workspace-chip-border':
+      textColor === '#FFFFFF' ? 'rgba(255, 255, 255, 0.28)' : 'rgba(24, 33, 44, 0.12)',
+    '--workspace-chip-glow':
+      textColor === '#FFFFFF'
+        ? `0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 22px rgba(255, 255, 255, 0.1)`
+        : `0 0 0 1px rgba(255, 255, 255, 0.42), 0 8px 22px color-mix(in srgb, ${baseColor} 34%, transparent)`,
   } as CSSProperties;
 }
 
@@ -247,6 +251,9 @@ export function getContextChipStyle(color: string | null) {
   return {
     '--context-chip-color': color,
     '--context-chip-text': getReadableTextColor(color),
+    '--context-chip-border': `color-mix(in srgb, ${color} 58%, rgba(24, 33, 44, 0.18))`,
+    '--context-chip-glow': `0 0 0 1px rgba(255, 255, 255, 0.26), 0 8px 18px color-mix(in srgb, ${color} 34%, transparent)`,
+    '--context-chip-lucent-bg': `color-mix(in srgb, ${color} 72%, rgba(255, 255, 255, 0.5))`,
   } as CSSProperties;
 }
 

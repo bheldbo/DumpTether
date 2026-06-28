@@ -184,7 +184,7 @@ export function WorkspaceHeader({
     <>
       <div
         className="workspace-header"
-        style={getWorkspaceHeaderStyle(workspace?.color ?? null, null)}
+        style={getWorkspaceHeaderStyle(workspace?.color ?? null)}
       >
         <div className="workspace-title-block">
           <div className="workspace-title-row">

@@ -465,14 +465,16 @@ function EntryFieldControl({
       );
     case 'LongText':
       return (
-        <textarea
-          aria-label={label}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={label}
-          required={field.required}
-          rows={2}
-          value={typeof value === 'string' ? value : ''}
-        />
+        <span className="entry-long-text-control">
+          <textarea
+            aria-label={label}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder={label}
+            required={field.required}
+            rows={3}
+            value={typeof value === 'string' ? value : ''}
+          />
+        </span>
       );
     case 'Text':
     default:
