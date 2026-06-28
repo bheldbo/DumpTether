@@ -58,6 +58,7 @@ POSTGRES_DB=dumptether
 POSTGRES_USER=dumptether
 POSTGRES_PASSWORD=<long random secret>
 DUMPTETHER_API_IMAGE=<registry>/<image>:<tag>
+DUMPTETHER_DATABASE_PROVIDER=Postgres
 DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP=false
 DUMPTETHER_REQUIRE_AUTHENTICATION=true
 DUMPTETHER_ALLOW_GUEST_SESSIONS=true
@@ -69,6 +70,8 @@ DUMPTETHER_DOMAIN=dumptether.example.com
 ```
 
 Production secrets are never committed. Real production files stay on the server or in a deployment secret store.
+
+Production compose is intended to use PostgreSQL. SQLite mode is for the local/offline runtime and future desktop app, not the hosted server.
 
 ## CORS and Origins
 

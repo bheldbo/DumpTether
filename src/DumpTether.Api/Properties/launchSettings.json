@@ -29,6 +29,35 @@
       },
       "applicationUrl": "http://localhost:55868"
     },
+    "DumpTether.Api.Local": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "launchUrl": "health",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Database__Provider": "Sqlite",
+        "Database__ApplyMigrationsOnStartup": "true",
+        "Auth__RequireAuthentication": "true",
+        "Auth__AllowGuestSessions": "true",
+        "Auth__EnableDevelopmentLogin": "true",
+        "Auth__DevelopmentEmail": "local@dumptether.local",
+        "Auth__DevelopmentPassword": "dumptether-local-password",
+        "Auth__DevelopmentDisplayName": "Local User",
+        "Auth__SessionDays": "30",
+        "Auth__SessionCleanupDays": "90",
+        "Auth__SessionCleanupIntervalHours": "24",
+        "Archive__RetentionDays": "30",
+        "EmailConfirmation__Enabled": "false",
+        "EmailConfirmation__PublicBaseUrl": "http://localhost:55868",
+        "Email__Smtp__Enabled": "false",
+        "Email__BrevoApi__Enabled": "false",
+        "Mfa__Email__Enabled": "false",
+        "OAuth__Google__Enabled": "false",
+        "OAuth__Microsoft__Enabled": "false",
+        "OAuth__Facebook__Enabled": "false"
+      },
+      "applicationUrl": "http://localhost:55868"
+    },
     "DumpTether.Backend": {
       "commandName": "Executable",
       "executablePath": "powershell.exe",
@@ -47,6 +76,13 @@
       "commandName": "Executable",
       "executablePath": "powershell.exe",
       "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\dev.ps1\" -Target Both -OpenBrowser",
+      "workingDirectory": "$(ProjectDir)",
+      "launchBrowser": false
+    },
+    "DumpTether.LocalFullStack": {
+      "commandName": "Executable",
+      "executablePath": "powershell.exe",
+      "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\dev.ps1\" -Target LocalBoth -OpenBrowser",
       "workingDirectory": "$(ProjectDir)",
       "launchBrowser": false
     },

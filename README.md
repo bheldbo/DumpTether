@@ -4,7 +4,7 @@ DumpTether is a plain personal task wall for messy work notes.
 
 Everything is a task. A task can be a TODO, a note, a follow-up, a tiny case file, or a sticky reminder. Templates add structure when you need it; colors, categories, follow-up dates, statuses and filters help you find things again without turning the app into Jira.
 
-The current MVP is a web app backed by ASP.NET Core and PostgreSQL. The planned local app should reuse the same React UI and C# domain/application logic, with a local ASP.NET Core sidecar and SQLite for offline state.
+The current MVP is a web app backed by ASP.NET Core and PostgreSQL. The same API can also run locally against SQLite as the first step toward the desktop/offline app. The planned desktop shell should reuse the same React UI and C# domain/application logic.
 
 ## What It Does Today
 
@@ -23,6 +23,7 @@ The current MVP is a web app backed by ASP.NET Core and PostgreSQL. The planned 
 - Use Owner, Member and Read-only/Guest-style access.
 - Use English or Danish UI text.
 - Run locally with Docker PostgreSQL, ASP.NET Core and Vite.
+- Run the API in local SQLite mode as an offline foundation.
 - Run the API in Docker for server deployment.
 
 ## Product Direction
@@ -62,10 +63,11 @@ DumpTether is a modular monolith.
 
 ```text
 apps/web/                 React + TypeScript + Vite frontend
+apps/desktop/             Future Tauri shell for the shared UI
 src/DumpTether.Api/       ASP.NET Core HTTP API
 src/DumpTether.App/       Application services and use cases
 src/DumpTether.Domain/    Domain model and business rules
-src/DumpTether.Data/      EF Core + PostgreSQL persistence
+src/DumpTether.Data/      EF Core persistence with PostgreSQL/SQLite provider selection
 docs/                     ADRs, security notes, deployment notes
 deploy/docker/            Production Docker Compose examples
 ```
@@ -98,7 +100,7 @@ Prerequisites:
 - Docker Desktop or Docker Engine with Compose
 - Git
 
-Fast path:
+Fast web/server path:
 
 ```powershell
 dotnet tool restore
@@ -106,6 +108,14 @@ dotnet tool restore
 ```
 
 That starts PostgreSQL, applies EF migrations, runs the API and starts Vite.
+
+Local SQLite path:
+
+```powershell
+.\scripts\dev.ps1 -Target LocalBoth -OpenBrowser
+```
+
+That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation, not full cloud sync yet.
 
 Manual path:
 
@@ -143,15 +153,19 @@ The API project has launch profiles:
 
 ```text
 DumpTether.Api        API only
+DumpTether.Api.Local  API only with local SQLite
 DumpTether.Backend    PostgreSQL + migrations + API
 DumpTether.Web        Vite frontend only
 DumpTether.FullStack  PostgreSQL + migrations + API + Vite
+DumpTether.LocalFullStack  local SQLite API + Vite
 DumpTether.Database   PostgreSQL + migrations only
 ```
 
 For backend debugging, use `DumpTether.Api` and start the web app separately.
 
 For a quick full stack run, use `DumpTether.FullStack`.
+
+For a quick offline-style run without Docker/PostgreSQL, use `DumpTether.LocalFullStack`.
 
 The frontend lives in `apps/web`. Visual Studio is fine for the solution/backend; Vite is still the normal frontend dev server.
 
@@ -174,6 +188,8 @@ Useful runtime settings:
 
 ```text
 ConnectionStrings__DumpTether
+Database__Provider
+Database__Sqlite__Path
 Auth__RequireAuthentication
 Auth__AllowGuestSessions
 Auth__EnableDevelopmentLogin
@@ -196,6 +212,8 @@ Usage__MaxTotalTasksPerWorkspace
 The `scripts/dev.ps1` helper reads root `.env` values and maps `DUMPTETHER_*` variables to ASP.NET configuration keys. Visual Studio launch profiles do not automatically import `.env`, so use launch settings, user secrets or local environment variables for F5-only runs.
 
 CORS is configured only in the API. If the website and API are served from the same origin, CORS can stay empty. If the browser calls the API from a different origin, set an exact allowed origin such as `Cors__AllowedOrigins__0=http://localhost:5173` or `DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com`.
+
+Set `Database__Provider=Postgres` for hosted/server PostgreSQL. Set `Database__Provider=Sqlite` for local/offline SQLite. `Database__Sqlite__Path` is optional; if omitted, DumpTether uses the OS app-data path.
 
 ## Docker And Production
 
@@ -239,7 +257,7 @@ docker compose --env-file deploy/docker/.env.prod.example -f deploy/docker/docke
 
 ## Database
 
-PostgreSQL is the server database.
+PostgreSQL is the server database. SQLite is the local/offline database.
 
 The schema is mostly normalized relational data:
 
@@ -275,6 +293,15 @@ docker exec -i dumptether-postgres psql -U dumptether -d dumptether -c "TRUNCATE
 ```
 
 This keeps users, sessions, boards, categories, templates and settings.
+
+Local SQLite database defaults:
+
+```text
+Windows: %APPDATA%\DumpTether\dumptether.db
+Linux:   ~/.local/share/DumpTether/dumptether.db
+```
+
+The current SQLite path is for local/offline development. Full login sync, conflict resolution and desktop packaging are tracked in `docs/adr/0006-local-offline-runtime-and-sync.md`.
 
 ## Security Notes
 

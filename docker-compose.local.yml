@@ -24,7 +24,9 @@ services:
     image: ${DUMPTETHER_API_IMAGE:-dumptether-api:local}
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      Database__Provider: ${DUMPTETHER_DATABASE_PROVIDER:-Postgres}
       Database__ApplyMigrationsOnStartup: "true"
+      Database__Sqlite__Path: ${DUMPTETHER_SQLITE_PATH:-}
       Auth__RequireAuthentication: ${DUMPTETHER_REQUIRE_AUTHENTICATION:-true}
       Auth__AllowGuestSessions: ${DUMPTETHER_ALLOW_GUEST_SESSIONS:-true}
       Auth__EnableDevelopmentLogin: ${DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN:-true}

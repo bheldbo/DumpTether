@@ -17,16 +17,28 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("DumpTether");
+        var provider = DumpTetherDatabaseOptions.GetProvider(configuration);
 
-        if (string.IsNullOrWhiteSpace(connectionString))
+        if (DumpTetherDatabaseOptions.IsSqlite(provider))
         {
-            throw new InvalidOperationException(
-                "Missing connection string 'DumpTether'. Configure ConnectionStrings:DumpTether with a PostgreSQL connection string.");
+            var sqliteConnectionString = DumpTetherDatabaseOptions.GetSqliteConnectionString(configuration);
+            services.AddDbContext<DumpTetherDbContext>(options =>
+                options.UseSqlite(sqliteConnectionString));
         }
+        else
+        {
+            var connectionString = configuration.GetConnectionString("DumpTether");
 
-        services.AddDbContext<DumpTetherDbContext>(options =>
-            options.UseNpgsql(connectionString));
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException(
+                    "Missing connection string 'DumpTether'. Configure ConnectionStrings:DumpTether with a PostgreSQL connection string, " +
+                    "or set Database:Provider to Sqlite for a local offline database.");
+            }
+
+            services.AddDbContext<DumpTetherDbContext>(options =>
+                options.UseNpgsql(connectionString));
+        }
 
         services.AddScoped<IArchiveResolutionRepository, EfArchiveResolutionRepository>();
         services.AddScoped<IAuthRepository, EfAuthRepository>();

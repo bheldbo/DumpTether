@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
 
 namespace DumpTether.Data;
 
@@ -10,14 +11,35 @@ public sealed class DesignTimeDumpTetherDbContextFactory : IDesignTimeDbContextF
 
     public DumpTetherDbContext CreateDbContext(string[] args)
     {
-        var connectionString =
-            Environment.GetEnvironmentVariable("ConnectionStrings__DumpTether") ??
-            LocalDevelopmentConnectionString;
+        var provider = DumpTetherDatabaseOptions.NormalizeProvider(
+            Environment.GetEnvironmentVariable("Database__Provider") ??
+            DumpTetherDatabaseOptions.PostgresProvider);
+        var optionsBuilder = new DbContextOptionsBuilder<DumpTetherDbContext>();
 
-        var options = new DbContextOptionsBuilder<DumpTetherDbContext>()
-            .UseNpgsql(connectionString)
-            .Options;
+        if (DumpTetherDatabaseOptions.IsSqlite(provider))
+        {
+            var sqliteConfiguration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Database:Sqlite:Path"] = Environment.GetEnvironmentVariable(
+                        "Database__Sqlite__Path"),
+                    ["ConnectionStrings:DumpTether"] = Environment.GetEnvironmentVariable(
+                        "ConnectionStrings__DumpTether")
+                })
+                .Build();
 
-        return new DumpTetherDbContext(options);
+            optionsBuilder.UseSqlite(
+                DumpTetherDatabaseOptions.GetSqliteConnectionString(sqliteConfiguration));
+        }
+        else
+        {
+            var connectionString =
+                Environment.GetEnvironmentVariable("ConnectionStrings__DumpTether") ??
+                LocalDevelopmentConnectionString;
+
+            optionsBuilder.UseNpgsql(connectionString);
+        }
+
+        return new DumpTetherDbContext(optionsBuilder.Options);
     }
 }

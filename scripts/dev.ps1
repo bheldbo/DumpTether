@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Db", "DbDown", "Migrate", "Api", "Backend", "Web", "Frontend", "All", "Both")]
+    [ValidateSet("Db", "DbDown", "Migrate", "Api", "Backend", "Web", "Frontend", "All", "Both", "LocalApi", "LocalBackend", "LocalAll", "LocalBoth")]
     [string] $Target = "All",
     [switch] $OpenBrowser,
     [string] $WindowTitle = ""
@@ -108,6 +108,8 @@ function Get-EnvValue {
 function Set-DumpTetherConfigAliases {
     $aliases = @{
         "DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP" = "Database__ApplyMigrationsOnStartup"
+        "DUMPTETHER_DATABASE_PROVIDER" = "Database__Provider"
+        "DUMPTETHER_SQLITE_PATH" = "Database__Sqlite__Path"
         "DUMPTETHER_REQUIRE_AUTHENTICATION" = "Auth__RequireAuthentication"
         "DUMPTETHER_ALLOW_GUEST_SESSIONS" = "Auth__AllowGuestSessions"
         "DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN" = "Auth__EnableDevelopmentLogin"
@@ -118,6 +120,7 @@ function Set-DumpTetherConfigAliases {
         "DUMPTETHER_AUTH_SESSION_CLEANUP_DAYS" = "Auth__SessionCleanupDays"
         "DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS" = "Auth__SessionCleanupIntervalHours"
         "DUMPTETHER_ARCHIVE_RETENTION_DAYS" = "Archive__RetentionDays"
+        "DUMPTETHER_CORS_ALLOWED_ORIGIN_0" = "Cors__AllowedOrigins__0"
         "DUMPTETHER_EMAIL_CONFIRMATION_ENABLED" = "EmailConfirmation__Enabled"
         "DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL" = "EmailConfirmation__PublicBaseUrl"
         "DUMPTETHER_EMAIL_FROM" = "Email__FromEmail"
@@ -173,7 +176,18 @@ function New-LocalConnectionString {
 function Set-DumpTetherRuntimeEnvironment {
     Set-DumpTetherConfigAliases
 
-    $env:ConnectionStrings__DumpTether = New-LocalConnectionString
+    $databaseProvider = Get-EnvValue "Database__Provider" "Postgres"
+
+    if ($databaseProvider -ieq "Sqlite") {
+        if ($env:ConnectionStrings__DumpTether -and
+            $env:ConnectionStrings__DumpTether -notmatch "(?i)(Data Source|Filename)\s*=") {
+            $env:ConnectionStrings__DumpTether = $null
+        }
+    }
+    else {
+        $env:ConnectionStrings__DumpTether = New-LocalConnectionString
+    }
+
     $env:ASPNETCORE_ENVIRONMENT = Get-EnvValue "ASPNETCORE_ENVIRONMENT" "Development"
 
     if ([string]::IsNullOrWhiteSpace($env:ASPNETCORE_URLS)) {
@@ -249,6 +263,19 @@ function Stop-Database {
     }
 }
 
+function Set-DumpTetherLocalRuntimeEnvironment {
+    Set-DumpTetherConfigAliases
+    $env:Database__Provider = "Sqlite"
+    $env:Database__ApplyMigrationsOnStartup = "true"
+    $env:ConnectionStrings__DumpTether = $null
+    $env:ASPNETCORE_ENVIRONMENT = Get-EnvValue "ASPNETCORE_ENVIRONMENT" "Development"
+
+    if ([string]::IsNullOrWhiteSpace($env:ASPNETCORE_URLS)) {
+        $apiPort = Get-EnvValue "DUMPTETHER_API_PORT" "55868"
+        $env:ASPNETCORE_URLS = "http://localhost:$apiPort"
+    }
+}
+
 function Stop-ExistingApiProcesses {
     $apiOutputRoot = Join-Path $repoRoot "src\DumpTether.Api\bin"
     $apiProcesses = Get-Process -Name "DumpTether.Api" -ErrorAction SilentlyContinue |
@@ -281,6 +308,12 @@ function Invoke-Migrations {
 function Start-Api {
     Stop-ExistingApiProcesses
     Set-DumpTetherRuntimeEnvironment
+    dotnet run --project $apiProject --no-launch-profile
+}
+
+function Start-LocalApi {
+    Stop-ExistingApiProcesses
+    Set-DumpTetherLocalRuntimeEnvironment
     dotnet run --project $apiProject --no-launch-profile
 }
 
@@ -454,6 +487,44 @@ switch ($Target) {
         Start-DevWindow "DumpTether Web" "Web"
 
         Write-Host "DumpTether API: $apiHealthUrl"
+        Write-Host "DumpTether Web: $webUrl"
+
+        if ($OpenBrowser) {
+            Open-UrlWhenReady -Url $webUrl -Name "DumpTether Web"
+        }
+    }
+    "LocalApi" {
+        if ($OpenBrowser) {
+            Start-BrowserWatcher -Url $apiHealthUrl -Name "DumpTether Local API"
+        }
+
+        Start-LocalApi
+    }
+    "LocalBackend" {
+        if ($OpenBrowser) {
+            Start-BrowserWatcher -Url $apiHealthUrl -Name "DumpTether Local API"
+        }
+
+        Start-LocalApi
+    }
+    "LocalAll" {
+        Start-DevWindow "DumpTether Local API" "LocalApi"
+        Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether Local API" -TimeoutSeconds 90 | Out-Null
+        Start-DevWindow "DumpTether Web" "Web"
+
+        Write-Host "DumpTether Local API: $apiHealthUrl"
+        Write-Host "DumpTether Web: $webUrl"
+
+        if ($OpenBrowser) {
+            Open-UrlWhenReady -Url $webUrl -Name "DumpTether Web"
+        }
+    }
+    "LocalBoth" {
+        Start-DevWindow "DumpTether Local API" "LocalApi"
+        Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether Local API" -TimeoutSeconds 90 | Out-Null
+        Start-DevWindow "DumpTether Web" "Web"
+
+        Write-Host "DumpTether Local API: $apiHealthUrl"
         Write-Host "DumpTether Web: $webUrl"
 
         if ($OpenBrowser) {

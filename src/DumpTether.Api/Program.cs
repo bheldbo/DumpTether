@@ -111,8 +111,25 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
 
     if (string.Equals(
             databaseProvider,
-            "Npgsql.EntityFrameworkCore.PostgreSQL",
+            "Microsoft.EntityFrameworkCore.Sqlite",
             StringComparison.Ordinal))
+    {
+        try
+        {
+            await dbContext.Database.EnsureCreatedAsync();
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                "DumpTether could not create the local SQLite database on startup. " +
+                "Check Database:Sqlite:Path permissions or remove the local database file and retry.",
+                exception);
+        }
+    }
+    else if (string.Equals(
+                 databaseProvider,
+                 "Npgsql.EntityFrameworkCore.PostgreSQL",
+                 StringComparison.Ordinal))
     {
         try
         {

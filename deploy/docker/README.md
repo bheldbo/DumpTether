@@ -23,6 +23,7 @@ Do not commit those real files.
 - PostgreSQL listens only on the Docker network and does not publish `5432`.
 - PostgreSQL data is stored in the `dumptether-postgres-data` named volume.
 - CORS uses exact allowed origins from `.env.prod` when the frontend is hosted separately.
+- `DUMPTETHER_DATABASE_PROVIDER` should stay `Postgres` for production compose.
 
 ## First Server Setup
 
