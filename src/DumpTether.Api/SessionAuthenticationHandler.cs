@@ -62,7 +62,8 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Authe
             return "bearer";
         }
 
-        if (!string.IsNullOrWhiteSpace(Request.Query["access_token"].FirstOrDefault()))
+        if (Request.Path.StartsWithSegments("/api/live", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(Request.Query["access_token"].FirstOrDefault()))
         {
             return "query";
         }

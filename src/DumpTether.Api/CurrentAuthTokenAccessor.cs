@@ -25,11 +25,14 @@ internal sealed class CurrentAuthTokenAccessor : IAuthTokenAccessor
                 return authorization["Bearer ".Length..].Trim();
             }
 
-            var queryToken = httpContext?.Request.Query["access_token"].FirstOrDefault();
-
-            if (!string.IsNullOrWhiteSpace(queryToken))
+            if (httpContext?.Request.Path.StartsWithSegments("/api/live") == true)
             {
-                return queryToken;
+                var queryToken = httpContext.Request.Query["access_token"].FirstOrDefault();
+
+                if (!string.IsNullOrWhiteSpace(queryToken))
+                {
+                    return queryToken;
+                }
             }
 
             return httpContext?.Request.Cookies[SessionCsrfProtectionMiddleware.SessionCookieName];

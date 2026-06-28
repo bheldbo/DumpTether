@@ -8,6 +8,8 @@ public static class RuntimeConfigurationValidator
     {
         var missingKeys = new List<string>();
 
+        CorsConfiguration.ValidateAllowedOrigins(configuration);
+
         if (GetBoolean(configuration, "EmailConfirmation:Enabled"))
         {
             AddMissingBrevoApiKeys(configuration, missingKeys);
@@ -120,4 +122,5 @@ public static class RuntimeConfigurationValidator
             $"DumpTether configuration value '{key}' must be 'true' or 'false', but was '{value}'. " +
             "Do not append inline comments after .env values; put comments on their own lines.");
     }
+
 }

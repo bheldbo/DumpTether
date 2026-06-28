@@ -37,7 +37,8 @@ internal sealed class LiveUpdateHub : Hub
             currentSession.UserId,
             Context.ConnectionAborted);
 
-        foreach (var workspace in workspaces)
+        foreach (var workspace in workspaces.Where(workspace =>
+                     workspace.AccessKind == WorkspaceAccessKinds.Membership))
         {
             await Groups.AddToGroupAsync(
                 Context.ConnectionId,
@@ -67,7 +68,9 @@ internal sealed class LiveUpdateHub : Hub
             currentSession.UserId,
             Context.ConnectionAborted);
 
-        if (!workspaces.Any(workspace => workspace.Workspace.Id == workspaceId))
+        if (!workspaces.Any(workspace =>
+                workspace.AccessKind == WorkspaceAccessKinds.Membership &&
+                workspace.Workspace.Id == workspaceId))
         {
             return;
         }

@@ -321,6 +321,33 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task UnsafeCookieAuthenticatedRequest_WithQueryTokenOutsideLive_IsRejected()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = false
+        });
+        await RegisterAsync(client, "cookie-query-token@example.com", "correct horse battery");
+        var loginResponse = await LoginWithResponseAsync(
+            client,
+            "cookie-query-token@example.com",
+            "correct horse battery");
+        var sessionCookie = GetSetCookie(loginResponse, "DumpTether.Session");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/api/tasks?access_token=not-a-live-token")
+        {
+            Content = JsonContent.Create(new { title = "Cookie query token task" })
+        };
+        request.Headers.Add("Cookie", sessionCookie);
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task UnsafeCookieAuthenticatedRequest_WithCsrfHeader_Succeeds()
     {
         using var factory = new DumpTetherApiFactory(requireAuthentication: true);

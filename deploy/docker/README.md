@@ -22,6 +22,7 @@ Do not commit those real files.
 - API listens internally on Docker port `8080`.
 - PostgreSQL listens only on the Docker network and does not publish `5432`.
 - PostgreSQL data is stored in the `dumptether-postgres-data` named volume.
+- CORS uses exact allowed origins from `.env.prod` when the frontend is hosted separately.
 
 ## First Server Setup
 
@@ -33,6 +34,8 @@ cp docker-compose.prod.example.yml docker-compose.prod.yml
 Edit `.env.prod` on the server and replace all placeholders.
 
 If you enable email confirmation, SMTP, Brevo API email, OAuth, or email MFA, the API validates the matching `.env.prod` values at startup and fails with a clear missing-key error. Email confirmation currently uses the Brevo transactional API key path. Keep real SMTP passwords, Brevo API keys, and OAuth client secrets only in the server `.env.prod` or a secret store.
+
+Set `DUMPTETHER_CORS_ALLOWED_ORIGIN_0` to the exact browser origin that is allowed to call the API, for example `https://dumptether.example.com`. Do not use `*`.
 
 Run:
 

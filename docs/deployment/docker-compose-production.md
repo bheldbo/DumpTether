@@ -64,10 +64,23 @@ DUMPTETHER_ALLOW_GUEST_SESSIONS=true
 DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN=false
 DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE=1000
 DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE=5000
+DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com
 DUMPTETHER_DOMAIN=dumptether.example.com
 ```
 
 Production secrets are never committed. Real production files stay on the server or in a deployment secret store.
+
+## CORS and Origins
+
+If the React frontend and API are served from the same public origin through the reverse proxy, normal browser requests do not need cross-origin access. Keep CORS boring.
+
+If the frontend is served from a different origin, set exact allowed origins with environment variables such as:
+
+```text
+DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com
+```
+
+The API maps that to `Cors:AllowedOrigins:0` and rejects wildcard origins. Use an origin only, not a path.
 
 ## Start Production Compose
 

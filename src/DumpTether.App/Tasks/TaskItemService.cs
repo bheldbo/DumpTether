@@ -804,7 +804,7 @@ internal sealed class TaskItemService : ITaskItemService
         ArgumentNullException.ThrowIfNull(request);
 
         var currentSession = await RequireCurrentSessionAsync(cancellationToken);
-        var taskItem = await GetTaskItemForWorkspaceMemberWriteAsync(id, cancellationToken);
+        var taskItem = await GetTaskItemForShareManagementAsync(id, cancellationToken);
 
         if (taskItem is null)
         {
@@ -870,11 +870,7 @@ internal sealed class TaskItemService : ITaskItemService
         ArgumentNullException.ThrowIfNull(request);
 
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
-        if (context.IsSharedOnly)
-        {
-            throw new ValidationException("Task-share access cannot share tasks in this board.");
-        }
-        EnsureCanWriteWorkspace(context);
+        EnsureCanManageTaskSharing(context);
 
         var currentSession = await RequireCurrentSessionAsync(cancellationToken);
         var requestedTaskIds = (request.TaskItemIds ?? [])
@@ -1021,12 +1017,16 @@ internal sealed class TaskItemService : ITaskItemService
         Guid shareId,
         CancellationToken cancellationToken)
     {
-        var taskItem = await GetTaskItemForWorkspaceMemberWriteAsync(id, cancellationToken);
+        var taskItem = await GetTaskItemForShareManagementAsync(id, cancellationToken);
 
         if (taskItem is null)
         {
             return null;
         }
+
+        var revokedRecipientUserId = taskItem.Shares
+            .FirstOrDefault(share => share.Id == shareId)?
+            .SharedWithUserId;
 
         taskItem.RevokeShare(shareId, _clock.UtcNow);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
@@ -1034,7 +1034,10 @@ internal sealed class TaskItemService : ITaskItemService
             LiveUpdateEvents.TaskUpdated,
             taskItem,
             taskItem.LastTouchedAt,
-            cancellationToken);
+            cancellationToken,
+            recipientUserIds: revokedRecipientUserId.HasValue
+                ? [revokedRecipientUserId.Value]
+                : null);
 
         var taskTemplate = await ResolveTaskTemplateForDetailAsync(
             taskItem,
@@ -1052,7 +1055,7 @@ internal sealed class TaskItemService : ITaskItemService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var taskItem = await GetTaskItemForWorkspaceMemberWriteAsync(id, cancellationToken);
+        var taskItem = await GetTaskItemForShareManagementAsync(id, cancellationToken);
 
         if (taskItem is null)
         {
@@ -1099,7 +1102,8 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem,
             taskItem.LastTouchedAt,
             cancellationToken,
-            currentSession);
+            currentSession,
+            recipientUserIds: [currentSession.UserId]);
 
         return true;
     }
@@ -1155,7 +1159,8 @@ internal sealed class TaskItemService : ITaskItemService
                 taskItem,
                 taskItem.LastTouchedAt,
                 cancellationToken,
-                currentSession);
+                currentSession,
+                recipientUserIds: [currentSession.UserId]);
         }
 
         return revokedCount;
@@ -1171,6 +1176,9 @@ internal sealed class TaskItemService : ITaskItemService
         IReadOnlyList<Guid>? recipientUserIds = null)
     {
         currentSession ??= await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var mergedRecipientUserIds = MergeRecipientUserIds(
+            recipientUserIds,
+            GetActiveTaskShareRecipientUserIds(taskItem));
 
         await _liveUpdatePublisher.PublishAsync(
             new LiveUpdateMessage(
@@ -1181,8 +1189,38 @@ internal sealed class TaskItemService : ITaskItemService
                 currentSession?.UserId,
                 occurredAt,
                 taskItem.LastTouchedAt,
-                recipientUserIds),
+                mergedRecipientUserIds),
             cancellationToken);
+    }
+
+    private static IReadOnlyList<Guid>? GetActiveTaskShareRecipientUserIds(TaskItem taskItem)
+    {
+        var recipientUserIds = taskItem.Shares
+            .Where(share => share.IsActive && share.SharedWithUserId.HasValue)
+            .Select(share => share.SharedWithUserId!.Value)
+            .Distinct()
+            .ToArray();
+
+        return recipientUserIds.Length == 0
+            ? null
+            : recipientUserIds;
+    }
+
+    private static IReadOnlyList<Guid>? MergeRecipientUserIds(
+        IReadOnlyList<Guid>? first,
+        IReadOnlyList<Guid>? second)
+    {
+        if ((first is null || first.Count == 0) &&
+            (second is null || second.Count == 0))
+        {
+            return null;
+        }
+
+        return (first ?? [])
+            .Concat(second ?? [])
+            .Where(userId => userId != Guid.Empty)
+            .Distinct()
+            .ToArray();
     }
 
     private async Task<TaskItem?> GetTaskItemForReadAsync(
@@ -1221,13 +1259,13 @@ internal sealed class TaskItemService : ITaskItemService
             : null;
     }
 
-    private async Task<TaskItem?> GetTaskItemForWorkspaceMemberWriteAsync(
+    private async Task<TaskItem?> GetTaskItemForShareManagementAsync(
         Guid id,
         CancellationToken cancellationToken)
     {
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
 
-        if (context.IsSharedOnly || !context.CanWriteWorkspace)
+        if (!context.CanManageWorkspaceSharing)
         {
             return null;
         }
@@ -1296,6 +1334,14 @@ internal sealed class TaskItemService : ITaskItemService
         if (!context.CanWriteWorkspace)
         {
             throw new ValidationException("Read-only board access cannot change tasks.");
+        }
+    }
+
+    private static void EnsureCanManageTaskSharing(DevelopmentWorkspaceContext context)
+    {
+        if (!context.CanManageWorkspaceSharing)
+        {
+            throw new ValidationException("Only board owners can manage task sharing.");
         }
     }
 

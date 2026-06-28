@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Threading.RateLimiting;
 
+const string CorsPolicyName = "DumpTether.Cors";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
@@ -42,6 +43,23 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();
 builder.Services.AddScoped<ICurrentWorkspaceSelection, CurrentWorkspaceSelection>();
 ConfigureAuthentication(builder.Services, builder.Configuration, builder.Environment);
+var corsAllowedOrigins = CorsConfiguration.GetAllowedOrigins(builder.Configuration);
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(CorsPolicyName, policy =>
+    {
+        if (corsAllowedOrigins.Length == 0)
+        {
+            return;
+        }
+
+        policy
+            .WithOrigins(corsAllowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 builder.Services.AddSingleton<IAuthorizationHandler, SessionRequiredAuthorizationHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, WorkspaceWriteAuthorizationHandler>();
 builder.Services.AddAuthorization(options =>
@@ -133,6 +151,7 @@ app.MapGet("/health", () => Results.Ok(new
     service = "DumpTether.Api"
 }));
 
+app.UseCors(CorsPolicyName);
 app.UseRateLimiter();
 app.UseMiddleware<SessionCsrfProtectionMiddleware>();
 app.UseAuthentication();

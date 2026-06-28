@@ -180,6 +180,7 @@ Auth__EnableDevelopmentLogin
 Auth__SessionDays
 Auth__SessionCleanupDays
 Archive__RetentionDays
+Cors__AllowedOrigins__0
 EmailConfirmation__Enabled
 EmailConfirmation__PublicBaseUrl
 Email__FromEmail
@@ -193,6 +194,8 @@ Usage__MaxTotalTasksPerWorkspace
 ```
 
 The `scripts/dev.ps1` helper reads root `.env` values and maps `DUMPTETHER_*` variables to ASP.NET configuration keys. Visual Studio launch profiles do not automatically import `.env`, so use launch settings, user secrets or local environment variables for F5-only runs.
+
+CORS is configured only in the API. If the website and API are served from the same origin, CORS can stay empty. If the browser calls the API from a different origin, set an exact allowed origin such as `Cors__AllowedOrigins__0=http://localhost:5173` or `DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com`.
 
 ## Docker And Production
 
@@ -282,12 +285,13 @@ Current security posture:
 - Workspace/task access is scoped server-side.
 - Backend authorization is authoritative.
 - Auth/task write endpoints have rate limiting.
+- CORS uses an explicit allow-list when cross-origin browser calls are needed.
 - Production PostgreSQL should stay private to the Docker network.
 - Real secrets are ignored and must not be committed.
 
 Before a real public MVP:
 
-- Re-check CORS allowed origins.
+- Re-check production CORS allowed origins.
 - Rotate any secrets that were ever pasted into chat, logs or files.
 - Confirm production cookies/session settings.
 - Confirm HTTPS at the reverse proxy.

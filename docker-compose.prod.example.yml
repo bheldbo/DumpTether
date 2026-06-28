@@ -27,6 +27,7 @@ services:
       Auth__SessionCleanupDays: ${DUMPTETHER_AUTH_SESSION_CLEANUP_DAYS:-90}
       Auth__SessionCleanupIntervalHours: ${DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS:-24}
       Archive__RetentionDays: ${DUMPTETHER_ARCHIVE_RETENTION_DAYS:-30}
+      Cors__AllowedOrigins__0: ${DUMPTETHER_CORS_ALLOWED_ORIGIN_0}
       EmailConfirmation__Enabled: ${DUMPTETHER_EMAIL_CONFIRMATION_ENABLED:-false}
       EmailConfirmation__PublicBaseUrl: ${DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL}
       Email__FromEmail: ${DUMPTETHER_EMAIL_FROM}
