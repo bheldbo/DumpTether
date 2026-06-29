@@ -38,6 +38,7 @@ Projects:
 - src/DumpTether.Domain: domain model and business rules
 - src/DumpTether.App: application services/use cases
 - src/DumpTether.Data: EF Core persistence
+- src/DumpTether.Database: runnable database maintenance shell for migrations/local data chores
 
 Do not introduce microservices.
 Do not introduce AI features into the MVP.
@@ -121,6 +122,10 @@ When adding a feature:
 - Do not change persisted entities without a migration.
 - Use JSON for flexible configuration and field values only where appropriate.
 - Keep core concepts relational.
+- Keep domain entities in `DumpTether.Domain`.
+- Keep application repository/use-case interfaces in `DumpTether.App`.
+- Keep EF Core mappings, repositories and migrations in `DumpTether.Data`.
+- Use `DumpTether.Database` for runnable database maintenance; do not turn the API into a database console.
 
 ## Testing rules
 

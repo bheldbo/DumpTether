@@ -12,40 +12,12 @@ $apiProject = Join-Path $repoRoot "src\DumpTether.Api\DumpTether.Api.csproj"
 $webUrl = "http://127.0.0.1:5173"
 $envFilePath = Join-Path $repoRoot ".env"
 
+Import-Module (Join-Path $PSScriptRoot "DumpTether.DevTools.psm1") -Force
+
 function Read-DotEnvFile {
     param([string] $Path)
 
-    $values = @{}
-
-    if (-not (Test-Path $Path)) {
-        return $values
-    }
-
-    foreach ($line in Get-Content -Path $Path) {
-        $trimmed = $line.Trim()
-
-        if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith("#")) {
-            continue
-        }
-
-        $match = [regex]::Match($trimmed, "^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$")
-
-        if (-not $match.Success) {
-            continue
-        }
-
-        $key = $match.Groups[1].Value
-        $value = Remove-InlineDotEnvComment $match.Groups[2].Value.Trim()
-
-        if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
-            ($value.StartsWith("'") -and $value.EndsWith("'"))) {
-            $value = $value.Substring(1, $value.Length - 2)
-        }
-
-        $values[$key] = $value
-    }
-
-    return $values
+    return Read-DumpTetherDotEnvFile -Path $Path
 }
 
 function Remove-InlineDotEnvComment {
@@ -85,9 +57,7 @@ function Remove-InlineDotEnvComment {
 function Set-ProcessEnvironmentFromDotEnv {
     param([hashtable] $Values)
 
-    foreach ($item in $Values.GetEnumerator()) {
-        [Environment]::SetEnvironmentVariable($item.Key, $item.Value, "Process")
-    }
+    Set-DumpTetherProcessEnvironmentFromDotEnv -Values $Values
 }
 
 function Get-EnvValue {
@@ -96,13 +66,7 @@ function Get-EnvValue {
         [string] $DefaultValue
     )
 
-    $value = [Environment]::GetEnvironmentVariable($Name, "Process")
-
-    if ([string]::IsNullOrWhiteSpace($value)) {
-        return $DefaultValue
-    }
-
-    return $value
+    return Get-DumpTetherEnvValue -Name $Name -DefaultValue $DefaultValue
 }
 
 function Set-DumpTetherConfigAliases {
@@ -121,6 +85,8 @@ function Set-DumpTetherConfigAliases {
         "DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS" = "Auth__SessionCleanupIntervalHours"
         "DUMPTETHER_ARCHIVE_RETENTION_DAYS" = "Archive__RetentionDays"
         "DUMPTETHER_CORS_ALLOWED_ORIGIN_0" = "Cors__AllowedOrigins__0"
+        "DUMPTETHER_CORS_ALLOWED_ORIGIN_1" = "Cors__AllowedOrigins__1"
+        "DUMPTETHER_CORS_ALLOWED_ORIGIN_2" = "Cors__AllowedOrigins__2"
         "DUMPTETHER_EMAIL_CONFIRMATION_ENABLED" = "EmailConfirmation__Enabled"
         "DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL" = "EmailConfirmation__PublicBaseUrl"
         "DUMPTETHER_EMAIL_FROM" = "Email__FromEmail"
@@ -216,31 +182,13 @@ catch {
 }
 
 function Get-DockerCommand {
-    $docker = Get-Command docker -ErrorAction SilentlyContinue
-
-    if ($docker) {
-        return $docker.Source
-    }
-
-    $defaultDocker = "C:\Program Files\Docker\Docker\resources\bin\docker.exe"
-
-    if (Test-Path $defaultDocker) {
-        return $defaultDocker
-    }
-
-    throw "Docker CLI was not found. Start Docker Desktop and make sure docker.exe is on PATH."
+    return Get-DumpTetherDockerCommand
 }
 
 function Invoke-AtRepoRoot {
     param([scriptblock] $Command)
 
-    Push-Location $repoRoot
-    try {
-        & $Command
-    }
-    finally {
-        Pop-Location
-    }
+    Invoke-DumpTetherAtRepoRoot -RepoRoot $repoRoot -Command $Command
 }
 
 function Start-Database {
@@ -293,14 +241,9 @@ function Stop-ExistingApiProcesses {
 function Invoke-Migrations {
     Invoke-AtRepoRoot {
         Set-DumpTetherRuntimeEnvironment
-        dotnet tool restore
+        dotnet run --project src\DumpTether.Database\DumpTether.Database.csproj --no-launch-profile -- migrate
         if ($LASTEXITCODE -ne 0) {
-            throw "dotnet tool restore failed with exit code $LASTEXITCODE."
-        }
-
-        dotnet tool run dotnet-ef database update --project src\DumpTether.Data --startup-project src\DumpTether.Data
-        if ($LASTEXITCODE -ne 0) {
-            throw "dotnet ef database update failed with exit code $LASTEXITCODE."
+            throw "DumpTether.Database migrate failed with exit code $LASTEXITCODE."
         }
     }
 }

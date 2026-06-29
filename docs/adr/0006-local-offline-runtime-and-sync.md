@@ -92,6 +92,18 @@ A local user can use DumpTether without logging in. When the user logs in, the a
 
 Shared tasks and shared boards are server-side concepts. They are visible in the local app only after login and successful sync.
 
+## Sync Risks To Design Around
+
+The risky parts are not just "upload local rows":
+
+- A local-only user and a logged-in cloud user need a clear identity transition. The app must not silently merge two people just because they used the same machine.
+- Shared tasks/workspaces should never be cached as permanently local ownership. They should be visible only while the user is logged in and the server confirms access.
+- Revoked sharing must remove local visibility on next sync. Local caches need access checks, not only data freshness checks.
+- The sidecar API port should eventually be allocated safely instead of assuming a fixed port forever.
+- Hard deletes need tombstones or delayed cleanup so another device can learn that a record was deleted.
+- Sync logs must avoid storing raw tokens, passwords, or full secret-bearing request headers.
+- Conflict UI should be quiet by default, but obvious when the same field was edited in two places.
+
 ## Sync Metadata
 
 Syncable records should move toward:

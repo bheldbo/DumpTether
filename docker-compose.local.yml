@@ -38,6 +38,8 @@ services:
       Auth__SessionCleanupIntervalHours: ${DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS:-24}
       Archive__RetentionDays: ${DUMPTETHER_ARCHIVE_RETENTION_DAYS:-30}
       Cors__AllowedOrigins__0: ${DUMPTETHER_CORS_ALLOWED_ORIGIN_0:-http://localhost:5173}
+      Cors__AllowedOrigins__1: ${DUMPTETHER_CORS_ALLOWED_ORIGIN_1:-http://127.0.0.1:5173}
+      Cors__AllowedOrigins__2: ${DUMPTETHER_CORS_ALLOWED_ORIGIN_2:-http://tauri.localhost}
       EmailConfirmation__Enabled: ${DUMPTETHER_EMAIL_CONFIRMATION_ENABLED:-false}
       EmailConfirmation__PublicBaseUrl: ${DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL:-http://localhost:55868}
       Email__FromEmail: ${DUMPTETHER_EMAIL_FROM:-noreply@localhost}

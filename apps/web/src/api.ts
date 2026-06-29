@@ -54,8 +54,9 @@ import type {
   UpdateWorkspaceMemberRequest,
 } from './types';
 
+const desktopLocalApiBaseUrl = 'http://127.0.0.1:55868';
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
-const apiBaseUrl = configuredBaseUrl ?? '';
+const apiBaseUrl = configuredBaseUrl ?? getDefaultApiBaseUrl();
 const sessionTokenStorageKey = 'dumptether.sessionToken';
 const guestSessionTokenStorageKey = 'dumptether.guestSessionToken';
 const csrfCookieName = 'DumpTether.Csrf';
@@ -84,6 +85,21 @@ export function getApiBaseUrl() {
 export function getCookieAuthCsrfHeader(): Record<string, string> {
   const csrfToken = readCookie(csrfCookieName);
   return csrfToken ? { [csrfHeaderName]: csrfToken } : {};
+}
+
+function getDefaultApiBaseUrl() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  if (
+    window.location.protocol === 'file:' ||
+    window.location.hostname === 'tauri.localhost'
+  ) {
+    return desktopLocalApiBaseUrl;
+  }
+
+  return '';
 }
 
 export function isTemporarySession() {

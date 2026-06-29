@@ -25,7 +25,10 @@
         "OAuth__Google__Enabled": "false",
         "OAuth__Microsoft__Enabled": "false",
         "OAuth__Facebook__Enabled": "false",
-        "ConnectionStrings__DumpTether": "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password"
+        "ConnectionStrings__DumpTether": "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password",
+        "Cors__AllowedOrigins__0": "http://localhost:5173",
+        "Cors__AllowedOrigins__1": "http://127.0.0.1:5173",
+        "Cors__AllowedOrigins__2": "http://tauri.localhost"
       },
       "applicationUrl": "http://localhost:55868"
     },
@@ -54,7 +57,10 @@
         "Mfa__Email__Enabled": "false",
         "OAuth__Google__Enabled": "false",
         "OAuth__Microsoft__Enabled": "false",
-        "OAuth__Facebook__Enabled": "false"
+        "OAuth__Facebook__Enabled": "false",
+        "Cors__AllowedOrigins__0": "http://localhost:5173",
+        "Cors__AllowedOrigins__1": "http://127.0.0.1:5173",
+        "Cors__AllowedOrigins__2": "http://tauri.localhost"
       },
       "applicationUrl": "http://localhost:55868"
     },
@@ -83,13 +89,6 @@
       "commandName": "Executable",
       "executablePath": "powershell.exe",
       "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\dev.ps1\" -Target LocalBoth -OpenBrowser",
-      "workingDirectory": "$(ProjectDir)",
-      "launchBrowser": false
-    },
-    "DumpTether.Database": {
-      "commandName": "Executable",
-      "executablePath": "powershell.exe",
-      "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\dev.ps1\" -Target Migrate",
       "workingDirectory": "$(ProjectDir)",
       "launchBrowser": false
     }

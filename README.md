@@ -63,11 +63,12 @@ DumpTether is a modular monolith.
 
 ```text
 apps/web/                 React + TypeScript + Vite frontend
-apps/desktop/             Future Tauri shell for the shared UI
+apps/desktop/             Tauri desktop shell scaffold for the shared UI
 src/DumpTether.Api/       ASP.NET Core HTTP API
 src/DumpTether.App/       Application services and use cases
 src/DumpTether.Domain/    Domain model and business rules
 src/DumpTether.Data/      EF Core persistence with PostgreSQL/SQLite provider selection
+src/DumpTether.Database/  Runnable database maintenance shell for migrations/local data chores
 docs/                     ADRs, security notes, deployment notes
 deploy/docker/            Production Docker Compose examples
 ```
@@ -84,7 +85,7 @@ Design principles:
 
 Current shortcomings:
 
-- Desktop/offline mode is designed, not implemented.
+- Desktop/offline mode has the first SQLite/API foundation and Tauri scaffold, but no sync yet.
 - Email confirmation/OAuth plumbing exists, but provider setup is still rough.
 - Sharing works as an MVP flow, but permissions and notifications need more polish.
 - Live updates are early and should be hardened before real multi-user use.
@@ -121,7 +122,7 @@ Manual path:
 
 ```powershell
 docker compose up -d
-dotnet tool run dotnet-ef database update --project src/DumpTether.Data --startup-project src/DumpTether.Data
+dotnet run --project src/DumpTether.Database -- migrate
 dotnet run --project src/DumpTether.Api --launch-profile DumpTether.Api
 ```
 
@@ -149,7 +150,7 @@ http://localhost:55868/health
 
 Open `DumpTether.sln` in Visual Studio 2022.
 
-The API project has launch profiles:
+Useful launch profiles:
 
 ```text
 DumpTether.Api        API only
@@ -158,7 +159,9 @@ DumpTether.Backend    PostgreSQL + migrations + API
 DumpTether.Web        Vite frontend only
 DumpTether.FullStack  PostgreSQL + migrations + API + Vite
 DumpTether.LocalFullStack  local SQLite API + Vite
-DumpTether.Database   PostgreSQL + migrations only
+DumpTether.Database   interactive database tools menu
+DumpTether.DatabaseMigrate   apply EF migrations only
+DumpTether.DatabaseStatus    show configured database status
 ```
 
 For backend debugging, use `DumpTether.Api` and start the web app separately.
@@ -166,6 +169,16 @@ For backend debugging, use `DumpTether.Api` and start the web app separately.
 For a quick full stack run, use `DumpTether.FullStack`.
 
 For a quick offline-style run without Docker/PostgreSQL, use `DumpTether.LocalFullStack`.
+
+For database maintenance, use the `DumpTether.Database` project. It opens a menu for status/migrate, clearing task data, resetting the configured local database, and inspecting/removing the local SQLite database. It deliberately does not own business rules; it delegates to `DumpTether.Data` and EF Core.
+
+Docker orchestration still belongs to scripts:
+
+```powershell
+.\scripts\db.ps1 -Action Start
+.\scripts\db.ps1 -Action Stop
+.\scripts\db.ps1 -Action Migrate
+```
 
 The frontend lives in `apps/web`. Visual Studio is fine for the solution/backend; Vite is still the normal frontend dev server.
 
@@ -197,6 +210,8 @@ Auth__SessionDays
 Auth__SessionCleanupDays
 Archive__RetentionDays
 Cors__AllowedOrigins__0
+Cors__AllowedOrigins__1
+Cors__AllowedOrigins__2
 EmailConfirmation__Enabled
 EmailConfirmation__PublicBaseUrl
 Email__FromEmail
@@ -211,7 +226,9 @@ Usage__MaxTotalTasksPerWorkspace
 
 The `scripts/dev.ps1` helper reads root `.env` values and maps `DUMPTETHER_*` variables to ASP.NET configuration keys. Visual Studio launch profiles do not automatically import `.env`, so use launch settings, user secrets or local environment variables for F5-only runs.
 
-CORS is configured only in the API. If the website and API are served from the same origin, CORS can stay empty. If the browser calls the API from a different origin, set an exact allowed origin such as `Cors__AllowedOrigins__0=http://localhost:5173` or `DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com`.
+CORS is configured only in the API. The server does not need CORS to "reach" clients. CORS only matters when browser or webview JavaScript calls an API on another origin.
+
+If the website and API are served from the same origin, CORS can stay empty and same-origin browser policy is enough. Vite dev and the Tauri sidecar shape are cross-origin (`localhost:5173` or `tauri.localhost` calling `127.0.0.1:55868`), so local development uses exact allowed origins such as `Cors__AllowedOrigins__0=http://localhost:5173`, `Cors__AllowedOrigins__1=http://127.0.0.1:5173`, `Cors__AllowedOrigins__2=http://tauri.localhost` or `DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com`. Never use `*` with credentials.
 
 Set `Database__Provider=Postgres` for hosted/server PostgreSQL. Set `Database__Provider=Sqlite` for local/offline SQLite. `Database__Sqlite__Path` is optional; if omitted, DumpTether uses the OS app-data path.
 
@@ -259,6 +276,13 @@ docker compose --env-file deploy/docker/.env.prod.example -f deploy/docker/docke
 
 PostgreSQL is the server database. SQLite is the local/offline database.
 
+Schema ownership is split like this:
+
+- `DumpTether.Domain` owns entities and invariants.
+- `DumpTether.App` owns use-case interfaces.
+- `DumpTether.Data` owns EF Core mappings, repositories and migrations.
+- `DumpTether.Database` is the runnable maintenance shell for migrations/status/local resets.
+
 The schema is mostly normalized relational data:
 
 - users
@@ -289,10 +313,34 @@ Password: dumptether_dev_password
 Clear only task/note/share data from the local dev database:
 
 ```powershell
-docker exec -i dumptether-postgres psql -U dumptether -d dumptether -c "TRUNCATE TABLE task_timeline_entry_field_values, task_timeline_entries, field_values, task_item_shares, task_items RESTART IDENTITY CASCADE;"
+.\scripts\db.ps1 -Action ClearTasks
 ```
 
 This keeps users, sessions, boards, categories, templates and settings.
+
+Run the database project directly when you do not need Docker orchestration:
+
+```powershell
+dotnet run --project src/DumpTether.Database -- status
+dotnet run --project src/DumpTether.Database -- migrate
+dotnet run --project src/DumpTether.Database -- clear-tasks
+dotnet run --project src/DumpTether.Database -- reset
+dotnet run --project src/DumpTether.Database -- local-info
+```
+
+Other local database actions:
+
+```powershell
+.\scripts\db.ps1 -Action Menu
+.\scripts\db.ps1 -Action Start
+.\scripts\db.ps1 -Action Status
+.\scripts\db.ps1 -Action Migrate
+.\scripts\db.ps1 -Action ResetPostgres
+.\scripts\db.ps1 -Action LocalInfo
+.\scripts\db.ps1 -Action RemoveLocalSqlite
+```
+
+Destructive actions ask for typed confirmation unless you pass `-Yes`.
 
 Local SQLite database defaults:
 
@@ -302,6 +350,39 @@ Linux:   ~/.local/share/DumpTether/dumptether.db
 ```
 
 The current SQLite path is for local/offline development. Full login sync, conflict resolution and desktop packaging are tracked in `docs/adr/0006-local-offline-runtime-and-sync.md`.
+
+## Desktop App
+
+Desktop source lives in `apps/desktop`.
+
+The current desktop scaffold uses Tauri and the same React UI from `apps/web`. The intended app runtime is:
+
+```text
+Tauri window
+  -> local DumpTether.Api sidecar
+  -> SQLite local database
+  -> same React task wall UI
+```
+
+Install desktop prerequisites first:
+
+- Rust toolchain with Cargo
+- Node.js and npm
+- .NET SDK
+- Windows WebView2 runtime on Windows
+
+Then:
+
+```powershell
+cd apps/desktop
+npm install
+npm run build:sidecar
+npm run build:desktop
+```
+
+`build:sidecar` publishes `DumpTether.Api` as a generated sidecar binary for Tauri. `build:desktop` runs `tauri build`, which is the path toward `.exe`/`.msi` bundles. Signing certificates, update feeds and sync are still future work.
+
+The first sidecar build may download .NET runtime packs from NuGet for the selected runtime, for example `win-x64`.
 
 ## Security Notes
 

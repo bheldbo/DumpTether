@@ -82,6 +82,27 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "frontend-docs", "frontend-d
 		docs\product\web-frontend-architecture.md = docs\product\web-frontend-architecture.md
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "desktop", "desktop", "{5A07E08A-26B8-4E6F-B418-8A4AF5197F18}"
+	ProjectSection(SolutionItems) = preProject
+		apps\desktop\package.json = apps\desktop\package.json
+		apps\desktop\README.md = apps\desktop\README.md
+		apps\desktop\scripts\build-sidecar.ps1 = apps\desktop\scripts\build-sidecar.ps1
+		apps\desktop\src-tauri\build.rs = apps\desktop\src-tauri\build.rs
+		apps\desktop\src-tauri\capabilities\default.json = apps\desktop\src-tauri\capabilities\default.json
+		apps\desktop\src-tauri\Cargo.toml = apps\desktop\src-tauri\Cargo.toml
+		apps\desktop\src-tauri\src\main.rs = apps\desktop\src-tauri\src\main.rs
+		apps\desktop\src-tauri\tauri.conf.json = apps\desktop\src-tauri\tauri.conf.json
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "scripts", "scripts", "{B0381077-9184-4795-A67C-EBE76C4E2B6B}"
+	ProjectSection(SolutionItems) = preProject
+		scripts\DumpTether.DevTools.psm1 = scripts\DumpTether.DevTools.psm1
+		scripts\db.ps1 = scripts\db.ps1
+		scripts\dev.ps1 = scripts\dev.ps1
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DumpTether.Database", "src\DumpTether.Database\DumpTether.Database.csproj", "{110EAEDA-326A-4A8E-A047-AD59BFB62638}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -164,6 +185,18 @@ Global
 		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Release|x64.Build.0 = Release|Any CPU
 		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Release|x86.ActiveCfg = Release|Any CPU
 		{A1F64FE3-DF21-41BC-BCDD-402CB6B9A316}.Release|x86.Build.0 = Release|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Debug|x64.Build.0 = Debug|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Debug|x86.Build.0 = Debug|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Release|Any CPU.Build.0 = Release|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Release|x64.ActiveCfg = Release|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Release|x64.Build.0 = Release|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Release|x86.ActiveCfg = Release|Any CPU
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -174,5 +207,7 @@ Global
 		{3CA94FAE-6468-4FC3-8EA0-C012191BA8E6} = {FF9AC7E0-29BC-4F15-8F45-D008C44FEB63}
 		{19B23972-54B2-4ACC-8846-9EA926FE5863} = {3CA94FAE-6468-4FC3-8EA0-C012191BA8E6}
 		{F2B59F92-13C4-4FCF-9B6F-C5E7739F36D3} = {3CA94FAE-6468-4FC3-8EA0-C012191BA8E6}
+		{5A07E08A-26B8-4E6F-B418-8A4AF5197F18} = {FF9AC7E0-29BC-4F15-8F45-D008C44FEB63}
+		{110EAEDA-326A-4A8E-A047-AD59BFB62638} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
