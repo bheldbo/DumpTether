@@ -318,8 +318,6 @@ Current security posture:
 
 Before a real public MVP:
 
-- Re-check production CORS allowed origins.
-- Rotate any secrets that were ever pasted into chat, logs or files.
 - Confirm production cookies/session settings.
 - Confirm HTTPS at the reverse proxy.
 - Review auth error logging so it helps debugging without leaking tokens.
