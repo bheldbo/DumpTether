@@ -159,6 +159,7 @@ DumpTether.Backend    PostgreSQL + migrations + API
 DumpTether.Web        Vite frontend only
 DumpTether.FullStack  PostgreSQL + migrations + API + Vite
 DumpTether.LocalFullStack  local SQLite API + Vite
+DumpTether.DesktopDev      Tauri desktop dev shell + local SQLite API sidecar
 DumpTether.Database   interactive database tools menu
 DumpTether.DatabaseMigrate   apply EF migrations only
 DumpTether.DatabaseStatus    show configured database status
@@ -169,6 +170,8 @@ For backend debugging, use `DumpTether.Api` and start the web app separately.
 For a quick full stack run, use `DumpTether.FullStack`.
 
 For a quick offline-style run without Docker/PostgreSQL, use `DumpTether.LocalFullStack`.
+
+For the desktop shell, install Rust/Cargo first and use `DumpTether.DesktopDev`. This runs the Tauri wrapper, Vite, and a local SQLite API sidecar.
 
 For database maintenance, use the `DumpTether.Database` project. It opens a menu for status/migrate, clearing task data, resetting the configured local database, and inspecting/removing the local SQLite database. It deliberately does not own business rules; it delegates to `DumpTether.Data` and EF Core.
 
@@ -374,9 +377,16 @@ Install desktop prerequisites first:
 Then:
 
 ```powershell
-cd apps/desktop
+.\scripts\desktop.ps1 -Target Install
+.\scripts\desktop.ps1 -Target Dev
+.\scripts\desktop.ps1 -Target Build
+```
+
+Or from `apps/desktop`:
+
+```powershell
 npm install
-npm run build:sidecar
+npm run dev
 npm run build:desktop
 ```
 

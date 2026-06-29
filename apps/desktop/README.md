@@ -35,6 +35,12 @@ cd apps\desktop
 npm install
 ```
 
+Or from the repository root:
+
+```powershell
+.\scripts\desktop.ps1 -Target Install
+```
+
 ## Local Desktop Dev
 
 For now, the most reliable local loop is still:
@@ -50,11 +56,23 @@ cd apps\desktop
 npm run dev
 ```
 
+Or from the repository root:
+
+```powershell
+.\scripts\desktop.ps1 -Target Dev
+```
+
 ## Build Sidecar
 
 ```powershell
 cd apps\desktop
 npm run build:sidecar
+```
+
+Or:
+
+```powershell
+.\scripts\desktop.ps1 -Target Sidecar
 ```
 
 This creates a generated sidecar binary under `src-tauri/binaries/`.
@@ -67,6 +85,12 @@ The first sidecar build may download .NET runtime packs from NuGet for the selec
 ```powershell
 cd apps\desktop
 npm run build:desktop
+```
+
+Or:
+
+```powershell
+.\scripts\desktop.ps1 -Target Build
 ```
 
 Tauri can produce Windows installer bundles from `tauri build`. Code signing,

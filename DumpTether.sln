@@ -98,6 +98,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "scripts", "scripts", "{B038
 	ProjectSection(SolutionItems) = preProject
 		scripts\DumpTether.DevTools.psm1 = scripts\DumpTether.DevTools.psm1
 		scripts\db.ps1 = scripts\db.ps1
+		scripts\desktop.ps1 = scripts\desktop.ps1
 		scripts\dev.ps1 = scripts\dev.ps1
 	EndProjectSection
 EndProject

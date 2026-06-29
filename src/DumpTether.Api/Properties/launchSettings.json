@@ -91,6 +91,13 @@
       "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\dev.ps1\" -Target LocalBoth -OpenBrowser",
       "workingDirectory": "$(ProjectDir)",
       "launchBrowser": false
+    },
+    "DumpTether.DesktopDev": {
+      "commandName": "Executable",
+      "executablePath": "powershell.exe",
+      "commandLineArgs": "-NoExit -ExecutionPolicy Bypass -File \"..\\..\\scripts\\desktop.ps1\" -Target Dev",
+      "workingDirectory": "$(ProjectDir)",
+      "launchBrowser": false
     }
   }
 }

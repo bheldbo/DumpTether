@@ -92,14 +92,23 @@ function getDefaultApiBaseUrl() {
     return '';
   }
 
-  if (
-    window.location.protocol === 'file:' ||
-    window.location.hostname === 'tauri.localhost'
-  ) {
+  if (isRunningInDesktopShell()) {
     return desktopLocalApiBaseUrl;
   }
 
   return '';
+}
+
+function isRunningInDesktopShell() {
+  const desktopWindow = window as Window & {
+    __TAURI_INTERNALS__?: unknown;
+    __TAURI__?: unknown;
+  };
+
+  return Boolean(desktopWindow.__TAURI_INTERNALS__ || desktopWindow.__TAURI__) ||
+    window.location.protocol === 'tauri:' ||
+    window.location.protocol === 'file:' ||
+    window.location.hostname === 'tauri.localhost';
 }
 
 export function isTemporarySession() {

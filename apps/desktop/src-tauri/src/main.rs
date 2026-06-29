@@ -21,6 +21,8 @@ fn main() {
                 "--OAuth:Microsoft:Enabled=false",
                 "--OAuth:Facebook:Enabled=false",
                 "--Cors:AllowedOrigins:0=http://tauri.localhost",
+                "--Cors:AllowedOrigins:1=http://localhost:5173",
+                "--Cors:AllowedOrigins:2=http://127.0.0.1:5173",
             ]);
             let (mut receiver, mut child) = sidecar_command.spawn()?;
 
