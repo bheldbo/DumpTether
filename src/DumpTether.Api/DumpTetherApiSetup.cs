@@ -8,6 +8,7 @@ using DumpTether.App.Workspaces;
 using DumpTether.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -46,6 +47,7 @@ internal static class DumpTetherApiSetup
         services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();
         services.AddScoped<ICurrentWorkspaceSelection, CurrentWorkspaceSelection>();
 
+        services.AddDumpTetherDataProtection(configuration, environment);
         services.AddDumpTetherAuthentication(configuration, environment);
         services.AddDumpTetherCors(runtimeSetup);
         services.AddDumpTetherAuthorizationPolicies();
@@ -143,6 +145,55 @@ internal static class DumpTetherApiSetup
             .RequireAuthorization(AuthPolicies.SessionRequired);
 
         return app;
+    }
+
+    private static IServiceCollection AddDumpTetherDataProtection(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
+    {
+        var dataProtection = services
+            .AddDataProtection()
+            .SetApplicationName("DumpTether");
+
+        var keysPath = configuration["DataProtection:KeysPath"];
+
+        if (string.IsNullOrWhiteSpace(keysPath) &&
+            string.Equals(environment.EnvironmentName, "Desktop", StringComparison.OrdinalIgnoreCase))
+        {
+            keysPath = GetDefaultDesktopDataProtectionKeysPath();
+        }
+
+        if (!string.IsNullOrWhiteSpace(keysPath))
+        {
+            var expandedPath = Environment.ExpandEnvironmentVariables(keysPath);
+            Directory.CreateDirectory(expandedPath);
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(expandedPath));
+
+            if (OperatingSystem.IsWindows())
+            {
+                dataProtection.ProtectKeysWithDpapi();
+            }
+        }
+
+        return services;
+    }
+
+    private static string GetDefaultDesktopDataProtectionKeysPath()
+    {
+        var appDataRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+        if (string.IsNullOrWhiteSpace(appDataRoot))
+        {
+            appDataRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        }
+
+        if (string.IsNullOrWhiteSpace(appDataRoot))
+        {
+            appDataRoot = AppContext.BaseDirectory;
+        }
+
+        return Path.Combine(appDataRoot, "DumpTether", "keys");
     }
 
     private static IServiceCollection AddDumpTetherAuthentication(

@@ -27,8 +27,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": ["nsis"],
     "externalBin": ["binaries/dumptether-api"],
-    "icon": []
+    "icon": ["icons/icon.ico"]
   }
 }

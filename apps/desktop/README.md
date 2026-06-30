@@ -17,15 +17,45 @@ archive behavior, sharing boundaries and future sync rules stay in the C# projec
 ## Current State
 
 - `DumpTether.Api` can run with `Database:Provider=Sqlite`.
+- `src/DumpTether.Api/appsettings.Desktop.json` holds desktop sidecar defaults.
 - `scripts/dev.ps1 -Target LocalBoth` starts the local SQLite API plus Vite.
 - This folder contains a Tauri scaffold and a sidecar publish script.
+- `scripts/desktop.ps1 -Target Build` builds the desktop executable and NSIS installer.
 - Installer signing and sync are not implemented yet.
+
+## Desktop Configuration
+
+Desktop uses normal ASP.NET Core configuration. The Tauri shell starts the API
+sidecar with:
+
+```text
+--environment=Desktop
+```
+
+That makes the sidecar read:
+
+```text
+src/DumpTether.Api/appsettings.json
+src/DumpTether.Api/appsettings.Desktop.json
+```
+
+`appsettings.Desktop.json` contains safe desktop defaults: SQLite, local loopback
+URL, app-owned DataProtection keys, disabled email/OAuth/MFA, and the exact local
+origins needed by the webview and Vite dev server. If `DataProtection:KeysPath`
+is left empty in Desktop, DumpTether uses the app-data folder automatically.
+
+Tauri's `src-tauri/capabilities/default.json` is not DumpTether runtime config. It
+is Tauri's security allow-list saying the shell may start the bundled sidecar with
+that one `--environment=Desktop` argument. In other words: edit ASP.NET config for
+DumpTether behavior; edit Tauri config only for shell/window/bundle permissions.
 
 ## Prerequisites
 
 - Node.js and npm
 - Rust toolchain with Cargo
 - .NET SDK
+- Visual Studio Desktop development with C++ workload on Windows
+  - Include MSVC x64/x86 build tools and a Windows SDK.
 - Windows WebView2 runtime on Windows
 
 Install desktop dependencies from this folder:
@@ -93,8 +123,33 @@ Or:
 .\scripts\desktop.ps1 -Target Build
 ```
 
-Tauri can produce Windows installer bundles from `tauri build`. Code signing,
-release signing certificates and update feeds are future release work.
+This builds:
+
+```text
+apps/desktop/src-tauri/target/release/dumptether-desktop.exe
+apps/desktop/src-tauri/target/release/bundle/nsis/DumpTether_0.1.0_x64-setup.exe
+```
+
+MSI/WiX is available as an explicit target:
+
+```powershell
+cd apps\desktop
+npm run build:desktop:msi
+```
+
+Or:
+
+```powershell
+.\scripts\desktop.ps1 -Target BuildMsi
+```
+
+The MSI target depends on WiX and the Windows Installer service being available
+on the build machine. If WiX fails with ICE validation errors about the Windows
+Installer service, use the NSIS installer for local testing and fix the Windows
+Installer/WiX environment before cutting a signed MSI release.
+
+Code signing, release signing certificates and update feeds are future release
+work.
 
 ## Future Sync Shape
 

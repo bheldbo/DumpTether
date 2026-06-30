@@ -1,6 +1,11 @@
 using DumpTether.Api;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
 var runtimeSetup = DumpTetherRuntimeSetupReader.Read(
     builder.Configuration,
     builder.Environment.IsDevelopment());
