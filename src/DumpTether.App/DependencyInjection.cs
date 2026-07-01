@@ -4,6 +4,7 @@ using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Email;
 using DumpTether.App.LiveUpdates;
 using DumpTether.App.Projects;
+using DumpTether.App.Sync;
 using DumpTether.App.Tasks;
 using DumpTether.App.Templates;
 using DumpTether.App.Views;
@@ -24,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserSessionProvider, CurrentUserSessionProvider>();
         services.AddScoped<IProjectService, ProjectService>();
+        services.AddScoped<ISyncService, SyncService>();
         services.AddScoped<ITaskItemService, TaskItemService>();
         services.AddScoped<ITaskTemplateService, TaskTemplateService>();
         services.AddScoped<ISavedViewService, SavedViewService>();

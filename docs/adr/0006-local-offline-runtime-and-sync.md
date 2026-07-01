@@ -107,6 +107,33 @@ The local session is not the sync relationship. Cloud login creates the cloud au
 
 Shared tasks and shared boards are server-side concepts. They are visible in the local app only after login and successful sync.
 
+If the user loses the SQLite database, any local-only data and local sync mappings are lost. Already-synced cloud data can be downloaded again after login because the cloud keeps remote IDs and membership. Unsynced local-only tasks cannot be recovered without a backup/export. After reinstall, the app should rebuild local mappings from downloaded cloud records or ask the user to link local boards again if local data still exists.
+
+The sync foundation uses explicit metadata:
+
+```text
+SyncRoot
+  LocalWorkspaceId
+  RemoteWorkspaceId
+  CloudUserId
+  DeviceId
+  Status
+  LastSyncedAt
+
+SyncMapping
+  SyncRootId
+  EntityType
+  LocalId
+  RemoteId
+  LastRemoteVersion
+  Status
+  LastSyncedAt
+```
+
+`SyncRoot` represents a board-level sync relationship. `SyncMapping` represents individual local-to-remote entity links. These records prevent duplicate uploads because retries can resolve "this local thing already became that remote thing" before creating new remote rows.
+
+Future AD, Google, Microsoft and other identity providers should attach to the cloud identity layer. They should not replace the local SQLite identity. A local desktop user can later link to a cloud account from any supported provider, then sync mappings decide what data moves.
+
 ## Sync Risks To Design Around
 
 The risky parts are not just "upload local rows":

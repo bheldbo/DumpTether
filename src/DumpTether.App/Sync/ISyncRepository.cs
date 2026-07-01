@@ -1,0 +1,25 @@
+using DumpTether.Domain;
+
+namespace DumpTether.App.Sync;
+
+public interface ISyncRepository
+{
+    Task<IReadOnlyList<SyncRoot>> ListRootsForLocalWorkspacesAsync(
+        IReadOnlyCollection<Guid> localWorkspaceIds,
+        CancellationToken cancellationToken);
+
+    Task<SyncRoot?> GetRootByLocalWorkspaceAsync(
+        Guid localWorkspaceId,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task<SyncRoot?> GetRootByRemoteWorkspaceAsync(
+        Guid remoteWorkspaceId,
+        Guid cloudUserId,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task AddRootAsync(SyncRoot syncRoot, CancellationToken cancellationToken);
+
+    Task SaveChangesAsync(CancellationToken cancellationToken);
+}

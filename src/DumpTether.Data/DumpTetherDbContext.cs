@@ -45,6 +45,10 @@ public sealed class DumpTetherDbContext : DbContext
 
     public DbSet<SavedView> SavedViews => Set<SavedView>();
 
+    public DbSet<SyncRoot> SyncRoots => Set<SyncRoot>();
+
+    public DbSet<SyncMapping> SyncMappings => Set<SyncMapping>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DumpTetherDbContext).Assembly);

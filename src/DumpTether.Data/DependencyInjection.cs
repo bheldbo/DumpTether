@@ -1,6 +1,7 @@
 using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Auth;
 using DumpTether.App.Projects;
+using DumpTether.App.Sync;
 using DumpTether.App.Tasks;
 using DumpTether.App.Templates;
 using DumpTether.App.Views;
@@ -45,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IDevelopmentWorkspaceProvider, DevelopmentWorkspaceProvider>();
         services.AddScoped<IProjectRepository, EfProjectRepository>();
         services.AddScoped<ISavedViewRepository, EfSavedViewRepository>();
+        services.AddScoped<ISyncRepository, EfSyncRepository>();
         services.AddScoped<ITaskItemRepository, EfTaskItemRepository>();
         services.AddScoped<ITaskTemplateRepository, EfTaskTemplateRepository>();
         services.AddScoped<IWorkspaceRepository, EfWorkspaceRepository>();

@@ -45,6 +45,28 @@ Do not introduce AI features into the MVP.
 Do not introduce MCP into the MVP.
 Do not introduce calendar/email integrations into the MVP.
 
+## Refactor notes
+
+- If you find historical, legacy, duplicated or unused code while working, do not derail the active task unless it is blocking or dangerous.
+- Record the finding in `docs/engineering/refactor-backlog.md` with context, affected files and why it can wait.
+- Prefer small cleanup commits when the cleanup is directly adjacent to the active work.
+- Prefer backlog notes when the cleanup crosses feature boundaries or would distract from the user's current goal.
+
+## Context map
+
+Use these docs as the repo grows instead of rediscovering the same decisions from code alone:
+
+- Product direction: `docs/product/product-principles.md`, `docs/product/ui-principles.md`, `docs/product/roadmap.md`
+- Frontend structure: `docs/product/web-frontend-architecture.md`
+- Core architecture/config: `docs/adr/0001-architecture.md`, `docs/adr/0002-configuration.md`
+- Desktop/offline/sync: `docs/adr/0003-desktop-offline-architecture.md`, `docs/adr/0006-local-offline-runtime-and-sync.md`
+- Auth/security: `docs/adr/0004-auth-server-sync-readiness.md`, `docs/security/auth-hardening.md`, `docs/security/security-principles.md`
+- Live collaboration: `docs/adr/0005-live-collaboration-signalr.md`
+- Deployment: `docs/deployment/docker-compose-production.md`
+- Deferred cleanup: `docs/engineering/refactor-backlog.md`
+
+When a feature touches one of these areas, skim the matching docs first and update them when the decision changes.
+
 ## Backend rules
 
 - Use C# and ASP.NET Core.
