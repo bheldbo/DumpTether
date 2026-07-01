@@ -40,7 +40,6 @@ import {
   addTaskTimelineEntry,
   acceptShareLink,
   acceptIncomingWorkspaceInvitation,
-  ApiError,
   archiveTaskItem,
   copyTaskItems,
   createArchiveResolution,
@@ -60,8 +59,6 @@ import {
   declineIncomingWorkspaceInvitation,
   developmentLogin,
   checkHealth,
-  getAuthOptions,
-  getCurrentUser,
   guestLogin,
   getTaskItem,
   getTaskTemplate,
@@ -70,8 +67,6 @@ import {
   leaveTaskShare,
   leaveWorkspaceTaskShares,
   listArchiveResolutions,
-  listIncomingTaskShares,
-  listIncomingWorkspaceInvitations,
   listProjects,
   listSavedViews,
   listWorkspaceInvitations,
@@ -101,6 +96,7 @@ import {
   updateWorkspaceMemberRole,
 } from './api';
 import './App.css';
+import { loadAuthSession } from './features/auth/authSession';
 import { Sidebar } from './features/navigation/Sidebar';
 import {
   AccountPanel,
@@ -293,30 +289,14 @@ function App() {
     setIsLoadingAuth(true);
 
     try {
-      const options = await getAuthOptions();
-      setAuthOptions(options);
+      const session = await loadAuthSession();
+      setAuthOptions(session.authOptions);
       setConnectionStatus('online');
-
-      try {
-        const user = await getCurrentUser();
-        const [workspaceInvites, taskShares] = await Promise.all([
-          listIncomingWorkspaceInvitations().catch(() => []),
-          listIncomingTaskShares().catch(() => []),
-        ]);
-        setCurrentUser(user);
-        setIncomingWorkspaceInvitations(workspaceInvites);
-        setIncomingTaskShares(taskShares);
-        setTemporarySessionIsActive(isTemporarySession());
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          setCurrentUser(null);
-          setIncomingWorkspaceInvitations([]);
-          setIncomingTaskShares([]);
-          setTemporarySessionIsActive(false);
-        } else {
-          throw error;
-        }
-      }
+      setCurrentUser(session.currentUser);
+      setIncomingWorkspaceInvitations(session.incomingWorkspaceInvitations);
+      setIncomingTaskShares(session.incomingTaskShares);
+      setTemporarySessionIsActive(session.temporarySessionIsActive);
+      setErrorMessage(null);
     } catch (error) {
       setConnectionStatus('offline');
       setErrorMessage(getErrorMessage(error));

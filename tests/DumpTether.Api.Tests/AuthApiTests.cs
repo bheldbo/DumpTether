@@ -296,6 +296,94 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task PostLocalDesktopLogin_WhenNotDesktop_ReturnsNotFound()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostLocalDesktopLogin_WhenDesktop_CreatesPersistentLocalUserSession()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop");
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        response.EnsureSuccessStatusCode();
+        var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>();
+
+        Assert.NotNull(login);
+        Assert.Equal("local@desktop.dumptether.local", login!.User.Email);
+        Assert.Equal("Local user", login.User.DisplayName);
+        Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
+        Assert.Contains(login.Workspaces, workspace => workspace.Name == "All Tasks");
+
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+        var currentUser = await client.GetFromJsonAsync<CurrentUserResponse>("/api/auth/me");
+
+        Assert.Equal(login.User.Id, currentUser!.User.Id);
+    }
+
+    [Fact]
+    public async Task PostLocalDesktopLogin_WhenRepeated_ReusesLocalUserAndWorkspace()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop");
+        using var client = factory.CreateClient();
+
+        var first = await client.PostAsync("/api/auth/local-desktop", content: null);
+        var second = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        first.EnsureSuccessStatusCode();
+        second.EnsureSuccessStatusCode();
+        var firstLogin = await first.Content.ReadFromJsonAsync<LoginUserResponse>();
+        var secondLogin = await second.Content.ReadFromJsonAsync<LoginUserResponse>();
+
+        Assert.Equal(firstLogin!.User.Id, secondLogin!.User.Id);
+        Assert.Equal(firstLogin.Workspaces.Single().Id, secondLogin.Workspaces.Single().Id);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Equal(1, await dbContext.AppUsers.CountAsync());
+        Assert.Equal(1, await dbContext.Workspaces.CountAsync());
+        Assert.Equal(2, await dbContext.UserSessions.CountAsync());
+    }
+
+    [Fact]
+    public async Task LocalDesktopSession_CanCreateAndReadTaskWithoutCloudLogin()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop");
+        using var client = factory.CreateClient();
+        var loginResponse = await client.PostAsync("/api/auth/local-desktop", content: null);
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<LoginUserResponse>();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login!.SessionToken);
+
+        var createResponse = await client.PostAsJsonAsync(
+            "/api/tasks",
+            new { title = "Offline local task" });
+
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>();
+        var tasks = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+
+        Assert.NotNull(created);
+        Assert.Contains(tasks!, task => task.Id == created!.Id && task.Title == "Offline local task");
+    }
+
+    [Fact]
     public async Task UnsafeCookieAuthenticatedRequest_WithoutCsrfHeader_IsRejected()
     {
         using var factory = new DumpTetherApiFactory(requireAuthentication: true);

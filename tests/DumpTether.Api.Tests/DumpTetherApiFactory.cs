@@ -23,12 +23,14 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
     private readonly bool _enableDevelopmentLogin;
     private readonly int _maxActiveTasksPerWorkspace;
     private readonly int _maxTotalTasksPerWorkspace;
+    private readonly string? _environmentName;
     private readonly IReadOnlyDictionary<string, string?> _extraConfiguration;
     private readonly ILiveUpdatePublisher? _liveUpdatePublisher;
 
     public DumpTetherApiFactory(
         bool requireAuthentication = false,
         bool enableDevelopmentLogin = false,
+        string? environmentName = null,
         int maxActiveTasksPerWorkspace = 1000,
         int maxTotalTasksPerWorkspace = 5000,
         IReadOnlyDictionary<string, string?>? extraConfiguration = null,
@@ -36,16 +38,26 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
     {
         _requireAuthentication = requireAuthentication;
         _enableDevelopmentLogin = enableDevelopmentLogin;
+        _environmentName = environmentName;
         _maxActiveTasksPerWorkspace = maxActiveTasksPerWorkspace;
         _maxTotalTasksPerWorkspace = maxTotalTasksPerWorkspace;
         _extraConfiguration = extraConfiguration ?? new Dictionary<string, string?>();
         _liveUpdatePublisher = liveUpdatePublisher;
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
-        Environment.SetEnvironmentVariable(ConnectionStringKey, TestConnectionString);
+        Environment.SetEnvironmentVariable(
+            ConnectionStringKey,
+            string.Equals(environmentName, "Desktop", StringComparison.OrdinalIgnoreCase)
+                ? "Data Source=:memory:"
+                : TestConnectionString);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        if (!string.IsNullOrWhiteSpace(_environmentName))
+        {
+            builder.UseEnvironment(_environmentName);
+        }
+
         builder.ConfigureLogging(loggingBuilder =>
         {
             loggingBuilder.ClearProviders();
@@ -53,10 +65,15 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureAppConfiguration((_, configurationBuilder) =>
         {
+            var connectionString = string.Equals(
+                _environmentName,
+                "Desktop",
+                StringComparison.OrdinalIgnoreCase)
+                    ? "Data Source=:memory:"
+                    : "Host=localhost;Database=dumptether_tests;Username=dumptether;Password=dumptether";
             var configuration = new Dictionary<string, string?>
             {
-                ["ConnectionStrings:DumpTether"] =
-                    "Host=localhost;Database=dumptether_tests;Username=dumptether;Password=dumptether",
+                ["ConnectionStrings:DumpTether"] = connectionString,
                 ["Auth:RequireAuthentication"] = _requireAuthentication.ToString(),
                 ["Auth:EnableDevelopmentLogin"] = _enableDevelopmentLogin.ToString(),
                 ["Usage:MaxActiveTasksPerWorkspace"] = _maxActiveTasksPerWorkspace.ToString(),

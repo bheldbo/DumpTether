@@ -92,14 +92,14 @@ function getDefaultApiBaseUrl() {
     return '';
   }
 
-  if (isRunningInDesktopShell()) {
+  if (isDesktopRuntime()) {
     return desktopLocalApiBaseUrl;
   }
 
   return '';
 }
 
-function isRunningInDesktopShell() {
+export function isDesktopRuntime() {
   const desktopWindow = window as Window & {
     __TAURI_INTERNALS__?: unknown;
     __TAURI__?: unknown;
@@ -278,6 +278,15 @@ export async function guestLogin(): Promise<LoginUserResponse> {
   });
 
   setSessionToken(response.sessionToken, { temporary: true });
+  return response;
+}
+
+export async function localDesktopLogin(): Promise<LoginUserResponse> {
+  const response = await request<LoginUserResponse>('/api/auth/local-desktop', {
+    method: 'POST',
+  });
+
+  setSessionToken(response.sessionToken);
   return response;
 }
 

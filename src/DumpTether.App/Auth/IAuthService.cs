@@ -15,6 +15,10 @@ public interface IAuthService
         AuthRequestMetadata metadata,
         CancellationToken cancellationToken);
 
+    Task<LoginUserResponse> LocalDesktopLoginAsync(
+        AuthRequestMetadata metadata,
+        CancellationToken cancellationToken);
+
     Task<LoginUserResponse> GuestLoginAsync(
         AuthRequestMetadata metadata,
         CancellationToken cancellationToken);

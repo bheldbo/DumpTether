@@ -245,6 +245,33 @@ public sealed class AuthController : ControllerBase
     }
 
     [EnableRateLimiting("auth")]
+    [HttpPost("local-desktop")]
+    public async Task<ActionResult<LoginUserResponse>> LocalDesktopLogin(CancellationToken cancellationToken)
+    {
+        if (!string.Equals(_environment.EnvironmentName, "Desktop", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _authService.LocalDesktopLoginAsync(
+                new AuthRequestMetadata(
+                    Request.Headers.UserAgent.FirstOrDefault(),
+                    HttpContext.Connection.RemoteIpAddress?.ToString()),
+                cancellationToken);
+
+            AppendSessionCookie(response);
+
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return NotFound();
+        }
+    }
+
+    [EnableRateLimiting("auth")]
     [HttpPost("guest")]
     public async Task<ActionResult<LoginUserResponse>> GuestLogin(CancellationToken cancellationToken)
     {

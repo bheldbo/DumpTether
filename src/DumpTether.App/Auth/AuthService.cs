@@ -11,6 +11,9 @@ namespace DumpTether.App.Auth;
 
 internal sealed class AuthService : IAuthService
 {
+    private const string LocalDesktopEmail = "local@desktop.dumptether.local";
+    private const string LocalDesktopDisplayName = "Local user";
+
     private readonly IAuthRepository _authRepository;
     private readonly IAuthTokenAccessor _authTokenAccessor;
     private readonly IClock _clock;
@@ -176,6 +179,70 @@ internal sealed class AuthService : IAuthService
                 "development browser"),
             metadata,
             cancellationToken);
+    }
+
+    public async Task<LoginUserResponse> LocalDesktopLoginAsync(
+        AuthRequestMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        var now = _clock.UtcNow;
+        var normalizedEmail = AppUser.NormalizeEmail(LocalDesktopEmail);
+        var createdLocalUser = false;
+        var user = await _authRepository.GetUserByNormalizedEmailAsync(
+            normalizedEmail,
+            trackChanges: true,
+            cancellationToken);
+
+        if (user is null)
+        {
+            var created = await CreateUserWithWorkspaceAsync(
+                LocalDesktopEmail,
+                LocalDesktopDisplayName,
+                _passwordHashService.HashPassword(_sessionTokenService.CreateSessionToken()),
+                now,
+                emailIsConfirmed: true,
+                cancellationToken);
+            user = created.User;
+            createdLocalUser = true;
+        }
+        else if (!user.IsActive)
+        {
+            throw new UnauthorizedAccessException("Local desktop user is inactive.");
+        }
+
+        if (!createdLocalUser)
+        {
+            var existingWorkspaces = await _authRepository.ListWorkspacesForUserAsync(
+                user.Id,
+                cancellationToken);
+
+            if (existingWorkspaces.Count == 0)
+            {
+                var workspace = Workspace.Create("All Tasks", now);
+                var membership = WorkspaceMembership.Create(
+                    workspace.Id,
+                    user.Id,
+                    WorkspaceMembershipRole.Owner,
+                    now);
+                await _workspaceRepository.AddAsync(workspace, cancellationToken);
+                await _authRepository.AddWorkspaceMembershipAsync(membership, cancellationToken);
+            }
+        }
+
+        var (sessionToken, expiresAt) = await CreateSessionAsync(
+            user,
+            metadata,
+            "desktop local app",
+            cancellationToken);
+        await _authRepository.SaveChangesAsync(cancellationToken);
+
+        var workspaces = await _authRepository.ListWorkspacesForUserAsync(user.Id, cancellationToken);
+
+        return new LoginUserResponse(
+            MapUser(user),
+            workspaces.Select(MapWorkspace).ToList(),
+            sessionToken,
+            expiresAt);
     }
 
     public async Task<LoginUserResponse> GuestLoginAsync(

@@ -70,25 +70,40 @@ JSON remains appropriate for lightweight app preferences and export/import metad
 The expected desktop packaging path is:
 
 - Tauri development shell first
-- Windows `.exe` installer for ordinary installs
-- Windows `.msi` installer when MSI deployment is needed
+- Windows NSIS `.exe` installer for ordinary installs
+- Windows `.msi` installer when enterprise/MSI deployment is needed
 - Linux AppImage/deb/rpm depending on distribution needs
 - code signing after the build pipeline is stable
 
-Do not hand-roll WiX first. Let Tauri own the installer pipeline until there is a concrete deployment need it cannot satisfy.
+Do not hand-roll WiX first. Let Tauri own the installer pipeline until there is a concrete deployment need it cannot satisfy. The NSIS `.exe` installer is the MVP path. MSI/WiX is optional and can fail on developer machines if the Windows Installer/WiX validation environment is not healthy.
 
-## Login and Sync
+## Local Identity
+
+The local desktop API still uses the same session/authorization model as the hosted API, but the desktop session is local-only.
+
+On first desktop launch, the local API creates or reuses a local SQLite `AppUser` and an owner workspace. This is not the cloud account. It is the identity the local API uses to keep authorization, workspace ownership and task scoping consistent while offline.
+
+The session token can expire or be replaced. The durable local identity is the SQLite `AppUser`, plus future sync metadata such as `DeviceId`.
+
+## Login and Sync Mapping
 
 Login/sync is future work.
 
-A local user can use DumpTether without logging in. When the user logs in, the app should:
+A local user can use DumpTether without cloud login. Local boards and tasks are born in SQLite and should show as local-only/not-synced when sync UI exists.
+
+When the user logs in to the hosted DumpTether service, the app should not silently merge everything. It should use a OneDrive-like mapping flow:
 
 1. keep local data available
 2. connect to the hosted API
 3. identify the local device
-4. sync local-owned boards/tasks
-5. fetch shared boards/tasks available to that user
-6. show clear status: local-only, offline, connected, syncing, sync error
+4. let the user mark a local board/task set for sync, or keep it local-only
+5. create or choose the matching hosted board/task container
+6. store a local mapping such as `LocalWorkspaceId -> RemoteWorkspaceId`
+7. sync local-owned boards/tasks using stable IDs and checkpoints
+8. fetch shared boards/tasks available to that cloud user
+9. show clear status: local-only, not synced, offline, connected, syncing, sync error
+
+The local session is not the sync relationship. Cloud login creates the cloud authority; sync maps local SQLite records to hosted PostgreSQL records deliberately.
 
 Shared tasks and shared boards are server-side concepts. They are visible in the local app only after login and successful sync.
 
