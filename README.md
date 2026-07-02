@@ -118,6 +118,17 @@ Local SQLite path:
 
 That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation, not full cloud sync yet.
 
+Quick chooser:
+
+```text
+Web dev with PostgreSQL:    .\scripts\dev.ps1 -Target Both -OpenBrowser
+Offline-style web dev:      .\scripts\dev.ps1 -Target LocalBoth -OpenBrowser
+Desktop dev shell:          .\scripts\desktop.ps1 -Target Dev
+Windows desktop installer:  .\scripts\desktop.ps1 -Target Build
+Linux server deployment:    Docker Compose, see docs/deployment/docker-compose-production.md
+Linux desktop bundles:      build on a Linux host or Linux CI runner, see apps/desktop/README.md
+```
+
 Manual path:
 
 ```powershell
@@ -194,6 +205,19 @@ Two files matter most:
 - `.env`: uncommitted runtime/secrets, especially Docker and production-like runs.
 
 Do not commit real secrets.
+
+ASP.NET Core configuration is the runtime source of truth. The layers are:
+
+```text
+src/DumpTether.Api/appsettings.json
+  -> appsettings.Development.json / appsettings.Production.json / appsettings.Desktop.json
+  -> environment variables
+  -> .env values loaded by DumpTether scripts or Docker Compose
+```
+
+Typed config is bound in C# through `DumpTetherApiSetup` and the option classes in `DumpTether.App` plus `DumpTetherDatabaseOptions` in `DumpTether.Data`. `DumpTetherRuntimeSetupReader` reads cross-cutting runtime setup such as CORS and startup migrations. There is not a separate hidden config system.
+
+Tauri config is different: `apps/desktop/src-tauri/tauri.conf.json` and `capabilities/default.json` configure the desktop shell, window, bundler and sidecar permission. They do not replace `appsettings*.json`.
 
 Common local PostgreSQL defaults:
 
@@ -398,6 +422,18 @@ npm run build:desktop
 `build:sidecar` publishes `DumpTether.Api` as a generated sidecar binary for Tauri. `build:desktop` runs `tauri build`, which is the path toward `.exe`/`.msi` bundles. Signing certificates, update feeds and sync are still future work.
 
 The first sidecar build may download .NET runtime packs from NuGet for the selected runtime, for example `win-x64`.
+
+Linux desktop publishing is architecture-supported, but should be done on Linux:
+
+```bash
+cd apps/desktop
+npm install
+npm run build:desktop:linux
+```
+
+That builds the Linux sidecar and asks Tauri for AppImage/deb/rpm bundles. Expected output is under `apps/desktop/src-tauri/target/release/bundle/`. Linux packaging needs the normal Tauri Linux system dependencies, Rust/Cargo, Node.js and the .NET SDK on the Linux build machine. Cross-building Linux desktop installers from Windows is not the current plan.
+
+Server deployment to Linux is already the intended production path: use the Docker image and `deploy/docker/docker-compose.prod.example.yml`. That is separate from Linux desktop publishing.
 
 ## Security Notes
 

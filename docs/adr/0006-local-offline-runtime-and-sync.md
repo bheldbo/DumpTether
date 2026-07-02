@@ -77,6 +77,12 @@ The expected desktop packaging path is:
 
 Do not hand-roll WiX first. Let Tauri own the installer pipeline until there is a concrete deployment need it cannot satisfy. The NSIS `.exe` installer is the MVP path. MSI/WiX is optional and can fail on developer machines if the Windows Installer/WiX validation environment is not healthy.
 
+Linux server deployment and Linux desktop publishing are separate:
+
+- Hosted DumpTether on Linux is the normal Docker Compose production shape: ASP.NET Core API container, PostgreSQL container and reverse proxy.
+- Linux desktop bundles should be built on a Linux host or Linux CI runner so Tauri can produce native AppImage/deb/rpm artifacts with the correct system toolchain.
+- Cross-building Linux desktop installers from Windows is not a current requirement.
+
 ## Local Identity
 
 The local desktop API still uses the same session/authorization model as the hosted API, but the desktop session is local-only.

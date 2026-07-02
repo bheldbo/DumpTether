@@ -21,6 +21,7 @@ archive behavior, sharing boundaries and future sync rules stay in the C# projec
 - `scripts/dev.ps1 -Target LocalBoth` starts the local SQLite API plus Vite.
 - This folder contains a Tauri scaffold and a sidecar publish script.
 - `scripts/desktop.ps1 -Target Build` builds the desktop executable and NSIS installer.
+- Linux desktop bundles can be built on a Linux host or Linux CI runner.
 - Installer signing and sync are not implemented yet.
 
 ## Desktop Configuration
@@ -48,6 +49,10 @@ Tauri's `src-tauri/capabilities/default.json` is not DumpTether runtime config. 
 is Tauri's security allow-list saying the shell may start the bundled sidecar with
 that one `--environment=Desktop` argument. In other words: edit ASP.NET config for
 DumpTether behavior; edit Tauri config only for shell/window/bundle permissions.
+
+There is no second desktop business-config file. The desktop sidecar uses normal
+ASP.NET configuration, so environment variables can still override
+`appsettings.Desktop.json` when needed.
 
 ## Prerequisites
 
@@ -150,6 +155,43 @@ Installer/WiX environment before cutting a signed MSI release.
 
 Code signing, release signing certificates and update feeds are future release
 work.
+
+## Linux Desktop Bundles
+
+Build Linux desktop bundles on Linux, not from Windows:
+
+```bash
+cd apps/desktop
+npm install
+npm run build:desktop:linux
+```
+
+That command:
+
+1. publishes the local ASP.NET Core API sidecar for the current Linux CPU
+2. builds the shared React UI
+3. asks Tauri for AppImage, deb and rpm bundles
+
+Expected output:
+
+```text
+apps/desktop/src-tauri/target/release/bundle/appimage/
+apps/desktop/src-tauri/target/release/bundle/deb/
+apps/desktop/src-tauri/target/release/bundle/rpm/
+```
+
+Linux build machines need the normal Tauri Linux prerequisites, Rust/Cargo,
+Node.js, npm and the .NET SDK. The helper scripts also support explicit sidecar
+runtimes:
+
+```bash
+node scripts/build-sidecar.mjs --runtime linux-x64
+node scripts/build-sidecar.mjs --runtime linux-arm64
+```
+
+The Windows `scripts/desktop.ps1 -Target BuildLinux` target exists for PowerShell
+Core on a Linux host. It intentionally refuses to produce Linux desktop bundles
+from Windows.
 
 ## Future Sync Shape
 

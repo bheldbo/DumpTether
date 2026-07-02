@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Install", "Sidecar", "Dev", "Build", "BuildMsi")]
+    [ValidateSet("Install", "Sidecar", "Dev", "Build", "BuildMsi", "BuildLinux")]
     [string] $Target = "Dev"
 )
 
@@ -32,12 +32,25 @@ function Invoke-InDesktopRoot {
     }
 }
 
+function Get-NpmCommand {
+    if (Get-Command "npm.cmd" -ErrorAction SilentlyContinue) {
+        return "npm.cmd"
+    }
+
+    if (Get-Command "npm" -ErrorAction SilentlyContinue) {
+        return "npm"
+    }
+
+    throw "npm was not found. Install Node.js 24 LTS or newer."
+}
+
 function Invoke-DesktopNpmScript {
     param(
         [string] $ScriptName
     )
 
     $vsDevCommand = Get-WindowsNativeToolsCommand
+    $npmCommand = Get-NpmCommand
 
     Invoke-InDesktopRoot {
         if ($vsDevCommand) {
@@ -45,7 +58,7 @@ function Invoke-DesktopNpmScript {
             cmd.exe /d /s /c $command
         }
         else {
-            npm.cmd run $ScriptName
+            & $npmCommand run $ScriptName
         }
     }
 
@@ -55,7 +68,7 @@ function Invoke-DesktopNpmScript {
 }
 
 function Install-DesktopDependencies {
-    Assert-Command "npm.cmd" "Install Node.js 24 LTS or newer."
+    $npmCommand = Get-NpmCommand
 
     Invoke-InDesktopRoot {
         if (Test-Path "node_modules") {
@@ -63,7 +76,7 @@ function Install-DesktopDependencies {
             return
         }
 
-        npm.cmd install
+        & $npmCommand install
         if ($LASTEXITCODE -ne 0) {
             throw "npm install failed with exit code $LASTEXITCODE."
         }
@@ -75,7 +88,8 @@ function Build-Sidecar {
     Install-DesktopDependencies
 
     Invoke-InDesktopRoot {
-        npm.cmd run build:sidecar:dev
+        $npmCommand = Get-NpmCommand
+        & $npmCommand run build:sidecar
         if ($LASTEXITCODE -ne 0) {
             throw "Desktop sidecar build failed with exit code $LASTEXITCODE."
         }
@@ -103,6 +117,21 @@ function Build-DesktopMsiInstaller {
     Clear-DesktopBundleArtifacts
 
     Invoke-DesktopNpmScript "build:desktop:msi"
+}
+
+function Build-DesktopLinuxBundles {
+    $isLinuxHost = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Linux)
+
+    if (-not $isLinuxHost) {
+        throw "Build Linux desktop bundles on a Linux host or Linux CI runner. Tauri Linux bundles are not produced from this Windows helper path."
+    }
+
+    Assert-Command "cargo" "Install the Rust toolchain with Cargo before building Tauri bundles."
+    Install-DesktopDependencies
+    Clear-DesktopBundleArtifacts
+
+    Invoke-DesktopNpmScript "build:desktop:linux"
 }
 
 function Clear-DesktopBundleArtifacts {
@@ -170,4 +199,5 @@ switch ($Target) {
     "Dev" { Start-DesktopDev }
     "Build" { Build-DesktopInstaller }
     "BuildMsi" { Build-DesktopMsiInstaller }
+    "BuildLinux" { Build-DesktopLinuxBundles }
 }
