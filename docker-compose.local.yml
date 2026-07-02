@@ -29,6 +29,10 @@ services:
       Database__Sqlite__Path: ${DUMPTETHER_SQLITE_PATH:-}
       Auth__RequireAuthentication: ${DUMPTETHER_REQUIRE_AUTHENTICATION:-true}
       Auth__AllowGuestSessions: ${DUMPTETHER_ALLOW_GUEST_SESSIONS:-true}
+      Auth__SignupMode: ${DUMPTETHER_SIGNUP_MODE:-Open}
+      Auth__SignupWhitelistEmails__0: ${DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0:-}
+      Auth__SignupWhitelistDomains__0: ${DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0:-}
+      Auth__SignupInviteCodes__0: ${DUMPTETHER_SIGNUP_INVITE_CODE_0:-}
       Auth__EnableDevelopmentLogin: ${DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN:-true}
       Auth__DevelopmentEmail: ${DUMPTETHER_DEVELOPMENT_EMAIL:-dev@dumptether.local}
       Auth__DevelopmentPassword: ${DUMPTETHER_DEVELOPMENT_PASSWORD:-dumptether-dev-password}

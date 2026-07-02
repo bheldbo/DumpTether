@@ -40,6 +40,7 @@ export const defaultAuthOptions: AuthClientOptionsResponse = {
   guestSessionsEnabled: true,
   developmentLoginEnabled: false,
   emailConfirmationEnabled: false,
+  signupMode: 'Open',
   oAuthProviders: [],
 };
 

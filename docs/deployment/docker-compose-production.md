@@ -61,7 +61,9 @@ DUMPTETHER_API_IMAGE=<registry>/<image>:<tag>
 DUMPTETHER_DATABASE_PROVIDER=Postgres
 DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP=false
 DUMPTETHER_REQUIRE_AUTHENTICATION=true
-DUMPTETHER_ALLOW_GUEST_SESSIONS=true
+DUMPTETHER_ALLOW_GUEST_SESSIONS=false
+DUMPTETHER_SIGNUP_MODE=InviteOnly
+DUMPTETHER_SIGNUP_INVITE_CODE_0=<long private invite code>
 DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN=false
 DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE=1000
 DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE=5000
@@ -72,6 +74,8 @@ DUMPTETHER_DOMAIN=dumptether.example.com
 Production secrets are never committed. Real production files stay on the server or in a deployment secret store.
 
 Production compose is intended to use PostgreSQL. SQLite mode is for the local/offline runtime and future desktop app, not the hosted server.
+
+For early private hosting, keep registration invite-only or whitelist-based. The API supports `DUMPTETHER_SIGNUP_MODE=Open`, `Whitelist`, `InviteOnly`, or `Closed`. `Whitelist` uses `DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0` and/or `DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0`. `InviteOnly` uses `DUMPTETHER_SIGNUP_INVITE_CODE_0`. Do not commit real invite codes.
 
 ## CORS and Origins
 

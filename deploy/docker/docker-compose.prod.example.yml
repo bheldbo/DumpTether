@@ -22,7 +22,11 @@ services:
       Database__Provider: ${DUMPTETHER_DATABASE_PROVIDER:-Postgres}
       Database__ApplyMigrationsOnStartup: ${DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP:-false}
       Auth__RequireAuthentication: ${DUMPTETHER_REQUIRE_AUTHENTICATION:-true}
-      Auth__AllowGuestSessions: ${DUMPTETHER_ALLOW_GUEST_SESSIONS:-true}
+      Auth__AllowGuestSessions: ${DUMPTETHER_ALLOW_GUEST_SESSIONS:-false}
+      Auth__SignupMode: ${DUMPTETHER_SIGNUP_MODE:-InviteOnly}
+      Auth__SignupWhitelistEmails__0: ${DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0}
+      Auth__SignupWhitelistDomains__0: ${DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0}
+      Auth__SignupInviteCodes__0: ${DUMPTETHER_SIGNUP_INVITE_CODE_0}
       Auth__EnableDevelopmentLogin: ${DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN:-false}
       Auth__SessionDays: ${DUMPTETHER_AUTH_SESSION_DAYS:-30}
       Auth__SessionCleanupDays: ${DUMPTETHER_AUTH_SESSION_CLEANUP_DAYS:-90}

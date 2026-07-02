@@ -25,6 +25,7 @@ The current MVP is a web app backed by ASP.NET Core and PostgreSQL. The same API
 - Run locally with Docker PostgreSQL, ASP.NET Core and Vite.
 - Run the API in local SQLite mode as an offline foundation.
 - Run the API in Docker for server deployment.
+- Gate public signup with open, whitelist, invite-only or closed registration modes.
 
 ## Product Direction
 
@@ -233,6 +234,10 @@ Database__Provider
 Database__Sqlite__Path
 Auth__RequireAuthentication
 Auth__AllowGuestSessions
+Auth__SignupMode
+Auth__SignupWhitelistEmails__0
+Auth__SignupWhitelistDomains__0
+Auth__SignupInviteCodes__0
 Auth__EnableDevelopmentLogin
 Auth__SessionDays
 Auth__SessionCleanupDays
@@ -253,6 +258,15 @@ Usage__MaxTotalTasksPerWorkspace
 ```
 
 The `scripts/dev.ps1` helper reads root `.env` values and maps `DUMPTETHER_*` variables to ASP.NET configuration keys. Visual Studio launch profiles do not automatically import `.env`, so use launch settings, user secrets or local environment variables for F5-only runs.
+
+Signup modes are server-side:
+
+- `Open`: anyone can register.
+- `Whitelist`: only configured emails/domains can register.
+- `InviteOnly`: a configured invite code is required.
+- `Closed`: registration is disabled.
+
+For a small hosted instance, start with `Auth__SignupMode=InviteOnly` or `Auth__SignupMode=Whitelist` and `Auth__AllowGuestSessions=false`. Temporary guest sessions are not allowed to write task, template, category, sharing or board data to the hosted API; a true browser-only demo mode is future UI work.
 
 CORS is configured only in the API. The server does not need CORS to "reach" clients. CORS only matters when browser or webview JavaScript calls an API on another origin.
 
@@ -551,7 +565,7 @@ No. The intended design is one React UI and one C# domain/application/API shape.
 
 ### Can I run without an account?
 
-Guest sessions exist for trying the app, but the UI warns that you should register/login to keep data.
+Guest sessions can exist for trying the app, but hosted/server task writes require a real account. For a public server, prefer `DUMPTETHER_ALLOW_GUEST_SESSIONS=false` until a browser-only demo mode exists.
 
 ### Is sharing available offline?
 

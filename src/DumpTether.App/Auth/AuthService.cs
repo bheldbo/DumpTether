@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using DumpTether.App.Email;
 using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
@@ -59,6 +61,8 @@ internal sealed class AuthService : IAuthService
         ArgumentNullException.ThrowIfNull(request);
 
         var normalizedEmail = AppUser.NormalizeEmail(request.Email);
+        EnsureSignupIsAllowed(normalizedEmail, request.InviteCode, allowInviteCode: true);
+
         var existingUser = await _authRepository.GetUserByNormalizedEmailAsync(
             normalizedEmail,
             trackChanges: false,
@@ -179,12 +183,15 @@ internal sealed class AuthService : IAuthService
 
         if (existingUser is null)
         {
-            await RegisterAsync(
-                new RegisterUserRequest(
-                    options.DevelopmentEmail,
-                    options.DevelopmentPassword,
-                    options.DevelopmentDisplayName),
+            var now = _clock.UtcNow;
+            await CreateUserWithWorkspaceAsync(
+                options.DevelopmentEmail,
+                options.DevelopmentDisplayName,
+                _passwordHashService.HashPassword(options.DevelopmentPassword),
+                now,
+                emailIsConfirmed: true,
                 cancellationToken);
+            await _authRepository.SaveChangesAsync(cancellationToken);
         }
 
         return await LoginCoreAsync(
@@ -339,6 +346,11 @@ internal sealed class AuthService : IAuthService
 
             if (user is null)
             {
+                EnsureSignupIsAllowed(
+                    AppUser.NormalizeEmail(request.Email),
+                    inviteCode: null,
+                    allowInviteCode: false);
+
                 var created = await CreateUserWithWorkspaceAsync(
                     request.Email,
                     request.DisplayName,
@@ -619,6 +631,90 @@ internal sealed class AuthService : IAuthService
         return (user, workspace, membership);
     }
 
+    private void EnsureSignupIsAllowed(
+        string normalizedEmail,
+        string? inviteCode,
+        bool allowInviteCode)
+    {
+        var options = _authOptions.Value;
+
+        switch (options.SignupMode)
+        {
+            case AuthSignupMode.Open:
+                return;
+            case AuthSignupMode.Whitelist:
+                if (EmailIsWhitelisted(normalizedEmail, options))
+                {
+                    return;
+                }
+
+                LogSignupAuditEvent("signup_rejected_not_whitelisted", normalizedEmail);
+                throw new ValidationException("Registration is not available for this email.");
+            case AuthSignupMode.InviteOnly:
+                if (allowInviteCode &&
+                    InviteCodeMatches(inviteCode, options.SignupInviteCodes))
+                {
+                    return;
+                }
+
+                LogSignupAuditEvent("signup_rejected_invite_required", normalizedEmail);
+                throw new ValidationException("A valid invite code is required.");
+            case AuthSignupMode.Closed:
+                LogSignupAuditEvent("signup_rejected_closed", normalizedEmail);
+                throw new ValidationException("Registration is closed on this server.");
+            default:
+                LogSignupAuditEvent("signup_rejected_invalid_mode", normalizedEmail);
+                throw new ValidationException("Registration is not available.");
+        }
+    }
+
+    private static bool EmailIsWhitelisted(string normalizedEmail, AuthOptions options)
+    {
+        if (options.SignupWhitelistEmails
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Any(email =>
+                string.Equals(
+                    AppUser.NormalizeEmail(email),
+                    normalizedEmail,
+                    StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        var atIndex = normalizedEmail.LastIndexOf('@');
+        if (atIndex < 0 || atIndex == normalizedEmail.Length - 1)
+        {
+            return false;
+        }
+
+        var domain = normalizedEmail[(atIndex + 1)..];
+        return options.SignupWhitelistDomains.Any(candidate =>
+        {
+            var normalizedDomain = candidate.Trim().TrimStart('@').ToUpperInvariant();
+            return normalizedDomain.Length > 0 &&
+                string.Equals(normalizedDomain, domain, StringComparison.Ordinal);
+        });
+    }
+
+    private static bool InviteCodeMatches(string? inviteCode, IEnumerable<string> configuredCodes)
+    {
+        var trimmedInviteCode = inviteCode?.Trim();
+
+        if (string.IsNullOrWhiteSpace(trimmedInviteCode))
+        {
+            return false;
+        }
+
+        var inviteCodeHash = Sha256(trimmedInviteCode);
+        return configuredCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => Sha256(code.Trim()))
+            .Any(hash => CryptographicOperations.FixedTimeEquals(inviteCodeHash, hash));
+    }
+
+    private static byte[] Sha256(string value) =>
+        SHA256.HashData(Encoding.UTF8.GetBytes(value));
+
     private async Task CreateAndSendEmailConfirmationAsync(
         AppUser user,
         CancellationToken cancellationToken)
@@ -730,5 +826,15 @@ internal sealed class AuthService : IAuthService
             _sessionTokenService.HashOptionalMetadata(normalizedEmail),
             _sessionTokenService.HashOptionalMetadata(metadata.IpAddress),
             metadata.UserAgent?.Length ?? 0);
+    }
+
+    private void LogSignupAuditEvent(
+        string eventName,
+        string normalizedEmail)
+    {
+        _logger.LogWarning(
+            "Auth audit event {EventName}. EmailHash: {EmailHash}.",
+            eventName,
+            _sessionTokenService.HashOptionalMetadata(normalizedEmail));
     }
 }

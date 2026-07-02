@@ -43,6 +43,7 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Authe
         {
             new Claim(ClaimTypes.NameIdentifier, session.UserId.ToString()),
             new Claim("dumptether:session_id", session.SessionId.ToString()),
+            new Claim("dumptether:session_type", session.SessionType.ToString()),
             new Claim(ClaimTypes.Email, session.Email),
             new Claim(ClaimTypes.Name, session.DisplayName)
         };

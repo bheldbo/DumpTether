@@ -139,6 +139,7 @@ internal static class DumpTetherApiSetup
         app.UseRateLimiter();
         app.UseMiddleware<SessionCsrfProtectionMiddleware>();
         app.UseAuthentication();
+        app.UseMiddleware<GuestWriteProtectionMiddleware>();
         app.UseAuthorization();
         app.MapControllers();
         app.MapHub<LiveUpdateHub>("/api/live")

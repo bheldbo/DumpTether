@@ -58,6 +58,106 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task PostRegister_WhenSignupClosed_Rejects()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "Closed"
+            });
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "closed@example.com",
+                password = "correct horse battery"
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.AppUsers.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PostRegister_WhenWhitelistMode_AllowsConfiguredEmailAndDomain()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "Whitelist",
+                ["Auth:SignupWhitelistEmails:0"] = "friend@example.com",
+                ["Auth:SignupWhitelistDomains:0"] = "heldbo.net"
+            });
+        using var client = factory.CreateClient();
+
+        var configuredEmail = await RegisterAsync(
+            client,
+            "friend@example.com",
+            "correct horse battery");
+        var configuredDomain = await RegisterAsync(
+            client,
+            "bjarke@heldbo.net",
+            "correct horse battery");
+
+        Assert.Equal("friend@example.com", configuredEmail.User.Email);
+        Assert.Equal("bjarke@heldbo.net", configuredDomain.User.Email);
+    }
+
+    [Fact]
+    public async Task PostRegister_WhenWhitelistMode_RejectsOtherEmail()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "Whitelist",
+                ["Auth:SignupWhitelistDomains:0"] = "heldbo.net"
+            });
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "stranger@example.com",
+                password = "correct horse battery"
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRegister_WhenInviteOnly_RequiresValidInviteCode()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "InviteOnly",
+                ["Auth:SignupInviteCodes:0"] = "alpha-invite"
+            });
+        using var client = factory.CreateClient();
+
+        var rejected = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "no-code@example.com",
+                password = "correct horse battery"
+            });
+        var accepted = await RegisterAsync(
+            client,
+            "has-code@example.com",
+            "correct horse battery",
+            "alpha-invite");
+
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        Assert.Equal("has-code@example.com", accepted.User.Email);
+    }
+
+    [Fact]
     public async Task PostRegister_DoesNotStoreRawPassword()
     {
         using var factory = new DumpTetherApiFactory();
@@ -356,6 +456,45 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task GuestSession_CannotCreatePersistedTasks()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient();
+        var loginResponse = await client.PostAsync("/api/auth/guest", content: null);
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<LoginUserResponse>();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login!.SessionToken);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/tasks",
+            new { title = "Should not persist" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.TaskItems.ToListAsync());
+    }
+
+    [Fact]
+    public async Task GetOptions_ReturnsSignupMode()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "InviteOnly",
+                ["Auth:SignupInviteCodes:0"] = "alpha-invite"
+            });
+        using var client = factory.CreateClient();
+
+        var options = await client.GetFromJsonAsync<AuthClientOptionsResponse>("/api/auth/options");
+
+        Assert.NotNull(options);
+        Assert.Equal(AuthSignupMode.InviteOnly, options!.SignupMode);
+    }
+
+    [Fact]
     public async Task PostLocalDesktopLogin_WhenNotDesktop_ReturnsNotFound()
     {
         using var factory = new DumpTetherApiFactory(requireAuthentication: true);
@@ -599,6 +738,23 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public void Startup_WhenInviteOnlySignupHasNoInviteCodes_ThrowsHelpfulError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "InviteOnly"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
+
+        Assert.Contains("DumpTether configuration is incomplete", exception.Message);
+        Assert.Contains("Auth:SignupInviteCodes", exception.Message);
+    }
+
+    [Fact]
     public async Task AuthenticatedTaskQueries_AreScopedToUserWorkspaceMembership()
     {
         using var factory = new DumpTetherApiFactory();
@@ -628,7 +784,8 @@ public sealed class AuthApiTests
     private static async Task<RegisterUserResponse> RegisterAsync(
         HttpClient client,
         string email,
-        string password)
+        string password,
+        string? inviteCode = null)
     {
         var response = await client.PostAsJsonAsync(
             "/api/auth/register",
@@ -636,7 +793,8 @@ public sealed class AuthApiTests
             {
                 email,
                 password,
-                displayName = email.Split('@')[0]
+                displayName = email.Split('@')[0],
+                inviteCode
             });
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(

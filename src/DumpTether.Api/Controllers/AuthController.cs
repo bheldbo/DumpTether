@@ -49,6 +49,7 @@ public sealed class AuthController : ControllerBase
             options.AllowGuestSessions,
             _environment.IsDevelopment() && options.EnableDevelopmentLogin,
             _emailConfirmationOptions.Value.Enabled,
+            options.SignupMode,
             _oauthOptions.Value.EnabledProviders()));
     }
 

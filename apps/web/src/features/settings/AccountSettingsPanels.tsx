@@ -56,9 +56,19 @@ export function AuthPanel({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const signupMode = normalizeSignupMode(authOptions.signupMode);
+  const registrationIsAvailable = signupMode !== 'Closed';
+  const registrationNeedsInvite = signupMode === 'InviteOnly';
+
+  useEffect(() => {
+    if (!registrationIsAvailable && mode === 'register') {
+      setMode('login');
+    }
+  }, [mode, registrationIsAvailable]);
 
   const submitAuthForm = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -72,6 +82,7 @@ export function AuthPanel({
           email: email.trim(),
           password,
           displayName: displayName.trim() || null,
+          inviteCode: registrationNeedsInvite ? inviteCode.trim() : null,
         });
         setStatusMessage(
           registered.emailConfirmationRequired
@@ -128,7 +139,10 @@ export function AuthPanel({
   const wrapperClassName = variant === 'gate'
     ? 'auth-gate'
     : 'settings-section auth-panel';
-  const canSubmit = email.trim().length > 0 && password.length >= 8;
+  const canSubmit = email.trim().length > 0 &&
+    password.length >= 8 &&
+    (mode !== 'register' || registrationIsAvailable) &&
+    (!registrationNeedsInvite || inviteCode.trim().length > 0);
 
   if (currentUser) {
     return (
@@ -198,12 +212,20 @@ export function AuthPanel({
         </button>
         <button
           aria-pressed={mode === 'register'}
+          disabled={!registrationIsAvailable}
           onClick={() => setMode('register')}
           type="button"
         >
           {t('register')}
         </button>
       </div>
+      {signupMode === 'Closed' ? (
+        <p className="form-help">{t('signupClosed')}</p>
+      ) : signupMode === 'InviteOnly' ? (
+        <p className="form-help">{t('signupInviteOnlyHelp')}</p>
+      ) : signupMode === 'Whitelist' ? (
+        <p className="form-help">{t('signupWhitelistHelp')}</p>
+      ) : null}
 
       {authOptions.oAuthProviders.length > 0 ? (
         <div className="oauth-login-list">
@@ -259,6 +281,19 @@ export function AuthPanel({
             <small className="form-help">{t('passwordRequirement')}</small>
           ) : null}
         </label>
+
+        {mode === 'register' && registrationNeedsInvite ? (
+          <label>
+            {t('inviteCode')}
+            <input
+              autoComplete="one-time-code"
+              onChange={(event) => setInviteCode(event.target.value)}
+              required
+              type="text"
+              value={inviteCode}
+            />
+          </label>
+        ) : null}
 
         <button
           className="auth-submit-button"
@@ -526,6 +561,26 @@ export function AccountPanel({
       </section>
     </ModalFrame>
   );
+}
+
+function normalizeSignupMode(
+  signupMode: AuthClientOptionsResponse['signupMode'],
+): 'Open' | 'Whitelist' | 'InviteOnly' | 'Closed' {
+  switch (signupMode) {
+    case 2:
+    case 'Whitelist':
+      return 'Whitelist';
+    case 3:
+    case 'InviteOnly':
+      return 'InviteOnly';
+    case 4:
+    case 'Closed':
+      return 'Closed';
+    case 1:
+    case 'Open':
+    default:
+      return 'Open';
+  }
 }
 
 function formatSessionType(

@@ -117,6 +117,7 @@ export interface RegisterUserRequest {
   email: string;
   password: string;
   displayName?: string | null;
+  inviteCode?: string | null;
 }
 
 export interface RegisterUserResponse {
@@ -182,6 +183,7 @@ export interface AuthClientOptionsResponse {
   guestSessionsEnabled: boolean;
   developmentLoginEnabled: boolean;
   emailConfirmationEnabled: boolean;
+  signupMode: 'Open' | 'Whitelist' | 'InviteOnly' | 'Closed' | 1 | 2 | 3 | 4;
   oAuthProviders: string[];
 }
 

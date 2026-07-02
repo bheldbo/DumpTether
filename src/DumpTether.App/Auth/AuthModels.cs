@@ -5,7 +5,8 @@ namespace DumpTether.App.Auth;
 public sealed record RegisterUserRequest(
     string Email,
     string Password,
-    string? DisplayName = null);
+    string? DisplayName = null,
+    string? InviteCode = null);
 
 public sealed record LoginUserRequest(
     string Email,
@@ -76,6 +77,7 @@ public sealed record AuthClientOptionsResponse(
     bool GuestSessionsEnabled,
     bool DevelopmentLoginEnabled,
     bool EmailConfirmationEnabled,
+    AuthSignupMode SignupMode,
     IReadOnlyList<string> OAuthProviders);
 
 public sealed record ConfirmEmailResponse(
