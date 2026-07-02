@@ -4,13 +4,16 @@ import type { SettingsSectionKey } from '../../appTypes';
 import { Icon, type IconName } from '../../components/Icon';
 import { ModalFrame } from '../../components/ModalFrame';
 import {
+  formatDateTime,
   formatOAuthProvider,
+  formatRelativeDate,
   formatWorkspaceRole,
   getErrorMessage,
 } from '../../appUtils';
 import type { Language, Translate } from '../../localization';
 import type {
   ArchiveResolutionResponse,
+  AuthSessionListItemResponse,
   AuthClientOptionsResponse,
   CreateArchiveResolutionRequest,
   CurrentUserResponse,
@@ -303,6 +306,7 @@ export function AuthPanel({
 }
 
 export function AccountPanel({
+  authSessions,
   authOptions,
   currentUser,
   incomingTaskShares,
@@ -318,9 +322,11 @@ export function AccountPanel({
   onLogin,
   onLogout,
   onRegister,
+  onRevokeAuthSession,
   temporarySessionIsActive,
   t,
 }: {
+  authSessions: AuthSessionListItemResponse[];
   authOptions: AuthClientOptionsResponse;
   currentUser: CurrentUserResponse | null;
   incomingTaskShares: TaskShareInboxResponse[];
@@ -336,6 +342,7 @@ export function AccountPanel({
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout: () => Promise<void>;
   onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
+  onRevokeAuthSession: (sessionId: string) => Promise<void>;
   temporarySessionIsActive: boolean;
   t: Translate;
 }) {
@@ -372,6 +379,55 @@ export function AccountPanel({
           t={t}
           variant="settings"
         />
+
+        {currentUser ? (
+          <section className="settings-section">
+            <h3>{t('sessions')}</h3>
+            {authSessions.length === 0 ? (
+              <p>{t('noSessions')}</p>
+            ) : (
+              <div className="account-notification-list">
+                {authSessions.map((session) => {
+                  const isRevoked = Boolean(session.revokedAt);
+                  return (
+                    <article className="account-notification-card" key={session.id}>
+                      <Icon name={sessionIcon(session.sessionType)} />
+                      <div>
+                        <strong>
+                          {formatSessionType(session.sessionType, t)}
+                          {session.isCurrent ? ` (${t('currentSession')})` : ''}
+                        </strong>
+                        <p>
+                          {session.deviceName || t('unknownDevice')}
+                          {' - '}
+                          {t('lastSeen')}: {formatRelativeDate(session.lastSeenAt)}
+                        </p>
+                        <small title={formatDateTime(session.createdAt)}>
+                          {t('created')}: {formatDateTime(session.createdAt)}
+                        </small>
+                        {isRevoked ? (
+                          <small>{t('revoked')}: {formatDateTime(session.revokedAt!)}</small>
+                        ) : (
+                          <small>{t('expires')}: {formatDateTime(session.expiresAt)}</small>
+                        )}
+                      </div>
+                      {!isRevoked ? (
+                        <button
+                          className="secondary-action logout-button"
+                          onClick={() => void onRevokeAuthSession(session.id)}
+                          type="button"
+                        >
+                          <Icon name="logout" />
+                          {session.isCurrent ? t('logout') : t('revokeSession')}
+                        </button>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        ) : null}
 
         <section className="settings-section">
           <h3>{t('notifications')}</h3>
@@ -470,6 +526,51 @@ export function AccountPanel({
       </section>
     </ModalFrame>
   );
+}
+
+function formatSessionType(
+  sessionType: AuthSessionListItemResponse['sessionType'],
+  t: Translate,
+) {
+  switch (sessionType) {
+    case 'DesktopLocal':
+    case 2:
+      return t('sessionDesktopLocal');
+    case 'DesktopCloud':
+    case 3:
+      return t('sessionDesktopCloud');
+    case 'Development':
+    case 4:
+      return t('sessionDevelopment');
+    case 'Guest':
+    case 5:
+      return t('sessionGuest');
+    case 'Browser':
+    case 1:
+    default:
+      return t('sessionBrowser');
+  }
+}
+
+function sessionIcon(sessionType: AuthSessionListItemResponse['sessionType']): IconName {
+  switch (sessionType) {
+    case 'DesktopLocal':
+    case 2:
+      return 'panel';
+    case 'DesktopCloud':
+    case 3:
+      return 'cloud';
+    case 'Development':
+    case 4:
+      return 'shield';
+    case 'Guest':
+    case 5:
+      return 'user';
+    case 'Browser':
+    case 1:
+    default:
+      return 'login';
+  }
 }
 
 export function SettingsPanel({

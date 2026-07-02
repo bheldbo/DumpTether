@@ -91,6 +91,8 @@ public sealed class AuthApiTests
         Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
         Assert.NotEqual(login.SessionToken, session.SessionTokenHash);
         Assert.Null(session.RevokedAt);
+        Assert.Equal(UserSessionType.Browser, login.Session.SessionType);
+        Assert.Equal(UserSessionType.Browser, session.SessionType);
     }
 
     [Fact]
@@ -208,6 +210,54 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task GetSessions_ReturnsCurrentUserSessions()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "sessions@example.com", "correct horse battery");
+        var login = await LoginAsync(client, "sessions@example.com", "correct horse battery");
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+
+        var sessions = await client.GetFromJsonAsync<List<AuthSessionListItemResponse>>(
+            "/api/auth/sessions");
+
+        Assert.NotNull(sessions);
+        var session = Assert.Single(sessions!, candidate => candidate.Id == login.Session.Id);
+        Assert.Equal(login.Session.Id, session.Id);
+        Assert.True(session.IsCurrent);
+        Assert.Equal(UserSessionType.Browser, session.SessionType);
+        Assert.Equal("test client", session.DeviceName);
+        Assert.Null(session.RevokedAt);
+    }
+
+    [Fact]
+    public async Task DeleteSession_RevokesOwnOtherSession()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "revoke-session@example.com", "correct horse battery");
+        var firstLogin = await LoginAsync(client, "revoke-session@example.com", "correct horse battery");
+        var secondLogin = await LoginAsync(client, "revoke-session@example.com", "correct horse battery");
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", firstLogin.SessionToken);
+
+        var response = await client.DeleteAsync($"/api/auth/sessions/{secondLogin.Session.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var secondSession = await dbContext.UserSessions.SingleAsync(
+            session => session.Id == secondLogin.Session.Id);
+        var firstSession = await dbContext.UserSessions.SingleAsync(
+            session => session.Id == firstLogin.Session.Id);
+
+        Assert.NotNull(secondSession.RevokedAt);
+        Assert.Null(firstSession.RevokedAt);
+    }
+
+    [Fact]
     public async Task PostLogin_InactiveUser_Fails()
     {
         using var factory = new DumpTetherApiFactory();
@@ -269,6 +319,7 @@ public sealed class AuthApiTests
         var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>();
         Assert.NotNull(login);
         Assert.False(string.IsNullOrWhiteSpace(login!.SessionToken));
+        Assert.Equal(UserSessionType.Development, login.Session.SessionType);
 
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", login.SessionToken);
@@ -292,6 +343,7 @@ public sealed class AuthApiTests
         Assert.NotNull(login);
         Assert.EndsWith("@guest.dumptether.local", login!.User.Email);
         Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
+        Assert.Equal(UserSessionType.Guest, login.Session.SessionType);
         Assert.Contains(login.Workspaces, workspace => workspace.Name == "All Tasks");
     }
 
@@ -323,6 +375,7 @@ public sealed class AuthApiTests
         Assert.Equal("local@desktop.dumptether.local", login!.User.Email);
         Assert.Equal("Local user", login.User.DisplayName);
         Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
+        Assert.Equal(UserSessionType.DesktopLocal, login.Session.SessionType);
         Assert.Contains(login.Workspaces, workspace => workspace.Name == "All Tasks");
 
         client.DefaultRequestHeaders.Authorization =

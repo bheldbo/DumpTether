@@ -6,6 +6,7 @@ import type {
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   AuthClientOptionsResponse,
+  AuthSessionListItemResponse,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CopyTaskItemsRequest,
@@ -252,6 +253,16 @@ export async function logoutUser(): Promise<void> {
 
 export function getCurrentUser(): Promise<CurrentUserResponse> {
   return request<CurrentUserResponse>('/api/auth/me');
+}
+
+export function listAuthSessions(): Promise<AuthSessionListItemResponse[]> {
+  return request<AuthSessionListItemResponse[]>('/api/auth/sessions');
+}
+
+export function revokeAuthSession(sessionId: string): Promise<void> {
+  return request<void>(`/api/auth/sessions/${sessionId}`, {
+    method: 'DELETE',
+  });
 }
 
 export function getAuthOptions(): Promise<AuthClientOptionsResponse> {

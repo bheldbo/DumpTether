@@ -35,4 +35,11 @@ public interface IAuthService
     Task<bool> LogoutAsync(CancellationToken cancellationToken);
 
     Task<CurrentUserResponse?> GetCurrentAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<AuthSessionListItemResponse>> ListSessionsAsync(
+        CancellationToken cancellationToken);
+
+    Task<RevokeAuthSessionResponse> RevokeSessionAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken);
 }

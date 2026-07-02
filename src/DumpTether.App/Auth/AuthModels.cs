@@ -57,6 +57,20 @@ public sealed record CurrentUserResponse(
     IReadOnlyList<AuthWorkspaceResponse> Workspaces,
     AuthSessionResponse Session);
 
+public sealed record AuthSessionListItemResponse(
+    Guid Id,
+    UserSessionType SessionType,
+    string? DeviceName,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset LastSeenAt,
+    DateTimeOffset? RevokedAt,
+    bool IsCurrent);
+
+public sealed record RevokeAuthSessionResponse(
+    bool Revoked,
+    bool CurrentSessionRevoked);
+
 public sealed record AuthClientOptionsResponse(
     bool RequiresAuthentication,
     bool GuestSessionsEnabled,

@@ -81,6 +81,7 @@ import {
   reopenTaskItems,
   registerUser,
   removeWorkspaceMember,
+  revokeAuthSession,
   revokeTaskShare,
   revokeWorkspaceInvitation,
   setCurrentWorkspaceId,
@@ -120,6 +121,7 @@ import type {
   AuthClientOptionsResponse,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  AuthSessionListItemResponse,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CreateTaskShareRequest,
@@ -190,6 +192,7 @@ function App() {
   const [authOptions, setAuthOptions] =
     useState<AuthClientOptionsResponse>(defaultAuthOptions);
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
+  const [authSessions, setAuthSessions] = useState<AuthSessionListItemResponse[]>([]);
   const [incomingWorkspaceInvitations, setIncomingWorkspaceInvitations] =
     useState<WorkspaceInvitationInboxResponse[]>([]);
   const [incomingTaskShares, setIncomingTaskShares] = useState<TaskShareInboxResponse[]>([]);
@@ -292,6 +295,7 @@ function App() {
     try {
       const session = await loadAuthSession();
       setAuthOptions(session.authOptions);
+      setAuthSessions(session.authSessions);
       setConnectionStatus('online');
       setCurrentUser(session.currentUser);
       setIncomingWorkspaceInvitations(session.incomingWorkspaceInvitations);
@@ -988,6 +992,18 @@ function App() {
 
   const handleAuthenticated = async (userState: CurrentUserResponse) => {
     setCurrentUser(userState);
+    setAuthSessions([
+      {
+        id: userState.session.id,
+        sessionType: userState.session.sessionType,
+        deviceName: userState.session.deviceName,
+        createdAt: userState.session.createdAt,
+        expiresAt: userState.session.expiresAt,
+        lastSeenAt: userState.session.lastSeenAt,
+        revokedAt: null,
+        isCurrent: true,
+      },
+    ]);
     setLocalDesktopSessionIsActive(
       userState.session.sessionType === 'DesktopLocal' ||
         userState.session.sessionType === 2,
@@ -1078,6 +1094,7 @@ function App() {
     try {
       await logoutUser();
       setCurrentUser(null);
+      setAuthSessions([]);
       setLocalDesktopSessionIsActive(false);
       setTemporarySessionIsActive(false);
       setCurrentWorkspaceId(null);
@@ -1104,6 +1121,28 @@ function App() {
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleRevokeAuthSession = async (sessionId: string) => {
+    try {
+      await revokeAuthSession(sessionId);
+      const revokedCurrentSession = authSessions.some((session) =>
+        session.id === sessionId && session.isCurrent);
+
+      if (revokedCurrentSession) {
+        await handleLogout();
+        return;
+      }
+
+      await loadAuth();
+      showToast(t('sessionRevoked'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
       throw error;
     }
   };
@@ -1931,6 +1970,7 @@ function App() {
       ) : null}
       {accountIsOpen ? (
         <AccountPanel
+          authSessions={authSessions}
           authOptions={authOptions}
           currentUser={currentUser}
           incomingTaskShares={incomingTaskShares}
@@ -1945,6 +1985,7 @@ function App() {
           onLogin={handleLogin}
           onLogout={handleLogout}
           onRegister={handleRegister}
+          onRevokeAuthSession={handleRevokeAuthSession}
           localDesktopSessionIsActive={localDesktopSessionIsActive}
           temporarySessionIsActive={temporarySessionIsActive}
           t={t}

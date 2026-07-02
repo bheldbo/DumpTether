@@ -317,6 +317,50 @@ public sealed class AuthController : ControllerBase
         return response is null ? Unauthorized() : Ok(response);
     }
 
+    [Authorize(Policy = AuthPolicies.SessionRequired)]
+    [HttpGet("sessions")]
+    public async Task<ActionResult<IReadOnlyList<AuthSessionListItemResponse>>> ListSessions(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _authService.ListSessionsAsync(cancellationToken));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized();
+        }
+    }
+
+    [Authorize(Policy = AuthPolicies.SessionRequired)]
+    [HttpDelete("sessions/{sessionId:guid}")]
+    public async Task<IActionResult> RevokeSession(
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _authService.RevokeSessionAsync(sessionId, cancellationToken);
+
+            if (!response.Revoked)
+            {
+                return NotFound();
+            }
+
+            if (response.CurrentSessionRevoked)
+            {
+                Response.Cookies.Delete(SessionCsrfProtectionMiddleware.SessionCookieName);
+                Response.Cookies.Delete(SessionCsrfProtectionMiddleware.CsrfCookieName);
+            }
+
+            return NoContent();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized();
+        }
+    }
+
     [EnableRateLimiting("auth")]
     [HttpPost("test-email")]
     public async Task<IActionResult> SendTestEmail(

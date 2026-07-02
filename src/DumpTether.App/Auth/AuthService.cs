@@ -482,6 +482,53 @@ internal sealed class AuthService : IAuthService
                 current.LastSeenAt));
     }
 
+    public async Task<IReadOnlyList<AuthSessionListItemResponse>> ListSessionsAsync(
+        CancellationToken cancellationToken)
+    {
+        var current = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        if (current is null)
+        {
+            throw new UnauthorizedAccessException("Authentication is required.");
+        }
+
+        var sessions = await _authRepository.ListSessionsForUserAsync(
+            current.UserId,
+            cancellationToken);
+
+        return sessions
+            .Select(session => MapSessionListItem(session, current.SessionId))
+            .ToList();
+    }
+
+    public async Task<RevokeAuthSessionResponse> RevokeSessionAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        var current = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        if (current is null)
+        {
+            throw new UnauthorizedAccessException("Authentication is required.");
+        }
+
+        var session = await _authRepository.GetSessionByIdAsync(
+            sessionId,
+            trackChanges: true,
+            cancellationToken);
+
+        if (session is null || session.UserId != current.UserId)
+        {
+            return new RevokeAuthSessionResponse(false, false);
+        }
+
+        var currentSessionRevoked = session.Id == current.SessionId;
+        session.Revoke(_clock.UtcNow);
+        await _authRepository.SaveChangesAsync(cancellationToken);
+
+        return new RevokeAuthSessionResponse(true, currentSessionRevoked);
+    }
+
     private static AuthUserResponse MapUser(AppUser user)
     {
         return new AuthUserResponse(
@@ -526,6 +573,21 @@ internal sealed class AuthService : IAuthService
             session.CreatedAt,
             session.ExpiresAt,
             session.LastSeenAt);
+    }
+
+    private static AuthSessionListItemResponse MapSessionListItem(
+        UserSession session,
+        Guid currentSessionId)
+    {
+        return new AuthSessionListItemResponse(
+            session.Id,
+            session.SessionType,
+            session.DeviceName,
+            session.CreatedAt,
+            session.ExpiresAt,
+            session.LastSeenAt,
+            session.RevokedAt,
+            session.Id == currentSessionId);
     }
 
     private async Task<(AppUser User, Workspace Workspace, WorkspaceMembership Membership)>

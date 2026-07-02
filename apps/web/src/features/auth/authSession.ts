@@ -4,12 +4,14 @@ import {
   getCurrentUser,
   isDesktopRuntime,
   isTemporarySession,
+  listAuthSessions,
   listIncomingTaskShares,
   listIncomingWorkspaceInvitations,
   localDesktopLogin,
 } from '../../api';
 import type {
   AuthClientOptionsResponse,
+  AuthSessionListItemResponse,
   CurrentUserResponse,
   TaskShareInboxResponse,
   WorkspaceInvitationInboxResponse,
@@ -18,6 +20,7 @@ import type {
 export interface LoadedAuthSession {
   authOptions: AuthClientOptionsResponse;
   currentUser: CurrentUserResponse | null;
+  authSessions: AuthSessionListItemResponse[];
   incomingTaskShares: TaskShareInboxResponse[];
   incomingWorkspaceInvitations: WorkspaceInvitationInboxResponse[];
   localDesktopSessionIsActive: boolean;
@@ -46,13 +49,15 @@ async function loadAuthenticatedSession(
 ): Promise<LoadedAuthSession> {
   try {
     const currentUser = await getCurrentUser();
-    const [incomingWorkspaceInvitations, incomingTaskShares] = await Promise.all([
+    const [authSessions, incomingWorkspaceInvitations, incomingTaskShares] = await Promise.all([
+      listAuthSessions().catch(() => []),
       listIncomingWorkspaceInvitations().catch(() => []),
       listIncomingTaskShares().catch(() => []),
     ]);
 
     return {
       authOptions,
+      authSessions,
       currentUser,
       incomingTaskShares,
       incomingWorkspaceInvitations,
@@ -64,6 +69,7 @@ async function loadAuthenticatedSession(
     if (error instanceof ApiError && error.status === 401) {
       return {
         authOptions,
+        authSessions: [],
         currentUser: null,
         incomingTaskShares: [],
         incomingWorkspaceInvitations: [],

@@ -152,6 +152,17 @@ export interface AuthSessionResponse {
   lastSeenAt: string;
 }
 
+export interface AuthSessionListItemResponse {
+  id: string;
+  sessionType: UserSessionType;
+  deviceName: string | null;
+  createdAt: string;
+  expiresAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+  isCurrent: boolean;
+}
+
 export interface LoginUserResponse {
   user: AuthUserResponse;
   workspaces: AuthWorkspaceResponse[];
