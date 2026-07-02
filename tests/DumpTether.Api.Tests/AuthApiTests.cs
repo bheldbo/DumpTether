@@ -219,8 +219,14 @@ public sealed class AuthApiTests
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", login.SessionToken);
 
-        var sessions = await client.GetFromJsonAsync<List<AuthSessionListItemResponse>>(
-            "/api/auth/sessions");
+        var response = await client.GetAsync("/api/auth/sessions");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"Expected OK, got {response.StatusCode}. Body: {body}");
+
+        var sessions = await response.Content.ReadFromJsonAsync<List<AuthSessionListItemResponse>>();
 
         Assert.NotNull(sessions);
         var session = Assert.Single(sessions!, candidate => candidate.Id == login.Session.Id);
@@ -235,14 +241,16 @@ public sealed class AuthApiTests
     public async Task DeleteSession_RevokesOwnOtherSession()
     {
         using var factory = new DumpTetherApiFactory();
-        using var client = factory.CreateClient();
-        await RegisterAsync(client, "revoke-session@example.com", "correct horse battery");
-        var firstLogin = await LoginAsync(client, "revoke-session@example.com", "correct horse battery");
-        var secondLogin = await LoginAsync(client, "revoke-session@example.com", "correct horse battery");
-        client.DefaultRequestHeaders.Authorization =
+        using var registrationClient = factory.CreateClient();
+        using var firstClient = factory.CreateClient();
+        using var secondClient = factory.CreateClient();
+        await RegisterAsync(registrationClient, "revoke-session@example.com", "correct horse battery");
+        var firstLogin = await LoginAsync(firstClient, "revoke-session@example.com", "correct horse battery");
+        var secondLogin = await LoginAsync(secondClient, "revoke-session@example.com", "correct horse battery");
+        firstClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", firstLogin.SessionToken);
 
-        var response = await client.DeleteAsync($"/api/auth/sessions/{secondLogin.Session.Id}");
+        var response = await firstClient.DeleteAsync($"/api/auth/sessions/{secondLogin.Session.Id}");
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 

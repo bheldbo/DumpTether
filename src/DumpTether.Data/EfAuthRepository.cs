@@ -81,14 +81,17 @@ internal sealed class EfAuthRepository : IAuthRepository
         Guid userId,
         CancellationToken cancellationToken)
     {
-        return await _dbContext.UserSessions
+        var sessions = await _dbContext.UserSessions
             .AsNoTracking()
             .Where(session => session.UserId == userId)
-            .OrderBy(session => session.RevokedAt.HasValue)
+            .ToListAsync(cancellationToken);
+
+        return sessions
+            .OrderBy(session => session.RevokedAt == null ? 0 : 1)
             .ThenByDescending(session => session.LastSeenAt)
             .ThenByDescending(session => session.CreatedAt)
             .Take(50)
-            .ToListAsync(cancellationToken);
+            .ToList();
     }
 
     public async Task<EmailConfirmationToken?> GetEmailConfirmationTokenByHashAsync(

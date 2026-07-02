@@ -156,6 +156,23 @@ Installer/WiX environment before cutting a signed MSI release.
 Code signing, release signing certificates and update feeds are future release
 work.
 
+## GitHub Release Builds
+
+The workflow `.github/workflows/desktop-release.yml` builds desktop installers on
+GitHub runners and uploads them to a GitHub Release.
+
+- Tag push: pushing `v*` builds Windows and Linux installers and creates/updates
+  the release for that tag.
+- Manual run: use `workflow_dispatch` with a tag such as
+  `v0.1.0-desktop-preview`; draft and prerelease are enabled by default.
+- Windows output: NSIS `.exe` installer.
+- Linux output: AppImage, deb and rpm bundles.
+- macOS is intentionally not included yet because it needs macOS runners,
+  signing and notarization decisions.
+
+This is release packaging, not automatic deployment. Server deployment still uses
+the Docker image and Docker Compose.
+
 ## Linux Desktop Bundles
 
 Build Linux desktop bundles on Linux, not from Windows:

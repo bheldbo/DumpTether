@@ -511,6 +511,16 @@ Release direction:
 
 Automatic deployment is intentionally not wired yet.
 
+Desktop release workflow:
+
+- `.github/workflows/desktop-release.yml` builds desktop installers and attaches them to a GitHub Release.
+- Tag pushes such as `v0.1.0` create/update a release from that tag.
+- Manual `workflow_dispatch` lets you create a draft/prerelease such as `v0.1.0-desktop-preview`.
+- Windows builds produce the NSIS `.exe` installer.
+- Linux builds produce AppImage/deb/rpm bundles on an Ubuntu runner.
+- macOS builds are intentionally not included yet because they need macOS runner/signing/notarization decisions.
+- Installer signing and auto-update feeds are still future release hardening.
+
 ## AI Disclosure
 
 This repository is being developed with AI coding assistance. DumpTether itself does not currently include AI features in the MVP product.
