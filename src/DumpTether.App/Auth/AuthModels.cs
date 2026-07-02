@@ -37,15 +37,25 @@ public sealed record RegisterUserResponse(
     AuthWorkspaceResponse Workspace,
     bool EmailConfirmationRequired);
 
+public sealed record AuthSessionResponse(
+    Guid Id,
+    UserSessionType SessionType,
+    string? DeviceName,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset LastSeenAt);
+
 public sealed record LoginUserResponse(
     AuthUserResponse User,
     IReadOnlyList<AuthWorkspaceResponse> Workspaces,
     string SessionToken,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    AuthSessionResponse Session);
 
 public sealed record CurrentUserResponse(
     AuthUserResponse User,
-    IReadOnlyList<AuthWorkspaceResponse> Workspaces);
+    IReadOnlyList<AuthWorkspaceResponse> Workspaces,
+    AuthSessionResponse Session);
 
 public sealed record AuthClientOptionsResponse(
     bool RequiresAuthentication,
@@ -72,7 +82,12 @@ public sealed record CurrentUserSession(
     Guid UserId,
     Guid SessionId,
     string Email,
-    string DisplayName);
+    string DisplayName,
+    UserSessionType SessionType,
+    string? DeviceName,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset LastSeenAt);
 
 public sealed record UserWorkspaceMembership(
     Workspace Workspace,

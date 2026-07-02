@@ -131,16 +131,39 @@ export interface LoginUserRequest {
   deviceName?: string | null;
 }
 
+export type UserSessionType =
+  | 'Browser'
+  | 'DesktopLocal'
+  | 'DesktopCloud'
+  | 'Development'
+  | 'Guest'
+  | 1
+  | 2
+  | 3
+  | 4
+  | 5;
+
+export interface AuthSessionResponse {
+  id: string;
+  sessionType: UserSessionType;
+  deviceName: string | null;
+  createdAt: string;
+  expiresAt: string;
+  lastSeenAt: string;
+}
+
 export interface LoginUserResponse {
   user: AuthUserResponse;
   workspaces: AuthWorkspaceResponse[];
   sessionToken: string;
   expiresAt: string;
+  session: AuthSessionResponse;
 }
 
 export interface CurrentUserResponse {
   user: AuthUserResponse;
   workspaces: AuthWorkspaceResponse[];
+  session: AuthSessionResponse;
 }
 
 export interface AuthClientOptionsResponse {

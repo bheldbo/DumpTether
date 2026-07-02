@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Menu", "Start", "Stop", "Status", "Migrate", "ClearTasks", "ResetPostgres", "LocalInfo", "RemoveLocalSqlite")]
+    [ValidateSet("Menu", "Start", "Stop", "Status", "Migrate", "SeedTestData", "ClearTasks", "ResetPostgres", "LocalInfo", "RemoveLocalSqlite")]
     [string] $Action = "Menu",
     [switch] $Yes
 )
@@ -162,6 +162,17 @@ function Invoke-Migrations {
     }
 }
 
+function Invoke-SeedTestData {
+    Set-DumpTetherEfEnvironment
+
+    Invoke-AtRepoRoot {
+        dotnet run --project src\DumpTether.Database\DumpTether.Database.csproj --no-launch-profile -- seed-test-data
+        if ($LASTEXITCODE -ne 0) {
+            throw "DumpTether.Database seed-test-data failed with exit code $LASTEXITCODE."
+        }
+    }
+}
+
 function Get-RunningPostgresContainerName {
     $docker = Get-DockerCommand
 
@@ -270,10 +281,11 @@ function Show-Menu {
         Write-Host "2. Stop PostgreSQL"
         Write-Host "3. Status"
         Write-Host "4. Apply EF migrations"
-        Write-Host "5. Clear task data only"
-        Write-Host "6. Reset local PostgreSQL volume"
-        Write-Host "7. Show local SQLite path"
-        Write-Host "8. Delete local SQLite database"
+        Write-Host "5. Seed development test data"
+        Write-Host "6. Clear task data only"
+        Write-Host "7. Reset local PostgreSQL volume"
+        Write-Host "8. Show local SQLite path"
+        Write-Host "9. Delete local SQLite database"
         Write-Host "Q. Quit"
         $choice = Read-Host "Choose"
 
@@ -282,10 +294,11 @@ function Show-Menu {
             "2" { Stop-Database }
             "3" { Show-Status }
             "4" { Start-Database; Invoke-Migrations }
-            "5" { Clear-TaskData }
-            "6" { Reset-PostgresData }
-            "7" { Show-LocalInfo }
-            "8" { Remove-LocalSqlite }
+            "5" { Start-Database; Invoke-SeedTestData }
+            "6" { Clear-TaskData }
+            "7" { Reset-PostgresData }
+            "8" { Show-LocalInfo }
+            "9" { Remove-LocalSqlite }
             "Q" { return }
             default { Write-Host "Unknown choice." -ForegroundColor Yellow }
         }
@@ -301,6 +314,7 @@ switch ($Action) {
     "Stop" { Stop-Database }
     "Status" { Show-Status }
     "Migrate" { Start-Database; Invoke-Migrations }
+    "SeedTestData" { Start-Database; Invoke-SeedTestData }
     "ClearTasks" { Clear-TaskData }
     "ResetPostgres" { Reset-PostgresData }
     "LocalInfo" { Show-LocalInfo }

@@ -162,6 +162,7 @@ DumpTether.LocalFullStack  local SQLite API + Vite
 DumpTether.DesktopDev      Tauri desktop dev shell + local SQLite API sidecar
 DumpTether.Database   interactive database tools menu
 DumpTether.DatabaseMigrate   apply EF migrations only
+DumpTether.DatabaseSeedTestData   apply migrations and seed reusable local test data
 DumpTether.DatabaseStatus    show configured database status
 ```
 
@@ -173,7 +174,7 @@ For a quick offline-style run without Docker/PostgreSQL, use `DumpTether.LocalFu
 
 For the desktop shell, install Rust/Cargo first and use `DumpTether.DesktopDev`. This runs the Tauri wrapper, Vite, and a local SQLite API sidecar.
 
-For database maintenance, use the `DumpTether.Database` project. It opens a menu for status/migrate, clearing task data, resetting the configured local database, and inspecting/removing the local SQLite database. It deliberately does not own business rules; it delegates to `DumpTether.Data` and EF Core.
+For database maintenance, use the `DumpTether.Database` project. It opens a menu for status/migrate, seeding development test data, clearing task data, resetting the configured local database, and inspecting/removing the local SQLite database. It deliberately does not own business rules; it delegates to `DumpTether.Data` and EF Core.
 
 Docker orchestration still belongs to scripts:
 
@@ -326,6 +327,7 @@ Run the database project directly when you do not need Docker orchestration:
 ```powershell
 dotnet run --project src/DumpTether.Database -- status
 dotnet run --project src/DumpTether.Database -- migrate
+dotnet run --project src/DumpTether.Database -- seed-test-data
 dotnet run --project src/DumpTether.Database -- clear-tasks
 dotnet run --project src/DumpTether.Database -- reset
 dotnet run --project src/DumpTether.Database -- local-info
@@ -338,10 +340,13 @@ Other local database actions:
 .\scripts\db.ps1 -Action Start
 .\scripts\db.ps1 -Action Status
 .\scripts\db.ps1 -Action Migrate
+.\scripts\db.ps1 -Action SeedTestData
 .\scripts\db.ps1 -Action ResetPostgres
 .\scripts\db.ps1 -Action LocalInfo
 .\scripts\db.ps1 -Action RemoveLocalSqlite
 ```
+
+`seed-test-data` creates or reuses a local development user, a sample board, default archive reasons, Basic/ToDo templates and a couple of sample tasks. Override the demo login with `DUMPTETHER_SEED_EMAIL` and `DUMPTETHER_SEED_PASSWORD` in your local environment or `.env`.
 
 Destructive actions ask for typed confirmation unless you pass `-Yes`.
 

@@ -26,6 +26,7 @@ export function AuthPanel({
   authOptions,
   currentUser,
   isLoading,
+  localDesktopSessionIsActive,
   onDevelopmentLogin,
   onGuestLogin,
   onLogin,
@@ -38,6 +39,7 @@ export function AuthPanel({
   authOptions: AuthClientOptionsResponse;
   currentUser: CurrentUserResponse | null;
   isLoading: boolean;
+  localDesktopSessionIsActive: boolean;
   onDevelopmentLogin: () => Promise<void>;
   onGuestLogin: () => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
@@ -135,6 +137,8 @@ export function AuthPanel({
         </div>
         {temporarySessionIsActive ? (
           <p className="guest-warning">{t('guestModePersistent')}</p>
+        ) : localDesktopSessionIsActive ? (
+          <p className="guest-warning">{t('localDesktopModePersistent')}</p>
         ) : null}
         <div className="auth-workspace-list">
           {currentUser.workspaces.map((workspaceItem) => (
@@ -304,6 +308,7 @@ export function AccountPanel({
   incomingTaskShares,
   incomingWorkspaceInvitations,
   isLoadingAuth,
+  localDesktopSessionIsActive,
   onAcceptIncomingWorkspaceInvitation,
   onClose,
   onDeclineIncomingWorkspaceInvitation,
@@ -321,6 +326,7 @@ export function AccountPanel({
   incomingTaskShares: TaskShareInboxResponse[];
   incomingWorkspaceInvitations: WorkspaceInvitationInboxResponse[];
   isLoadingAuth: boolean;
+  localDesktopSessionIsActive: boolean;
   onAcceptIncomingWorkspaceInvitation: (id: string) => Promise<void>;
   onClose: () => void;
   onDeclineIncomingWorkspaceInvitation: (id: string) => Promise<void>;
@@ -356,6 +362,7 @@ export function AccountPanel({
           authOptions={authOptions}
           currentUser={currentUser}
           isLoading={isLoadingAuth}
+          localDesktopSessionIsActive={localDesktopSessionIsActive}
           onDevelopmentLogin={onDevelopmentLogin}
           onGuestLogin={onGuestLogin}
           onLogin={onLogin}

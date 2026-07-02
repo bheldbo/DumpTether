@@ -97,6 +97,19 @@ internal sealed class AuthService : IAuthService
         AuthRequestMetadata metadata,
         CancellationToken cancellationToken)
     {
+        return await LoginCoreAsync(
+            request,
+            metadata,
+            UserSessionType.Browser,
+            cancellationToken);
+    }
+
+    private async Task<LoginUserResponse> LoginCoreAsync(
+        LoginUserRequest request,
+        AuthRequestMetadata metadata,
+        UserSessionType sessionType,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(request);
 
         var normalizedEmail = AppUser.NormalizeEmail(request.Email);
@@ -129,9 +142,10 @@ internal sealed class AuthService : IAuthService
             throw new EmailConfirmationRequiredException();
         }
 
-        var (sessionToken, expiresAt) = await CreateSessionAsync(
+        var (sessionToken, session) = await CreateSessionAsync(
             user,
             metadata,
+            sessionType,
             request.DeviceName,
             cancellationToken);
         await _authRepository.SaveChangesAsync(cancellationToken);
@@ -142,7 +156,8 @@ internal sealed class AuthService : IAuthService
             MapUser(user),
             workspaces.Select(MapWorkspace).ToList(),
             sessionToken,
-            expiresAt);
+            session.ExpiresAt,
+            MapSession(session));
     }
 
     public async Task<LoginUserResponse> DevelopmentLoginAsync(
@@ -172,12 +187,13 @@ internal sealed class AuthService : IAuthService
                 cancellationToken);
         }
 
-        return await LoginAsync(
+        return await LoginCoreAsync(
             new LoginUserRequest(
                 options.DevelopmentEmail,
                 options.DevelopmentPassword,
                 "development browser"),
             metadata,
+            UserSessionType.Development,
             cancellationToken);
     }
 
@@ -229,9 +245,10 @@ internal sealed class AuthService : IAuthService
             }
         }
 
-        var (sessionToken, expiresAt) = await CreateSessionAsync(
+        var (sessionToken, session) = await CreateSessionAsync(
             user,
             metadata,
+            UserSessionType.DesktopLocal,
             "desktop local app",
             cancellationToken);
         await _authRepository.SaveChangesAsync(cancellationToken);
@@ -242,7 +259,8 @@ internal sealed class AuthService : IAuthService
             MapUser(user),
             workspaces.Select(MapWorkspace).ToList(),
             sessionToken,
-            expiresAt);
+            session.ExpiresAt,
+            MapSession(session));
     }
 
     public async Task<LoginUserResponse> GuestLoginAsync(
@@ -265,9 +283,10 @@ internal sealed class AuthService : IAuthService
             now,
             emailIsConfirmed: true,
             cancellationToken);
-        var (sessionToken, expiresAt) = await CreateSessionAsync(
+        var (sessionToken, session) = await CreateSessionAsync(
             created.User,
             metadata,
+            UserSessionType.Guest,
             "temporary browser tab",
             cancellationToken);
 
@@ -277,7 +296,8 @@ internal sealed class AuthService : IAuthService
             MapUser(created.User),
             [MapWorkspace(created.Workspace, created.Membership)],
             sessionToken,
-            expiresAt);
+            session.ExpiresAt,
+            MapSession(session));
     }
 
     public async Task<LoginUserResponse> ExternalLoginAsync(
@@ -347,9 +367,10 @@ internal sealed class AuthService : IAuthService
         }
 
         user.MarkEmailConfirmed(now);
-        var (sessionToken, expiresAt) = await CreateSessionAsync(
+        var (sessionToken, session) = await CreateSessionAsync(
             user,
             metadata,
+            UserSessionType.Browser,
             $"{provider} login",
             cancellationToken);
         await _authRepository.SaveChangesAsync(cancellationToken);
@@ -360,7 +381,8 @@ internal sealed class AuthService : IAuthService
             MapUser(user),
             workspaces.Select(MapWorkspace).ToList(),
             sessionToken,
-            expiresAt);
+            session.ExpiresAt,
+            MapSession(session));
     }
 
     public async Task<ConfirmEmailResponse> ConfirmEmailAsync(
@@ -450,7 +472,14 @@ internal sealed class AuthService : IAuthService
 
         return new CurrentUserResponse(
             MapUser(user),
-            workspaces.Select(MapWorkspace).ToList());
+            workspaces.Select(MapWorkspace).ToList(),
+            new AuthSessionResponse(
+                current.SessionId,
+                current.SessionType,
+                current.DeviceName,
+                current.CreatedAt,
+                current.ExpiresAt,
+                current.LastSeenAt));
     }
 
     private static AuthUserResponse MapUser(AppUser user)
@@ -486,6 +515,17 @@ internal sealed class AuthService : IAuthService
             membership.Role,
             accessKind,
             sharedTaskCount);
+    }
+
+    private static AuthSessionResponse MapSession(UserSession session)
+    {
+        return new AuthSessionResponse(
+            session.Id,
+            session.SessionType,
+            session.DeviceName,
+            session.CreatedAt,
+            session.ExpiresAt,
+            session.LastSeenAt);
     }
 
     private async Task<(AppUser User, Workspace Workspace, WorkspaceMembership Membership)>
@@ -566,9 +606,10 @@ internal sealed class AuthService : IAuthService
         return $"{baseUrl}{path}?token={Uri.EscapeDataString(token)}";
     }
 
-    private async Task<(string SessionToken, DateTimeOffset ExpiresAt)> CreateSessionAsync(
+    private async Task<(string SessionToken, UserSession Session)> CreateSessionAsync(
         AppUser user,
         AuthRequestMetadata metadata,
+        UserSessionType sessionType,
         string? deviceName,
         CancellationToken cancellationToken)
     {
@@ -581,6 +622,7 @@ internal sealed class AuthService : IAuthService
             _sessionTokenService.HashToken(sessionToken),
             now,
             now.Add(GetSessionDuration()),
+            sessionType,
             metadata.UserAgent,
             _sessionTokenService.HashOptionalMetadata(metadata.IpAddress),
             deviceName);
@@ -588,7 +630,7 @@ internal sealed class AuthService : IAuthService
         user.MarkLoggedIn(now);
         await _authRepository.AddSessionAsync(session, cancellationToken);
 
-        return (sessionToken, session.ExpiresAt);
+        return (sessionToken, session);
     }
 
     private TimeSpan GetSessionDuration()

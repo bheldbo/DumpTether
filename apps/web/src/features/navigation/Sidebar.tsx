@@ -39,6 +39,7 @@ export function Sidebar({
   currentViewId,
   lastPingedAt,
   language,
+  localDesktopSessionIsActive,
   mode,
   onCreateWorkspace,
   onDeleteWorkspace,
@@ -67,6 +68,7 @@ export function Sidebar({
   currentViewId: string | null;
   lastPingedAt: string | null;
   language: Language;
+  localDesktopSessionIsActive: boolean;
   mode: WorkspaceMode;
   onCreateWorkspace: (name: string) => Promise<void>;
   onDeleteWorkspace: (workspaceId: string) => Promise<void>;
@@ -501,6 +503,8 @@ export function Sidebar({
               <span className="nav-count">{accountNotificationCount}</span>
             ) : temporarySessionIsActive ? (
               <span className="nav-count">{t('guestModeShort')}</span>
+            ) : localDesktopSessionIsActive ? (
+              <span className="nav-count">{t('localDesktopModeShort')}</span>
             ) : null}
           </button>
           <button className="refresh-button" onClick={onRefresh} type="button">

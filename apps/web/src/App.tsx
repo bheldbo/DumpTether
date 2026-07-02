@@ -194,6 +194,7 @@ function App() {
     useState<WorkspaceInvitationInboxResponse[]>([]);
   const [incomingTaskShares, setIncomingTaskShares] = useState<TaskShareInboxResponse[]>([]);
   const processedWorkspaceInviteTokenRef = useRef<string | null>(null);
+  const [localDesktopSessionIsActive, setLocalDesktopSessionIsActive] = useState(false);
   const [temporarySessionIsActive, setTemporarySessionIsActive] = useState(isTemporarySession);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
   const [lastPingedAt, setLastPingedAt] = useState<string | null>(null);
@@ -295,6 +296,7 @@ function App() {
       setCurrentUser(session.currentUser);
       setIncomingWorkspaceInvitations(session.incomingWorkspaceInvitations);
       setIncomingTaskShares(session.incomingTaskShares);
+      setLocalDesktopSessionIsActive(session.localDesktopSessionIsActive);
       setTemporarySessionIsActive(session.temporarySessionIsActive);
       setErrorMessage(null);
     } catch (error) {
@@ -986,7 +988,15 @@ function App() {
 
   const handleAuthenticated = async (userState: CurrentUserResponse) => {
     setCurrentUser(userState);
-    setTemporarySessionIsActive(isTemporarySession());
+    setLocalDesktopSessionIsActive(
+      userState.session.sessionType === 'DesktopLocal' ||
+        userState.session.sessionType === 2,
+    );
+    setTemporarySessionIsActive(
+      userState.session.sessionType === 'Guest' ||
+        userState.session.sessionType === 5 ||
+        isTemporarySession(),
+    );
     const workspaceId = userState.workspaces[0]?.id ?? null;
     setSelectedWorkspaceId(workspaceId);
     setSelectedTaskId(null);
@@ -1068,6 +1078,7 @@ function App() {
     try {
       await logoutUser();
       setCurrentUser(null);
+      setLocalDesktopSessionIsActive(false);
       setTemporarySessionIsActive(false);
       setCurrentWorkspaceId(null);
       setSelectedWorkspaceId(null);
@@ -1807,6 +1818,7 @@ function App() {
         savedViews={savedViews}
         sidebarIsCollapsed={sidebarIsCollapsed}
         templateCount={templates.length}
+        localDesktopSessionIsActive={localDesktopSessionIsActive}
         temporarySessionIsActive={temporarySessionIsActive}
         t={t}
         workspace={workspace}
@@ -1828,6 +1840,7 @@ function App() {
             onGuestLogin={handleGuestLogin}
             onLogin={handleLogin}
             onRegister={handleRegister}
+            localDesktopSessionIsActive={localDesktopSessionIsActive}
             temporarySessionIsActive={temporarySessionIsActive}
             t={t}
             variant="gate"
@@ -1932,6 +1945,7 @@ function App() {
           onLogin={handleLogin}
           onLogout={handleLogout}
           onRegister={handleRegister}
+          localDesktopSessionIsActive={localDesktopSessionIsActive}
           temporarySessionIsActive={temporarySessionIsActive}
           t={t}
         />

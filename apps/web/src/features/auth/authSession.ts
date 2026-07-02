@@ -20,6 +20,7 @@ export interface LoadedAuthSession {
   currentUser: CurrentUserResponse | null;
   incomingTaskShares: TaskShareInboxResponse[];
   incomingWorkspaceInvitations: WorkspaceInvitationInboxResponse[];
+  localDesktopSessionIsActive: boolean;
   localDesktopSessionStarted: boolean;
   temporarySessionIsActive: boolean;
 }
@@ -55,8 +56,9 @@ async function loadAuthenticatedSession(
       currentUser,
       incomingTaskShares,
       incomingWorkspaceInvitations,
+      localDesktopSessionIsActive: isLocalDesktopSession(currentUser),
       localDesktopSessionStarted,
-      temporarySessionIsActive: isTemporarySession(),
+      temporarySessionIsActive: isGuestSession(currentUser) || isTemporarySession(),
     };
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
@@ -65,6 +67,7 @@ async function loadAuthenticatedSession(
         currentUser: null,
         incomingTaskShares: [],
         incomingWorkspaceInvitations: [],
+        localDesktopSessionIsActive: false,
         localDesktopSessionStarted: false,
         temporarySessionIsActive: false,
       };
@@ -82,4 +85,14 @@ function shouldStartDesktopLocalSession(
     isDesktopRuntime() &&
     error instanceof ApiError &&
     error.status === 401;
+}
+
+function isLocalDesktopSession(currentUser: CurrentUserResponse | null) {
+  return currentUser?.session.sessionType === 'DesktopLocal' ||
+    currentUser?.session.sessionType === 2;
+}
+
+function isGuestSession(currentUser: CurrentUserResponse | null) {
+  return currentUser?.session.sessionType === 'Guest' ||
+    currentUser?.session.sessionType === 5;
 }

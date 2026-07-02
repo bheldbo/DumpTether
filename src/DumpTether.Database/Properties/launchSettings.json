@@ -15,6 +15,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "DumpTether.DatabaseSeedTestData": {
+      "commandName": "Project",
+      "commandLineArgs": "seed-test-data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "DumpTether.DatabaseStatus": {
       "commandName": "Project",
       "commandLineArgs": "status",

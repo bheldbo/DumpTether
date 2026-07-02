@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 using DumpTether.Data;
+using DumpTether.Domain;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,6 +38,7 @@ return command switch
     "menu" => await RunMenuAsync(services, configuration),
     "migrate" => await MigrateAsync(services, configuration),
     "status" => await ShowStatusAsync(services, configuration),
+    "seed-test-data" => await SeedTestDataAsync(services, configuration),
     "clear-tasks" => await ClearTaskDataAsync(services),
     "reset" => await ResetDatabaseAsync(services),
     "local-info" => ShowLocalInfo(configuration),
@@ -52,10 +55,11 @@ static async Task<int> RunMenuAsync(IServiceProvider services, IConfiguration co
         Console.WriteLine("DumpTether database tools");
         Console.WriteLine("1. Status");
         Console.WriteLine("2. Apply EF migrations");
-        Console.WriteLine("3. Clear task data only");
-        Console.WriteLine("4. Reset configured database");
-        Console.WriteLine("5. Show local SQLite path");
-        Console.WriteLine("6. Delete local SQLite database");
+        Console.WriteLine("3. Seed development test data");
+        Console.WriteLine("4. Clear task data only");
+        Console.WriteLine("5. Reset configured database");
+        Console.WriteLine("6. Show local SQLite path");
+        Console.WriteLine("7. Delete local SQLite database");
         Console.WriteLine("Q. Quit");
         Console.Write("Choose: ");
 
@@ -70,15 +74,18 @@ static async Task<int> RunMenuAsync(IServiceProvider services, IConfiguration co
                 await MigrateAsync(services, configuration);
                 break;
             case "3":
-                await ClearTaskDataAsync(services);
+                await SeedTestDataAsync(services, configuration);
                 break;
             case "4":
-                await ResetDatabaseAsync(services);
+                await ClearTaskDataAsync(services);
                 break;
             case "5":
-                ShowLocalInfo(configuration);
+                await ResetDatabaseAsync(services);
                 break;
             case "6":
+                ShowLocalInfo(configuration);
+                break;
+            case "7":
                 RemoveLocalSqlite(configuration);
                 break;
             case "Q":
@@ -124,6 +131,113 @@ static async Task<int> ShowStatusAsync(IServiceProvider services, IConfiguration
     {
         Console.WriteLine($"  - {migration}");
     }
+
+    return 0;
+}
+
+static async Task<int> SeedTestDataAsync(IServiceProvider services, IConfiguration configuration)
+{
+    if (!string.Equals(
+            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development",
+            "Development",
+            StringComparison.OrdinalIgnoreCase))
+    {
+        RequireTypedConfirmation(
+            "This seeds the configured database while not running in Development.",
+            "SEED TEST DATA");
+    }
+
+    await MigrateAsync(services, configuration);
+
+    await using var scope = services.CreateAsyncScope();
+    var db = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+    var now = DateTimeOffset.UtcNow;
+
+    var email = GetEnvironmentValue("DUMPTETHER_SEED_EMAIL", "seed@dumptether.local");
+    var password = GetEnvironmentValue("DUMPTETHER_SEED_PASSWORD", "DumpTether123!");
+    var normalizedEmail = AppUser.NormalizeEmail(email);
+
+    var user = await db.AppUsers
+        .SingleOrDefaultAsync(candidate => candidate.NormalizedEmail == normalizedEmail);
+
+    if (user is null)
+    {
+        var passwordHasher = new PasswordHasher<object>();
+        user = AppUser.Create(
+            email,
+            "Seed User",
+            passwordHasher.HashPassword(new object(), password),
+            now,
+            emailIsConfirmed: true);
+        await db.AppUsers.AddAsync(user);
+    }
+
+    var workspace = await db.WorkspaceMemberships
+        .Where(candidate => candidate.UserId == user.Id)
+        .Join(
+            db.Workspaces,
+            membership => membership.WorkspaceId,
+            candidate => candidate.Id,
+            (membership, candidate) => candidate)
+        .FirstOrDefaultAsync(candidate => candidate.Name == "Seed Board");
+
+    if (workspace is null)
+    {
+        workspace = Workspace.Create("Seed Board", now);
+        workspace.ChangeColor("#FFD86B");
+        await db.Workspaces.AddAsync(workspace);
+    }
+
+    if (!await db.WorkspaceMemberships.AnyAsync(candidate =>
+            candidate.WorkspaceId == workspace.Id &&
+            candidate.UserId == user.Id))
+    {
+        await db.WorkspaceMemberships.AddAsync(
+            WorkspaceMembership.Create(
+                workspace.Id,
+                user.Id,
+                WorkspaceMembershipRole.Owner,
+                now));
+    }
+
+    var generalProject = await EnsureProjectAsync(db, workspace.Id, "General", "#FFE36D", now);
+    var followUpProject = await EnsureProjectAsync(db, workspace.Id, "Follow-up", "#A7D8FF", now);
+    await EnsureArchiveResolutionAsync(db, workspace.Id, "Done", false, now);
+    await EnsureArchiveResolutionAsync(db, workspace.Id, "No longer needed", true, now);
+
+    var basicTemplate = await EnsureBasicTemplateAsync(db, user.Id, now);
+    var todoTemplate = await EnsureTodoTemplateAsync(db, user.Id, now);
+
+    await EnsureTaskAsync(
+        db,
+        workspace.Id,
+        generalProject.Id,
+        basicTemplate.Id,
+        "Seed: capture parking permit note",
+        "Permits expire soon. Check the city portal and save the renewal link.",
+        "#FFF4A8",
+        "General",
+        null,
+        now.AddDays(2),
+        now);
+    await EnsureTaskAsync(
+        db,
+        workspace.Id,
+        followUpProject.Id,
+        todoTemplate.Id,
+        "Seed: test checklist task",
+        "Open the task and tick the entry checkbox.",
+        "#BFE7D2",
+        "Follow-up",
+        "Waiting",
+        now.AddDays(1),
+        now);
+
+    await db.SaveChangesAsync();
+
+    Console.WriteLine("Development seed data is ready.");
+    Console.WriteLine($"Seed user: {email}");
+    Console.WriteLine($"Seed password: {password}");
 
     return 0;
 }
@@ -201,12 +315,179 @@ static int ShowHelp()
     Console.WriteLine("  menu                 Interactive menu");
     Console.WriteLine("  status               Show provider, connection and migration status");
     Console.WriteLine("  migrate              Apply EF migrations");
+    Console.WriteLine("  seed-test-data       Apply migrations and add reusable development sample data");
     Console.WriteLine("  clear-tasks          Clear task/note data only");
     Console.WriteLine("  reset                Delete and recreate configured database");
     Console.WriteLine("  local-info           Show local SQLite path");
     Console.WriteLine("  remove-local-sqlite  Delete local SQLite file");
 
     return 0;
+}
+
+static async Task<Project> EnsureProjectAsync(
+    DumpTetherDbContext db,
+    Guid workspaceId,
+    string name,
+    string color,
+    DateTimeOffset now)
+{
+    var project = await db.Projects
+        .FirstOrDefaultAsync(candidate =>
+            candidate.WorkspaceId == workspaceId &&
+            candidate.Name == name);
+
+    if (project is not null)
+    {
+        return project;
+    }
+
+    project = Project.Create(workspaceId, name, now);
+    project.ChangeColor(color);
+    await db.Projects.AddAsync(project);
+
+    return project;
+}
+
+static async Task EnsureArchiveResolutionAsync(
+    DumpTetherDbContext db,
+    Guid workspaceId,
+    string name,
+    bool requiresExplanation,
+    DateTimeOffset now)
+{
+    if (await db.ArchiveResolutions.AnyAsync(candidate =>
+            candidate.WorkspaceId == workspaceId &&
+            candidate.Name == name))
+    {
+        return;
+    }
+
+    await db.ArchiveResolutions.AddAsync(
+        ArchiveResolution.Create(
+            workspaceId,
+            name,
+            now,
+            requiresExplanation
+                ? "Use this when context matters later."
+                : "Seed archive reason.",
+            requiresExplanation));
+}
+
+static async Task<TaskTemplate> EnsureBasicTemplateAsync(
+    DumpTetherDbContext db,
+    Guid ownerUserId,
+    DateTimeOffset now)
+{
+    var template = await db.TaskTemplates
+        .Include(candidate => candidate.FieldDefinitions)
+        .FirstOrDefaultAsync(candidate =>
+            candidate.OwnerUserId == ownerUserId &&
+            candidate.Name == "Basic Task" &&
+            candidate.DeletedAt == null);
+
+    if (template is not null)
+    {
+        return template;
+    }
+
+    template = TaskTemplate.Create(ownerUserId, "Basic Task", now);
+    template.AddFieldDefinition(
+        "context",
+        "Context",
+        FieldDefinitionType.LongText,
+        FieldDefinitionScope.Header,
+        isRequired: false,
+        sortOrder: 0,
+        layoutRow: 1,
+        layoutColumn: 1,
+        layoutWeight: 1);
+    template.UpdateLayout(
+        """[{"row":1,"columnWeights":[1],"height":168}]""",
+        """[{"row":1,"columnWeights":[1],"height":132}]""",
+        now);
+    await db.TaskTemplates.AddAsync(template);
+
+    return template;
+}
+
+static async Task<TaskTemplate> EnsureTodoTemplateAsync(
+    DumpTetherDbContext db,
+    Guid ownerUserId,
+    DateTimeOffset now)
+{
+    var template = await db.TaskTemplates
+        .Include(candidate => candidate.FieldDefinitions)
+        .FirstOrDefaultAsync(candidate =>
+            candidate.OwnerUserId == ownerUserId &&
+            candidate.Name == "ToDo Task" &&
+            candidate.DeletedAt == null);
+
+    if (template is not null)
+    {
+        return template;
+    }
+
+    template = TaskTemplate.Create(ownerUserId, "ToDo Task", now);
+    template.AddFieldDefinition(
+        "done",
+        "Done?",
+        FieldDefinitionType.Checkbox,
+        FieldDefinitionScope.Entry,
+        isRequired: false,
+        sortOrder: 0,
+        layoutRow: 1,
+        layoutColumn: 1,
+        layoutWeight: 0.22);
+    template.AddFieldDefinition(
+        "step",
+        "Step",
+        FieldDefinitionType.LongText,
+        FieldDefinitionScope.Entry,
+        isRequired: false,
+        sortOrder: 1,
+        layoutRow: 1,
+        layoutColumn: 2,
+        layoutWeight: 1.78);
+    template.UpdateLayout(
+        """[{"row":1,"columnWeights":[1],"height":132}]""",
+        """[{"row":1,"columnWeights":[0.22,1.78],"height":144}]""",
+        now);
+    await db.TaskTemplates.AddAsync(template);
+
+    return template;
+}
+
+static async Task EnsureTaskAsync(
+    DumpTetherDbContext db,
+    Guid workspaceId,
+    Guid projectId,
+    Guid templateId,
+    string title,
+    string note,
+    string color,
+    string category,
+    string? status,
+    DateTimeOffset? followUpAt,
+    DateTimeOffset now)
+{
+    if (await db.TaskItems.AnyAsync(candidate =>
+            candidate.WorkspaceId == workspaceId &&
+            candidate.Title == title))
+    {
+        return;
+    }
+
+    var taskItem = TaskItem.Create(workspaceId, projectId, title, now, templateId);
+    taskItem.ChangeColor(color, now);
+    taskItem.ChangeCategory(category, now);
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+        taskItem.ChangeStatus(status, now);
+    }
+
+    taskItem.SetFollowUp(followUpAt, now);
+    taskItem.AddNote(note, now);
+    await db.TaskItems.AddAsync(taskItem);
 }
 
 static int UnknownCommand(string command)

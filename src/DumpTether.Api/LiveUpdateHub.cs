@@ -114,7 +114,12 @@ internal sealed class LiveUpdateHub : Hub
             userId,
             sessionId,
             email,
-            displayName);
+            displayName,
+            session.SessionType,
+            session.DeviceName,
+            session.CreatedAt,
+            session.ExpiresAt,
+            session.LastSeenAt);
     }
 
     public static string WorkspaceGroup(Guid workspaceId)
