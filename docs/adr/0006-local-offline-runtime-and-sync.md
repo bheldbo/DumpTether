@@ -98,6 +98,8 @@ Local desktop login must be explicitly enabled with `Auth:EnableLocalDesktopLogi
 
 The packaged desktop app should normally talk to its local sidecar API. A configurable remote API base URL would be an online-client mode, not the default offline runtime.
 
+For sync/login, the desktop UI may use a packaged default hosted API URL via `VITE_DEFAULT_CLOUD_API_BASE_URL`, then allow the user to override that URL locally. This keeps the installer useful out of the box for the default DumpTether server while preserving a future self-hosted endpoint path.
+
 ## Login and Sync Mapping
 
 Full login-driven sync is future work. A first manual board sync pass exists so the local API can push/pull task header state through the same hosted API contract.

@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react';
-import { syncCloudBaseUrlStorageKey } from '../../appTypes';
+import { readCloudSyncApiBaseUrl, writeCloudSyncApiBaseUrl } from '../../appSettings';
 import { Icon } from '../../components/Icon';
 import { ModalFrame } from '../../components/ModalFrame';
 import { type Translate } from '../../localization';
@@ -25,7 +25,7 @@ export function CloudSyncDialog({
   workspaceName,
 }: CloudSyncDialogProps) {
   const [cloudApiBaseUrl, setCloudApiBaseUrl] = useState(
-    () => window.localStorage.getItem(syncCloudBaseUrlStorageKey) ?? '',
+    () => readCloudSyncApiBaseUrl(),
   );
   const [cloudSessionToken, setCloudSessionToken] = useState('');
   const [pushLocalChanges, setPushLocalChanges] = useState(true);
@@ -50,7 +50,7 @@ export function CloudSyncDialog({
         pushLocalChanges,
         pullRemoteChanges,
       });
-      window.localStorage.setItem(syncCloudBaseUrlStorageKey, cloudApiBaseUrl.trim());
+      writeCloudSyncApiBaseUrl(cloudApiBaseUrl);
       setCloudSessionToken('');
       setResult(response);
     } finally {

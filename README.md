@@ -131,6 +131,16 @@ Linux server deployment:    Docker Compose, see docs/deployment/docker-compose-p
 Linux desktop bundles:      build on a Linux host or Linux CI runner, see apps/desktop/README.md
 ```
 
+Generated-output cleanup:
+
+```powershell
+.\scripts\clean.ps1
+.\scripts\clean.ps1 -Target Generated
+.\scripts\clean.ps1 -Target All
+```
+
+The default action is status only. `Generated` removes repo-local build output such as .NET `bin/obj`, Vite `dist`/cache, Tauri/Rust `target`, desktop sidecar publish output and `.tmp`. `All` also removes `node_modules`, so the next frontend/desktop run will need `npm ci` or `npm install` again. The script never targets source files, migrations, appsettings or databases.
+
 Manual path:
 
 ```powershell
@@ -226,11 +236,12 @@ The desktop app identifier is `net.heldbo.dumptether`. That reverse-DNS ID is th
 API endpoint configuration is intentionally split by runtime:
 
 - Hosted website: set `VITE_API_BASE_URL` at frontend build time if the React app should call a different API origin. Leave it empty when the website and API are served from the same origin.
+- Packaged desktop/cloud sync default: set `VITE_DEFAULT_CLOUD_API_BASE_URL` at frontend build time to pre-fill the cloud sync dialog with your hosted API. The user can still override and save another URL later.
 - Vite dev: `apps/web/vite.config.ts` proxies `/api` and `/health` to `http://127.0.0.1:55868`.
 - Desktop local app: the React UI talks to the local sidecar API at `http://127.0.0.1:55868`.
 - Desktop cloud sync: the sync dialog asks for the hosted API URL and a cloud session token for that sync run. The app stores the URL only, not the token.
 
-So the WCF-style mental model is close, but the knob is an HTTP API base URL. The offline desktop runtime should keep using its local sidecar for normal work; pointing the whole desktop UI directly at a remote backend would be an online-client mode and is future work.
+So the WCF-style mental model is close, but the knob is an HTTP API base URL. The offline desktop runtime should keep using its local sidecar for normal work; sync/login can point at your hosted API. Pointing the whole desktop UI directly at a remote backend would be an online-client mode and is future work.
 
 Common local PostgreSQL defaults:
 
@@ -268,6 +279,8 @@ OAuth__Microsoft__Enabled
 OAuth__Facebook__Enabled
 Usage__MaxActiveTasksPerWorkspace
 Usage__MaxTotalTasksPerWorkspace
+VITE_API_BASE_URL
+VITE_DEFAULT_CLOUD_API_BASE_URL
 ```
 
 The `scripts/dev.ps1` helper reads root `.env` values and maps `DUMPTETHER_*` variables to ASP.NET configuration keys. Visual Studio launch profiles do not automatically import `.env`, so use launch settings, user secrets or local environment variables for F5-only runs.
@@ -449,6 +462,17 @@ npm run build:desktop
 ```
 
 `build:sidecar` publishes `DumpTether.Api` as a generated sidecar binary for Tauri. `build:desktop` runs `tauri build`, which is the path toward `.exe`/`.msi` bundles. Signing certificates, update feeds and cloud sync are still future work.
+
+The odd-looking names under `apps/desktop/src-tauri/target/release` are generated Rust/Tauri build artifacts and installer snapshots. The large folders to watch are:
+
+- `apps/desktop/src-tauri/target`
+- `apps/desktop/src-tauri/binaries/publish`
+- `apps/web/node_modules` and `apps/desktop/node_modules`
+- `apps/web/dist`, `apps/web/.vite`, `apps/web/.tsbuildinfo`
+- any `bin` or `obj` folder under `src` or `tests`
+- `.tmp`
+
+Use `.\scripts\clean.ps1 -Target Generated` to clear generated build output without deleting dependencies. Use `.\scripts\clean.ps1 -Target All` when you want a colder reset and are fine reinstalling npm packages.
 
 The first sidecar build may download .NET runtime packs from NuGet for the selected runtime, for example `win-x64`.
 
