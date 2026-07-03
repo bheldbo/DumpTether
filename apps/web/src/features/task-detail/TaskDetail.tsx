@@ -53,6 +53,7 @@ interface TaskDetailProps {
   onClose: () => Promise<void>;
   onCloseArchiveDialog: () => void;
   onOpenArchiveDialog: () => void;
+  onRequestSync: () => void;
   onReopen: (note?: string) => Promise<void>;
   onCreateTaskShareLink: (
     taskItemId: string,
@@ -90,6 +91,7 @@ export function TaskDetail({
   onClose,
   onCloseArchiveDialog,
   onOpenArchiveDialog,
+  onRequestSync,
   onReopen,
   onCreateTaskShareLink,
   onQueueDeleteTimelineEntry,
@@ -202,7 +204,11 @@ export function TaskDetail({
         />
 
         <div className="detail-actions">
-          <TaskSyncIndicator syncState={taskItem.syncState} t={t} />
+          <TaskSyncIndicator
+            onRetry={onRequestSync}
+            syncState={taskItem.syncState}
+            t={t}
+          />
           {!taskItem.archivedAt ? (
             <ColorPickerPopover
               color={taskItem.color ?? ''}

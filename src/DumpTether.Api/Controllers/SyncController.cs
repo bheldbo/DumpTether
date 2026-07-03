@@ -183,6 +183,44 @@ public sealed class SyncController : ControllerBase
         }
     }
 
+    [HttpPost("workspaces/{workspaceId:guid}/run")]
+    public async Task<ActionResult<SyncWorkspaceWithCloudResponse>> SyncWorkspaceWithCloud(
+        Guid workspaceId,
+        SyncWorkspaceWithCloudRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.SyncWorkspaceWithCloudAsync(
+                workspaceId,
+                request,
+                cancellationToken);
+
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
     private bool IsDesktopEnvironment()
     {
         return string.Equals(

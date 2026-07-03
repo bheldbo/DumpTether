@@ -386,6 +386,103 @@ button.member-chip:hover {
   box-shadow: 0 24px 70px rgba(32, 45, 58, 0.2);
 }
 
+.cloud-sync-dialog {
+  width: min(620px, calc(100vw - 36px));
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #cad6df;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 24px 70px rgba(32, 45, 58, 0.24);
+}
+
+.cloud-sync-form,
+.cloud-sync-result,
+.cloud-sync-recovery {
+  display: grid;
+  gap: 10px;
+}
+
+.cloud-sync-form label:not(.checkbox-label) {
+  display: grid;
+  gap: 6px;
+  color: #536273;
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.cloud-sync-form input[type="url"],
+.cloud-sync-form input[type="password"] {
+  min-height: 40px;
+}
+
+.cloud-sync-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.cloud-sync-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cloud-sync-stats span,
+.cloud-sync-recovery li {
+  padding: 7px 10px;
+  border: 1px solid rgba(24, 33, 44, 0.1);
+  border-radius: 999px;
+  background: rgba(241, 247, 248, 0.86);
+  color: #253443;
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.cloud-sync-messages,
+.cloud-sync-recovery ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.cloud-sync-recovery li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 8px;
+  list-style: none;
+}
+
+.board-sync-strip {
+  display: flex;
+  justify-content: flex-end;
+  margin: -10px 0 10px;
+  pointer-events: none;
+}
+
+.sync-board-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid rgba(24, 76, 72, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #1b4d48;
+  font-size: 0.82rem;
+  font-weight: 790;
+  pointer-events: auto;
+}
+
+.sync-board-button:hover {
+  border-color: rgba(24, 76, 72, 0.32);
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .workspace-invite-form {
   width: 100%;
   display: grid;

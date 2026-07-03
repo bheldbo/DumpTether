@@ -4,16 +4,37 @@ import type { TaskSyncStateResponse } from '../types';
 import { Icon } from './Icon';
 
 interface TaskSyncIndicatorProps {
+  onRetry?: () => void;
   syncState: TaskSyncStateResponse | null | undefined;
   t: Translate;
 }
 
-export function TaskSyncIndicator({ syncState, t }: TaskSyncIndicatorProps) {
+export function TaskSyncIndicator({ onRetry, syncState, t }: TaskSyncIndicatorProps) {
   if (!syncState || syncState.status === 'LocalOnly') {
     return null;
   }
 
   const label = getSyncLabel(syncState, t);
+  const canRetry = Boolean(onRetry) &&
+    (syncState.status === 'SyncFailed' || syncState.status === 'Conflict');
+
+  if (canRetry) {
+    return (
+      <button
+        className="task-sync-indicator task-sync-retry"
+        data-state={syncState.status}
+        onClick={(event) => {
+          event.stopPropagation();
+          onRetry?.();
+        }}
+        title={`${label}\n${t('retrySync')}`}
+        type="button"
+      >
+        <Icon name="cloud" />
+        <span className="sr-only">{t('retrySync')}</span>
+      </button>
+    );
+  }
 
   return (
     <span

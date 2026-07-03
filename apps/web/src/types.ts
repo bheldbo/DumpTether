@@ -44,6 +44,40 @@ export interface TaskSyncStateResponse {
   lastError: string | null;
 }
 
+export type SyncRootStatus = 'LocalOnly' | 'Linked' | 'Conflict' | string;
+
+export interface SyncRootResponse {
+  id: string;
+  localWorkspaceId: string;
+  remoteWorkspaceId: string | null;
+  cloudUserId: string | null;
+  deviceId: string;
+  status: SyncRootStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastSyncedAt: string | null;
+}
+
+export interface SyncWorkspaceWithCloudRequest {
+  cloudApiBaseUrl: string;
+  cloudSessionToken: string;
+  remoteWorkspaceId?: string | null;
+  pushLocalChanges?: boolean;
+  pullRemoteChanges?: boolean;
+}
+
+export interface SyncWorkspaceWithCloudResponse {
+  root: SyncRootResponse;
+  taskStates: TaskSyncStateResponse[];
+  pushed: number;
+  pulled: number;
+  updatedLocal: number;
+  updatedRemote: number;
+  conflicts: number;
+  failed: number;
+  messages: string[];
+}
+
 export interface TaskItemViewCountResponse {
   viewId: string;
   count: number;

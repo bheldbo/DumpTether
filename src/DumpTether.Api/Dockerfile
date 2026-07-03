@@ -5,6 +5,7 @@ COPY Directory.Build.props ./
 COPY src/DumpTether.Domain/DumpTether.Domain.csproj src/DumpTether.Domain/
 COPY src/DumpTether.App/DumpTether.App.csproj src/DumpTether.App/
 COPY src/DumpTether.Data/DumpTether.Data.csproj src/DumpTether.Data/
+COPY src/DumpTether.Data.Sqlite/DumpTether.Data.Sqlite.csproj src/DumpTether.Data.Sqlite/
 COPY src/DumpTether.Api/DumpTether.Api.csproj src/DumpTether.Api/
 RUN dotnet restore src/DumpTether.Api/DumpTether.Api.csproj
 

@@ -3,6 +3,7 @@ using DumpTether.App;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using DumpTether.App.LiveUpdates;
+using DumpTether.App.Sync;
 using DumpTether.App.Usage;
 using DumpTether.App.Workspaces;
 using DumpTether.Data;
@@ -40,7 +41,9 @@ internal static class DumpTetherApiSetup
         services.AddDumpTetherApplication();
         services.RemoveAll<IEmailSender>();
         services.RemoveAll<ILiveUpdatePublisher>();
+        services.RemoveAll<ICloudSyncClient>();
         services.AddHttpClient<IEmailSender, BrevoEmailSender>();
+        services.AddHttpClient<ICloudSyncClient, HttpCloudSyncClient>();
         services.AddSingleton<ILiveUpdatePublisher, SignalRLiveUpdatePublisher>();
         services.AddDumpTetherData(configuration);
         services.AddHttpContextAccessor();

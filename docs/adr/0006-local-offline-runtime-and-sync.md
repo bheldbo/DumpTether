@@ -34,7 +34,7 @@ Tauri shell
   -> same React UI
 ```
 
-The first implementation step was making `DumpTether.Api` run against SQLite with `Database:Provider=Sqlite`. The current local runtime also has a Tauri development shell scaffold, but sync is still deliberately minimal.
+The first implementation step was making `DumpTether.Api` run against SQLite with `Database:Provider=Sqlite`. The current local runtime also has a Tauri development shell scaffold and a deliberately small first cloud sync pass.
 
 The desktop project should later live in `apps/desktop`. It should package the built React UI and start the local .NET API sidecar on localhost.
 
@@ -96,7 +96,7 @@ The session token can expire or be replaced. The durable local identity is the S
 
 ## Login and Sync Mapping
 
-Login/sync is future work.
+Full login-driven sync is future work. A first manual board sync pass exists so the local API can push/pull task header state through the same hosted API contract.
 
 A local user can use DumpTether without cloud login. Local boards and tasks are born in SQLite and should show as local-only/not-synced when sync UI exists.
 
@@ -142,6 +142,32 @@ SyncMapping
 ```
 
 `SyncRoot` represents a board-level sync relationship. `SyncMapping` represents individual local-to-remote entity links. These records prevent duplicate uploads because retries can resolve "this local thing already became that remote thing" before creating new remote rows.
+
+## First Cloud Sync Pass
+
+The first implemented cloud sync pass is intentionally narrow:
+
+- It is available only in the desktop/local runtime.
+- It requires a local owner session for the board being synced.
+- The user supplies the hosted API URL and a cloud session token for the run.
+- The UI stores only the cloud URL, not the cloud token.
+- If no remote board is mapped, the sync service can create one.
+- Local task header fields can be pushed: title, status, category, color and follow-up date.
+- Remote task header fields can be pulled into the local SQLite board.
+- `SyncMapping` stores the remote task ID and remote version after successful sync.
+- If both local and remote changed the same task header since the previous sync checkpoint, the mapping is marked `Conflict` and both records are left intact.
+- Failed task sync attempts are marked `SyncFailed` with a short user-visible error.
+
+Not included in the first pass:
+
+- note/timeline entry sync
+- template and field-value sync
+- archive/delete/tombstone sync
+- shared-board/task download
+- automatic cloud login or token storage
+- field-level merge UI
+
+This keeps the implementation honest while proving the core mapping path.
 
 Future AD, Google, Microsoft and other identity providers should attach to the cloud identity layer. They should not replace the local SQLite identity. A local desktop user can later link to a cloud account from any supported provider, then sync mappings decide what data moves.
 

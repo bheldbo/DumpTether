@@ -248,6 +248,15 @@
   box-shadow: 0 8px 18px rgba(24, 33, 44, 0.06);
 }
 
+button.task-sync-indicator {
+  cursor: pointer;
+}
+
+.task-sync-retry:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(24, 33, 44, 0.12);
+}
+
 .task-sync-indicator .icon {
   width: 15px;
   height: 15px;

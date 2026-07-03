@@ -16,6 +16,7 @@ import {
   formatRelativeDate,
   isOwnerRole,
   isReadOnlyRole,
+  isSystemAllTasksWorkspace,
   isTaskShareWorkspace,
   isTextEditingTarget,
 } from '../../appUtils';
@@ -47,6 +48,8 @@ import type {
   TaskItemSummaryResponse,
   TaskShareLinkResponse,
   TaskTemplateDetailResponse,
+  SyncWorkspaceWithCloudRequest,
+  SyncWorkspaceWithCloudResponse,
   WorkspaceInvitationResponse,
   WorkspaceMemberResponse,
   UpdateProjectRequest,
@@ -68,6 +71,7 @@ import { BoardLoadingState } from './BoardLoadingState';
 import { DraftTaskCard } from './DraftTaskCard';
 import { FloatingBoardActions } from './FloatingBoardActions';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { CloudSyncDialog } from '../sync/CloudSyncDialog';
 
 interface DraftTaskTarget {
   workspaceId: string;
@@ -85,6 +89,7 @@ export function TaskBoard({
   isLoading,
   isLoadingDetail,
   isRefreshing,
+  localDesktopSessionIsActive,
   onAddTimelineEntry,
   onArchive,
   onArchiveTaskItems,
@@ -108,6 +113,7 @@ export function TaskBoard({
   onSelectTaskItem,
   onUpdateFieldValues,
   onUpdateProject,
+  onSyncWorkspaceWithCloud,
   onUpdateTaskShareRole,
   onUpdateTaskItems,
   onUpdateTaskItem,
@@ -135,6 +141,7 @@ export function TaskBoard({
   isLoading: boolean;
   isLoadingDetail: boolean;
   isRefreshing: boolean;
+  localDesktopSessionIsActive: boolean;
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onArchiveTaskItems: (taskItemIds: string[], requestBody: ArchiveTaskItemRequest) => Promise<void>;
@@ -168,6 +175,10 @@ export function TaskBoard({
   onSelectTaskItem: (id: string, workspaceId: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
+  onSyncWorkspaceWithCloud: (
+    workspaceId: string,
+    requestBody: SyncWorkspaceWithCloudRequest,
+  ) => Promise<SyncWorkspaceWithCloudResponse>;
   onUpdateTaskShareRole: (
     taskItemId: string,
     shareId: string,
@@ -210,6 +221,7 @@ export function TaskBoard({
     ? isReadOnlyRole(currentWorkspaceMember.role)
     : false;
   const hasWorkspace = Boolean(workspace?.id);
+  const workspaceIsSystemAllTasks = workspace ? isSystemAllTasksWorkspace(workspace) : false;
   const canManageSharing = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
   const canManageWorkspaceMetadata = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
   const archiveViewIsActive = currentView?.filter.archive === 'Archived';
@@ -228,6 +240,8 @@ export function TaskBoard({
   const [batchReopenIsOpen, setBatchReopenIsOpen] = useState(false);
   const [batchPermanentDeleteIsOpen, setBatchPermanentDeleteIsOpen] = useState(false);
   const [batchShareIsOpen, setBatchShareIsOpen] = useState(false);
+  const [cloudSyncIsOpen, setCloudSyncIsOpen] = useState(false);
+  const [cloudSyncWorkspaceId, setCloudSyncWorkspaceId] = useState<string | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const longPressHandledRef = useRef(false);
   const visibleTaskItems = useMemo(
@@ -378,6 +392,16 @@ export function TaskBoard({
     workspace,
   ]);
 
+  const openCloudSync = useCallback((workspaceId: string | null | undefined) => {
+    if (!workspaceId) {
+      onShowToast(t('noBoardSelected'), 'error');
+      return;
+    }
+
+    setCloudSyncWorkspaceId(workspaceId);
+    setCloudSyncIsOpen(true);
+  }, [onShowToast, t]);
+
   useEffect(() => {
     if (!selectedTaskId || archiveDialogIsOpen) {
       return undefined;
@@ -466,6 +490,24 @@ export function TaskBoard({
           canManageWorkspaceMetadata={canManageWorkspaceMetadata}
           canManageSharing={canManageSharing}
         />
+      ) : null}
+
+      {!focusModeIsEnabled &&
+      localDesktopSessionIsActive &&
+      hasWorkspace &&
+      !workspaceIsSystemAllTasks &&
+      currentUserOwnsWorkspace ? (
+        <div className="board-sync-strip">
+          <button
+            className="sync-board-button"
+            onClick={() => openCloudSync(workspace?.id)}
+            title={t('syncBoard')}
+            type="button"
+          >
+            <Icon name="cloud" />
+            <span>{t('syncBoard')}</span>
+          </button>
+        </div>
       ) : null}
 
       {!focusModeIsEnabled ? (
@@ -676,6 +718,7 @@ export function TaskBoard({
                       onUpdateTaskShareRole={onUpdateTaskShareRole}
                       onUpdateTaskItem={onUpdateTaskItem}
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
+                      onRequestSync={() => openCloudSync(selectedTask.workspaceId)}
                       colorOptions={colorOptions}
                       canManageSharing={canManageSharing}
                       pendingDeletedNoteIds={pendingDeletedNoteIds}
@@ -774,6 +817,22 @@ export function TaskBoard({
             closeEditMode();
           }}
           t={t}
+        />
+      ) : null}
+      {cloudSyncIsOpen && cloudSyncWorkspaceId ? (
+        <CloudSyncDialog
+          onClose={() => {
+            setCloudSyncIsOpen(false);
+            setCloudSyncWorkspaceId(null);
+          }}
+          onSync={(requestBody) => onSyncWorkspaceWithCloud(cloudSyncWorkspaceId, requestBody)}
+          taskItems={taskItems}
+          t={t}
+          workspaceName={
+            workspaces.find((candidate) => candidate.id === cloudSyncWorkspaceId)?.name ??
+            workspace?.name ??
+            t('board')
+          }
         />
       ) : null}
     </section>

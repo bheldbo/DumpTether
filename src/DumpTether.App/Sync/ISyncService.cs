@@ -36,4 +36,9 @@ public interface ISyncService
         Guid taskItemId,
         MarkTaskItemSyncFailedRequest request,
         CancellationToken cancellationToken);
+
+    Task<SyncWorkspaceWithCloudResponse> SyncWorkspaceWithCloudAsync(
+        Guid workspaceId,
+        SyncWorkspaceWithCloudRequest request,
+        CancellationToken cancellationToken);
 }

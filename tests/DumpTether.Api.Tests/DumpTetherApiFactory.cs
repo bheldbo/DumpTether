@@ -1,5 +1,6 @@
 using DumpTether.App.LiveUpdates;
 using DumpTether.App.Auth;
+using DumpTether.App.Sync;
 using DumpTether.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -28,6 +29,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
     private readonly int _maxTotalTasksPerWorkspace;
     private readonly string? _environmentName;
     private readonly IReadOnlyDictionary<string, string?> _extraConfiguration;
+    private readonly ICloudSyncClient? _cloudSyncClient;
     private readonly ILiveUpdatePublisher? _liveUpdatePublisher;
 
     public DumpTetherApiFactory(
@@ -37,6 +39,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         int maxActiveTasksPerWorkspace = 1000,
         int maxTotalTasksPerWorkspace = 5000,
         IReadOnlyDictionary<string, string?>? extraConfiguration = null,
+        ICloudSyncClient? cloudSyncClient = null,
         ILiveUpdatePublisher? liveUpdatePublisher = null)
     {
         _requireAuthentication = requireAuthentication;
@@ -45,6 +48,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         _maxActiveTasksPerWorkspace = maxActiveTasksPerWorkspace;
         _maxTotalTasksPerWorkspace = maxTotalTasksPerWorkspace;
         _extraConfiguration = extraConfiguration ?? new Dictionary<string, string?>();
+        _cloudSyncClient = cloudSyncClient;
         _liveUpdatePublisher = liveUpdatePublisher;
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
         _previousApplyMigrationsOnStartup =
@@ -108,6 +112,12 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
             {
                 services.RemoveAll<ILiveUpdatePublisher>();
                 services.AddSingleton(_liveUpdatePublisher);
+            }
+
+            if (_cloudSyncClient is not null)
+            {
+                services.RemoveAll<ICloudSyncClient>();
+                services.AddSingleton(_cloudSyncClient);
             }
 
             services.PostConfigure<AuthOptions>(options =>

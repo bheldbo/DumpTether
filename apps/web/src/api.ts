@@ -51,6 +51,8 @@ import type {
   TaskItemShareResponse,
   TaskShareLinkResponse,
   ShareLinkAcceptResponse,
+  SyncWorkspaceWithCloudRequest,
+  SyncWorkspaceWithCloudResponse,
   UpdateTaskShareRequest,
   UpdateWorkspaceMemberRequest,
 } from './types';
@@ -799,4 +801,14 @@ export function deleteTaskTemplate(id: string): Promise<void> {
   return request<void>(`/api/templates/${id}`, {
     method: 'DELETE',
   });
+}
+
+export function syncWorkspaceWithCloud(
+  workspaceId: string,
+  requestBody: SyncWorkspaceWithCloudRequest,
+): Promise<SyncWorkspaceWithCloudResponse> {
+  return request<SyncWorkspaceWithCloudResponse>(`/api/sync/workspaces/${workspaceId}/run`, {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  }, { workspaceId });
 }

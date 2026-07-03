@@ -104,6 +104,25 @@ internal sealed class EfSyncRepository : ISyncRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<SyncMapping>> ListMappingsForRootAsync(
+        Guid syncRootId,
+        SyncEntityType entityType,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.SyncMappings
+            .Where(mapping =>
+                mapping.SyncRootId == syncRootId &&
+                mapping.EntityType == entityType);
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
     public async Task AddRootAsync(
         SyncRoot syncRoot,
         CancellationToken cancellationToken)

@@ -32,6 +32,12 @@ public interface ISyncRepository
         IReadOnlyCollection<Guid> localIds,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<SyncMapping>> ListMappingsForRootAsync(
+        Guid syncRootId,
+        SyncEntityType entityType,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
     Task AddRootAsync(SyncRoot syncRoot, CancellationToken cancellationToken);
 
     Task AddMappingAsync(SyncMapping mapping, CancellationToken cancellationToken);

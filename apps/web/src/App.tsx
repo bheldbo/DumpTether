@@ -86,6 +86,7 @@ import {
   revokeWorkspaceInvitation,
   setCurrentWorkspaceId,
   isTemporarySession,
+  syncWorkspaceWithCloud,
   updateArchiveResolution,
   updateProject,
   updateTaskShareRole,
@@ -134,6 +135,8 @@ import type {
   SavedViewResponse,
   TaskItemDetailResponse,
   TaskItemSummaryResponse,
+  SyncWorkspaceWithCloudRequest,
+  SyncWorkspaceWithCloudResponse,
   TaskShareInboxResponse,
   TaskTemplateDetailResponse,
   TaskTemplateLayoutResponse,
@@ -1265,6 +1268,29 @@ function App() {
     }
   };
 
+  const handleSyncWorkspaceWithCloud = async (
+    workspaceId: string,
+    requestBody: SyncWorkspaceWithCloudRequest,
+  ): Promise<SyncWorkspaceWithCloudResponse> => {
+    try {
+      const response = await syncWorkspaceWithCloud(workspaceId, requestBody);
+      await loadWorkspace(currentViewId, workspaceId, { force: true });
+      const hasProblems = response.conflicts > 0 || response.failed > 0;
+      showToast(
+        hasProblems
+          ? `${t('syncComplete')}: ${response.conflicts} ${t('syncConflicts')}, ${response.failed} ${t('syncFailedCount')}.`
+          : t('syncComplete'),
+        hasProblems ? 'warning' : 'info',
+      );
+
+      return response;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
   const handleUpdateTaskItem = async (requestBody: UpdateTaskItemRequest) => {
     if (!selectedTask) {
       return;
@@ -1936,10 +1962,12 @@ function App() {
             onUpdateTaskItem={handleUpdateTaskItem}
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
             onUpdateProject={handleUpdateProject}
+            onSyncWorkspaceWithCloud={handleSyncWorkspaceWithCloud}
             onUpdateWorkspace={handleUpdateWorkspace}
             onUpdateWorkspaceMemberRole={handleUpdateWorkspaceMemberRole}
             onShowToast={showToast}
             projects={projects}
+            localDesktopSessionIsActive={localDesktopSessionIsActive}
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
             statusOptions={statusOptions}

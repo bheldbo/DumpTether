@@ -87,7 +87,7 @@ Design principles:
 
 Current shortcomings:
 
-- Desktop/offline mode has the SQLite/API foundation, Tauri scaffold, and local sync status metadata. Cloud push/pull sync is not implemented yet.
+- Desktop/offline mode has the SQLite/API foundation, Tauri scaffold, local sync status metadata and a first cloud push/pull pass for task headers. Notes, template field values, archive/delete sync and full conflict resolution are still future work.
 - Email confirmation/OAuth plumbing exists, but provider setup is still rough.
 - Sharing works as an MVP flow, but permissions and notifications need more polish.
 - Live updates are early and should be hardened before real multi-user use.
@@ -118,7 +118,7 @@ Local SQLite path:
 .\scripts\dev.ps1 -Target LocalBoth -OpenBrowser
 ```
 
-That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation, not full cloud sync yet.
+That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation. A first manual cloud sync pass exists for task headers, but full notes/templates/archive sync is still future work.
 
 Quick chooser:
 
@@ -396,7 +396,7 @@ Windows: %APPDATA%\DumpTether\dumptether.db
 Linux:   ~/.local/share/DumpTether/dumptether.db
 ```
 
-The current SQLite path is for local/offline development. SQLite uses provider-specific EF Core migrations in `src/DumpTether.Data.Sqlite`. Full login sync and conflict resolution are tracked in `docs/adr/0006-local-offline-runtime-and-sync.md`.
+The current SQLite path is for local/offline development. SQLite uses provider-specific EF Core migrations in `src/DumpTether.Data.Sqlite`. Manual board sync can push/pull task header state between a local SQLite board and a hosted API board using `SyncRoot`/`SyncMapping`; full notes/template/archive sync and richer conflict resolution are tracked in `docs/adr/0006-local-offline-runtime-and-sync.md`.
 
 ## Desktop App
 
