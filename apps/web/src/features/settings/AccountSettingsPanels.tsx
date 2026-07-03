@@ -4,13 +4,16 @@ import type { SettingsSectionKey } from '../../appTypes';
 import { Icon, type IconName } from '../../components/Icon';
 import { ModalFrame } from '../../components/ModalFrame';
 import {
+  formatDateTime,
   formatOAuthProvider,
+  formatRelativeDate,
   formatWorkspaceRole,
   getErrorMessage,
 } from '../../appUtils';
 import type { Language, Translate } from '../../localization';
 import type {
   ArchiveResolutionResponse,
+  AuthSessionListItemResponse,
   AuthClientOptionsResponse,
   CreateArchiveResolutionRequest,
   CurrentUserResponse,
@@ -26,6 +29,7 @@ export function AuthPanel({
   authOptions,
   currentUser,
   isLoading,
+  localDesktopSessionIsActive,
   onDevelopmentLogin,
   onGuestLogin,
   onLogin,
@@ -38,6 +42,7 @@ export function AuthPanel({
   authOptions: AuthClientOptionsResponse;
   currentUser: CurrentUserResponse | null;
   isLoading: boolean;
+  localDesktopSessionIsActive: boolean;
   onDevelopmentLogin: () => Promise<void>;
   onGuestLogin: () => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
@@ -51,9 +56,19 @@ export function AuthPanel({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const signupMode = normalizeSignupMode(authOptions.signupMode);
+  const registrationIsAvailable = signupMode !== 'Closed';
+  const registrationNeedsInvite = signupMode === 'InviteOnly';
+
+  useEffect(() => {
+    if (!registrationIsAvailable && mode === 'register') {
+      setMode('login');
+    }
+  }, [mode, registrationIsAvailable]);
 
   const submitAuthForm = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -67,6 +82,7 @@ export function AuthPanel({
           email: email.trim(),
           password,
           displayName: displayName.trim() || null,
+          inviteCode: registrationNeedsInvite ? inviteCode.trim() : null,
         });
         setStatusMessage(
           registered.emailConfirmationRequired
@@ -123,7 +139,10 @@ export function AuthPanel({
   const wrapperClassName = variant === 'gate'
     ? 'auth-gate'
     : 'settings-section auth-panel';
-  const canSubmit = email.trim().length > 0 && password.length >= 8;
+  const canSubmit = email.trim().length > 0 &&
+    password.length >= 8 &&
+    (mode !== 'register' || registrationIsAvailable) &&
+    (!registrationNeedsInvite || inviteCode.trim().length > 0);
 
   if (currentUser) {
     return (
@@ -135,6 +154,8 @@ export function AuthPanel({
         </div>
         {temporarySessionIsActive ? (
           <p className="guest-warning">{t('guestModePersistent')}</p>
+        ) : localDesktopSessionIsActive ? (
+          <p className="guest-warning">{t('localDesktopModePersistent')}</p>
         ) : null}
         <div className="auth-workspace-list">
           {currentUser.workspaces.map((workspaceItem) => (
@@ -191,12 +212,20 @@ export function AuthPanel({
         </button>
         <button
           aria-pressed={mode === 'register'}
+          disabled={!registrationIsAvailable}
           onClick={() => setMode('register')}
           type="button"
         >
           {t('register')}
         </button>
       </div>
+      {signupMode === 'Closed' ? (
+        <p className="form-help">{t('signupClosed')}</p>
+      ) : signupMode === 'InviteOnly' ? (
+        <p className="form-help">{t('signupInviteOnlyHelp')}</p>
+      ) : signupMode === 'Whitelist' ? (
+        <p className="form-help">{t('signupWhitelistHelp')}</p>
+      ) : null}
 
       {authOptions.oAuthProviders.length > 0 ? (
         <div className="oauth-login-list">
@@ -253,6 +282,19 @@ export function AuthPanel({
           ) : null}
         </label>
 
+        {mode === 'register' && registrationNeedsInvite ? (
+          <label>
+            {t('inviteCode')}
+            <input
+              autoComplete="one-time-code"
+              onChange={(event) => setInviteCode(event.target.value)}
+              required
+              type="text"
+              value={inviteCode}
+            />
+          </label>
+        ) : null}
+
         <button
           className="auth-submit-button"
           disabled={!canSubmit || isSubmitting || isLoading}
@@ -299,11 +341,13 @@ export function AuthPanel({
 }
 
 export function AccountPanel({
+  authSessions,
   authOptions,
   currentUser,
   incomingTaskShares,
   incomingWorkspaceInvitations,
   isLoadingAuth,
+  localDesktopSessionIsActive,
   onAcceptIncomingWorkspaceInvitation,
   onClose,
   onDeclineIncomingWorkspaceInvitation,
@@ -313,14 +357,17 @@ export function AccountPanel({
   onLogin,
   onLogout,
   onRegister,
+  onRevokeAuthSession,
   temporarySessionIsActive,
   t,
 }: {
+  authSessions: AuthSessionListItemResponse[];
   authOptions: AuthClientOptionsResponse;
   currentUser: CurrentUserResponse | null;
   incomingTaskShares: TaskShareInboxResponse[];
   incomingWorkspaceInvitations: WorkspaceInvitationInboxResponse[];
   isLoadingAuth: boolean;
+  localDesktopSessionIsActive: boolean;
   onAcceptIncomingWorkspaceInvitation: (id: string) => Promise<void>;
   onClose: () => void;
   onDeclineIncomingWorkspaceInvitation: (id: string) => Promise<void>;
@@ -330,6 +377,7 @@ export function AccountPanel({
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout: () => Promise<void>;
   onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
+  onRevokeAuthSession: (sessionId: string) => Promise<void>;
   temporarySessionIsActive: boolean;
   t: Translate;
 }) {
@@ -356,6 +404,7 @@ export function AccountPanel({
           authOptions={authOptions}
           currentUser={currentUser}
           isLoading={isLoadingAuth}
+          localDesktopSessionIsActive={localDesktopSessionIsActive}
           onDevelopmentLogin={onDevelopmentLogin}
           onGuestLogin={onGuestLogin}
           onLogin={onLogin}
@@ -365,6 +414,55 @@ export function AccountPanel({
           t={t}
           variant="settings"
         />
+
+        {currentUser ? (
+          <section className="settings-section">
+            <h3>{t('sessions')}</h3>
+            {authSessions.length === 0 ? (
+              <p>{t('noSessions')}</p>
+            ) : (
+              <div className="account-notification-list">
+                {authSessions.map((session) => {
+                  const isRevoked = Boolean(session.revokedAt);
+                  return (
+                    <article className="account-notification-card" key={session.id}>
+                      <Icon name={sessionIcon(session.sessionType)} />
+                      <div>
+                        <strong>
+                          {formatSessionType(session.sessionType, t)}
+                          {session.isCurrent ? ` (${t('currentSession')})` : ''}
+                        </strong>
+                        <p>
+                          {session.deviceName || t('unknownDevice')}
+                          {' - '}
+                          {t('lastSeen')}: {formatRelativeDate(session.lastSeenAt)}
+                        </p>
+                        <small title={formatDateTime(session.createdAt)}>
+                          {t('created')}: {formatDateTime(session.createdAt)}
+                        </small>
+                        {isRevoked ? (
+                          <small>{t('revoked')}: {formatDateTime(session.revokedAt!)}</small>
+                        ) : (
+                          <small>{t('expires')}: {formatDateTime(session.expiresAt)}</small>
+                        )}
+                      </div>
+                      {!isRevoked ? (
+                        <button
+                          className="secondary-action logout-button"
+                          onClick={() => void onRevokeAuthSession(session.id)}
+                          type="button"
+                        >
+                          <Icon name="logout" />
+                          {session.isCurrent ? t('logout') : t('revokeSession')}
+                        </button>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        ) : null}
 
         <section className="settings-section">
           <h3>{t('notifications')}</h3>
@@ -463,6 +561,71 @@ export function AccountPanel({
       </section>
     </ModalFrame>
   );
+}
+
+function normalizeSignupMode(
+  signupMode: AuthClientOptionsResponse['signupMode'],
+): 'Open' | 'Whitelist' | 'InviteOnly' | 'Closed' {
+  switch (signupMode) {
+    case 2:
+    case 'Whitelist':
+      return 'Whitelist';
+    case 3:
+    case 'InviteOnly':
+      return 'InviteOnly';
+    case 4:
+    case 'Closed':
+      return 'Closed';
+    case 1:
+    case 'Open':
+    default:
+      return 'Open';
+  }
+}
+
+function formatSessionType(
+  sessionType: AuthSessionListItemResponse['sessionType'],
+  t: Translate,
+) {
+  switch (sessionType) {
+    case 'DesktopLocal':
+    case 2:
+      return t('sessionDesktopLocal');
+    case 'DesktopCloud':
+    case 3:
+      return t('sessionDesktopCloud');
+    case 'Development':
+    case 4:
+      return t('sessionDevelopment');
+    case 'Guest':
+    case 5:
+      return t('sessionGuest');
+    case 'Browser':
+    case 1:
+    default:
+      return t('sessionBrowser');
+  }
+}
+
+function sessionIcon(sessionType: AuthSessionListItemResponse['sessionType']): IconName {
+  switch (sessionType) {
+    case 'DesktopLocal':
+    case 2:
+      return 'panel';
+    case 'DesktopCloud':
+    case 3:
+      return 'cloud';
+    case 'Development':
+    case 4:
+      return 'shield';
+    case 'Guest':
+    case 5:
+      return 'user';
+    case 'Browser':
+    case 1:
+    default:
+      return 'login';
+  }
 }
 
 export function SettingsPanel({

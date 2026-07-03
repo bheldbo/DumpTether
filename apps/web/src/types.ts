@@ -117,6 +117,7 @@ export interface RegisterUserRequest {
   email: string;
   password: string;
   displayName?: string | null;
+  inviteCode?: string | null;
 }
 
 export interface RegisterUserResponse {
@@ -131,16 +132,50 @@ export interface LoginUserRequest {
   deviceName?: string | null;
 }
 
+export type UserSessionType =
+  | 'Browser'
+  | 'DesktopLocal'
+  | 'DesktopCloud'
+  | 'Development'
+  | 'Guest'
+  | 1
+  | 2
+  | 3
+  | 4
+  | 5;
+
+export interface AuthSessionResponse {
+  id: string;
+  sessionType: UserSessionType;
+  deviceName: string | null;
+  createdAt: string;
+  expiresAt: string;
+  lastSeenAt: string;
+}
+
+export interface AuthSessionListItemResponse {
+  id: string;
+  sessionType: UserSessionType;
+  deviceName: string | null;
+  createdAt: string;
+  expiresAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+  isCurrent: boolean;
+}
+
 export interface LoginUserResponse {
   user: AuthUserResponse;
   workspaces: AuthWorkspaceResponse[];
   sessionToken: string;
   expiresAt: string;
+  session: AuthSessionResponse;
 }
 
 export interface CurrentUserResponse {
   user: AuthUserResponse;
   workspaces: AuthWorkspaceResponse[];
+  session: AuthSessionResponse;
 }
 
 export interface AuthClientOptionsResponse {
@@ -148,6 +183,7 @@ export interface AuthClientOptionsResponse {
   guestSessionsEnabled: boolean;
   developmentLoginEnabled: boolean;
   emailConfirmationEnabled: boolean;
+  signupMode: 'Open' | 'Whitelist' | 'InviteOnly' | 'Closed' | 1 | 2 | 3 | 4;
   oAuthProviders: string[];
 }
 

@@ -58,6 +58,106 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task PostRegister_WhenSignupClosed_Rejects()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "Closed"
+            });
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "closed@example.com",
+                password = "correct horse battery"
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.AppUsers.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PostRegister_WhenWhitelistMode_AllowsConfiguredEmailAndDomain()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "Whitelist",
+                ["Auth:SignupWhitelistEmails:0"] = "friend@example.com",
+                ["Auth:SignupWhitelistDomains:0"] = "heldbo.net"
+            });
+        using var client = factory.CreateClient();
+
+        var configuredEmail = await RegisterAsync(
+            client,
+            "friend@example.com",
+            "correct horse battery");
+        var configuredDomain = await RegisterAsync(
+            client,
+            "bjarke@heldbo.net",
+            "correct horse battery");
+
+        Assert.Equal("friend@example.com", configuredEmail.User.Email);
+        Assert.Equal("bjarke@heldbo.net", configuredDomain.User.Email);
+    }
+
+    [Fact]
+    public async Task PostRegister_WhenWhitelistMode_RejectsOtherEmail()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "Whitelist",
+                ["Auth:SignupWhitelistDomains:0"] = "heldbo.net"
+            });
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "stranger@example.com",
+                password = "correct horse battery"
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostRegister_WhenInviteOnly_RequiresValidInviteCode()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "InviteOnly",
+                ["Auth:SignupInviteCodes:0"] = "alpha-invite"
+            });
+        using var client = factory.CreateClient();
+
+        var rejected = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "no-code@example.com",
+                password = "correct horse battery"
+            });
+        var accepted = await RegisterAsync(
+            client,
+            "has-code@example.com",
+            "correct horse battery",
+            "alpha-invite");
+
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        Assert.Equal("has-code@example.com", accepted.User.Email);
+    }
+
+    [Fact]
     public async Task PostRegister_DoesNotStoreRawPassword()
     {
         using var factory = new DumpTetherApiFactory();
@@ -91,6 +191,8 @@ public sealed class AuthApiTests
         Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
         Assert.NotEqual(login.SessionToken, session.SessionTokenHash);
         Assert.Null(session.RevokedAt);
+        Assert.Equal(UserSessionType.Browser, login.Session.SessionType);
+        Assert.Equal(UserSessionType.Browser, session.SessionType);
     }
 
     [Fact]
@@ -208,6 +310,62 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task GetSessions_ReturnsCurrentUserSessions()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "sessions@example.com", "correct horse battery");
+        var login = await LoginAsync(client, "sessions@example.com", "correct horse battery");
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+
+        var response = await client.GetAsync("/api/auth/sessions");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"Expected OK, got {response.StatusCode}. Body: {body}");
+
+        var sessions = await response.Content.ReadFromJsonAsync<List<AuthSessionListItemResponse>>();
+
+        Assert.NotNull(sessions);
+        var session = Assert.Single(sessions!, candidate => candidate.Id == login.Session.Id);
+        Assert.Equal(login.Session.Id, session.Id);
+        Assert.True(session.IsCurrent);
+        Assert.Equal(UserSessionType.Browser, session.SessionType);
+        Assert.Equal("test client", session.DeviceName);
+        Assert.Null(session.RevokedAt);
+    }
+
+    [Fact]
+    public async Task DeleteSession_RevokesOwnOtherSession()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var registrationClient = factory.CreateClient();
+        using var firstClient = factory.CreateClient();
+        using var secondClient = factory.CreateClient();
+        await RegisterAsync(registrationClient, "revoke-session@example.com", "correct horse battery");
+        var firstLogin = await LoginAsync(firstClient, "revoke-session@example.com", "correct horse battery");
+        var secondLogin = await LoginAsync(secondClient, "revoke-session@example.com", "correct horse battery");
+        firstClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", firstLogin.SessionToken);
+
+        var response = await firstClient.DeleteAsync($"/api/auth/sessions/{secondLogin.Session.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var secondSession = await dbContext.UserSessions.SingleAsync(
+            session => session.Id == secondLogin.Session.Id);
+        var firstSession = await dbContext.UserSessions.SingleAsync(
+            session => session.Id == firstLogin.Session.Id);
+
+        Assert.NotNull(secondSession.RevokedAt);
+        Assert.Null(firstSession.RevokedAt);
+    }
+
+    [Fact]
     public async Task PostLogin_InactiveUser_Fails()
     {
         using var factory = new DumpTetherApiFactory();
@@ -269,6 +427,7 @@ public sealed class AuthApiTests
         var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>();
         Assert.NotNull(login);
         Assert.False(string.IsNullOrWhiteSpace(login!.SessionToken));
+        Assert.Equal(UserSessionType.Development, login.Session.SessionType);
 
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", login.SessionToken);
@@ -292,7 +451,136 @@ public sealed class AuthApiTests
         Assert.NotNull(login);
         Assert.EndsWith("@guest.dumptether.local", login!.User.Email);
         Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
+        Assert.Equal(UserSessionType.Guest, login.Session.SessionType);
         Assert.Contains(login.Workspaces, workspace => workspace.Name == "All Tasks");
+    }
+
+    [Fact]
+    public async Task GuestSession_CannotCreatePersistedTasks()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient();
+        var loginResponse = await client.PostAsync("/api/auth/guest", content: null);
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<LoginUserResponse>();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login!.SessionToken);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/tasks",
+            new { title = "Should not persist" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.TaskItems.ToListAsync());
+    }
+
+    [Fact]
+    public async Task GetOptions_ReturnsSignupMode()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "InviteOnly",
+                ["Auth:SignupInviteCodes:0"] = "alpha-invite"
+            });
+        using var client = factory.CreateClient();
+
+        var options = await client.GetFromJsonAsync<AuthClientOptionsResponse>("/api/auth/options");
+
+        Assert.NotNull(options);
+        Assert.Equal(AuthSignupMode.InviteOnly, options!.SignupMode);
+    }
+
+    [Fact]
+    public async Task PostLocalDesktopLogin_WhenNotDesktop_ReturnsNotFound()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostLocalDesktopLogin_WhenDesktop_CreatesPersistentLocalUserSession()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop");
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        response.EnsureSuccessStatusCode();
+        var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>();
+
+        Assert.NotNull(login);
+        Assert.Equal("local@desktop.dumptether.local", login!.User.Email);
+        Assert.Equal("Local user", login.User.DisplayName);
+        Assert.False(string.IsNullOrWhiteSpace(login.SessionToken));
+        Assert.Equal(UserSessionType.DesktopLocal, login.Session.SessionType);
+        Assert.Contains(login.Workspaces, workspace => workspace.Name == "All Tasks");
+
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+        var currentUser = await client.GetFromJsonAsync<CurrentUserResponse>("/api/auth/me");
+
+        Assert.Equal(login.User.Id, currentUser!.User.Id);
+    }
+
+    [Fact]
+    public async Task PostLocalDesktopLogin_WhenRepeated_ReusesLocalUserAndWorkspace()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop");
+        using var client = factory.CreateClient();
+
+        var first = await client.PostAsync("/api/auth/local-desktop", content: null);
+        var second = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        first.EnsureSuccessStatusCode();
+        second.EnsureSuccessStatusCode();
+        var firstLogin = await first.Content.ReadFromJsonAsync<LoginUserResponse>();
+        var secondLogin = await second.Content.ReadFromJsonAsync<LoginUserResponse>();
+
+        Assert.Equal(firstLogin!.User.Id, secondLogin!.User.Id);
+        Assert.Equal(firstLogin.Workspaces.Single().Id, secondLogin.Workspaces.Single().Id);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Equal(1, await dbContext.AppUsers.CountAsync());
+        Assert.Equal(1, await dbContext.Workspaces.CountAsync());
+        Assert.Equal(2, await dbContext.UserSessions.CountAsync());
+    }
+
+    [Fact]
+    public async Task LocalDesktopSession_CanCreateAndReadTaskWithoutCloudLogin()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop");
+        using var client = factory.CreateClient();
+        var loginResponse = await client.PostAsync("/api/auth/local-desktop", content: null);
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<LoginUserResponse>();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login!.SessionToken);
+
+        var createResponse = await client.PostAsJsonAsync(
+            "/api/tasks",
+            new { title = "Offline local task" });
+
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>();
+        var tasks = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+
+        Assert.NotNull(created);
+        Assert.Contains(tasks!, task => task.Id == created!.Id && task.Title == "Offline local task");
     }
 
     [Fact]
@@ -312,6 +600,33 @@ public sealed class AuthApiTests
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/tasks")
         {
             Content = JsonContent.Create(new { title = "Cookie-only task" })
+        };
+        request.Headers.Add("Cookie", sessionCookie);
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UnsafeCookieAuthenticatedRequest_WithQueryTokenOutsideLive_IsRejected()
+    {
+        using var factory = new DumpTetherApiFactory(requireAuthentication: true);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = false
+        });
+        await RegisterAsync(client, "cookie-query-token@example.com", "correct horse battery");
+        var loginResponse = await LoginWithResponseAsync(
+            client,
+            "cookie-query-token@example.com",
+            "correct horse battery");
+        var sessionCookie = GetSetCookie(loginResponse, "DumpTether.Session");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/api/tasks?access_token=not-a-live-token")
+        {
+            Content = JsonContent.Create(new { title = "Cookie query token task" })
         };
         request.Headers.Add("Cookie", sessionCookie);
 
@@ -423,6 +738,23 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public void Startup_WhenInviteOnlySignupHasNoInviteCodes_ThrowsHelpfulError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "InviteOnly"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
+
+        Assert.Contains("DumpTether configuration is incomplete", exception.Message);
+        Assert.Contains("Auth:SignupInviteCodes", exception.Message);
+    }
+
+    [Fact]
     public async Task AuthenticatedTaskQueries_AreScopedToUserWorkspaceMembership()
     {
         using var factory = new DumpTetherApiFactory();
@@ -452,7 +784,8 @@ public sealed class AuthApiTests
     private static async Task<RegisterUserResponse> RegisterAsync(
         HttpClient client,
         string email,
-        string password)
+        string password,
+        string? inviteCode = null)
     {
         var response = await client.PostAsJsonAsync(
             "/api/auth/register",
@@ -460,7 +793,8 @@ public sealed class AuthApiTests
             {
                 email,
                 password,
-                displayName = email.Split('@')[0]
+                displayName = email.Split('@')[0],
+                inviteCode
             });
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(

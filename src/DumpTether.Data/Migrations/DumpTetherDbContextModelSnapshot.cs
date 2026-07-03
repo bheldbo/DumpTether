@@ -440,6 +440,119 @@ namespace DumpTether.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("DumpTether.Domain.SyncMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<string>("LastRemoteVersion")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("last_remote_version");
+
+                    b.Property<DateTimeOffset?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_synced_at");
+
+                    b.Property<Guid>("LocalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("local_id");
+
+                    b.Property<Guid?>("RemoteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("remote_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("SyncRootId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sync_root_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SyncRootId", "EntityType", "LocalId")
+                        .IsUnique();
+
+                    b.HasIndex("SyncRootId", "EntityType", "RemoteId")
+                        .IsUnique()
+                        .HasFilter("remote_id IS NOT NULL");
+
+                    b.ToTable("sync_mappings", (string)null);
+                });
+
+            modelBuilder.Entity("DumpTether.Domain.SyncRoot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CloudUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cloud_user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeviceId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("device_id");
+
+                    b.Property<DateTimeOffset?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_synced_at");
+
+                    b.Property<Guid>("LocalWorkspaceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("local_workspace_id");
+
+                    b.Property<Guid?>("RemoteWorkspaceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("remote_workspace_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LocalWorkspaceId")
+                        .IsUnique();
+
+                    b.HasIndex("CloudUserId", "RemoteWorkspaceId")
+                        .IsUnique()
+                        .HasFilter("cloud_user_id IS NOT NULL AND remote_workspace_id IS NOT NULL");
+
+                    b.ToTable("sync_roots", (string)null);
+                });
+
             modelBuilder.Entity("DumpTether.Domain.TaskItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -621,15 +734,15 @@ namespace DumpTether.Data.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
-                        .HasColumnName("entry_layout_json")
-                        .HasDefaultValue("[]");
+                        .HasDefaultValue("[]")
+                        .HasColumnName("entry_layout_json");
 
                     b.Property<string>("HeaderLayoutJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
-                        .HasColumnName("header_layout_json")
-                        .HasDefaultValue("[]");
+                        .HasDefaultValue("[]")
+                        .HasColumnName("header_layout_json");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -768,6 +881,12 @@ namespace DumpTether.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
                         .HasColumnName("session_token_hash");
+
+                    b.Property<string>("SessionType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("session_type");
 
                     b.Property<string>("UserAgent")
                         .HasMaxLength(512)
@@ -987,6 +1106,24 @@ namespace DumpTether.Data.Migrations
                         .WithMany("_savedViews")
                         .HasForeignKey("WorkspaceId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DumpTether.Domain.SyncMapping", b =>
+                {
+                    b.HasOne("DumpTether.Domain.SyncRoot", null)
+                        .WithMany()
+                        .HasForeignKey("SyncRootId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DumpTether.Domain.SyncRoot", b =>
+                {
+                    b.HasOne("DumpTether.Domain.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("LocalWorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

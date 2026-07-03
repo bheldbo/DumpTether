@@ -58,16 +58,36 @@ POSTGRES_DB=dumptether
 POSTGRES_USER=dumptether
 POSTGRES_PASSWORD=<long random secret>
 DUMPTETHER_API_IMAGE=<registry>/<image>:<tag>
+DUMPTETHER_DATABASE_PROVIDER=Postgres
 DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP=false
 DUMPTETHER_REQUIRE_AUTHENTICATION=true
-DUMPTETHER_ALLOW_GUEST_SESSIONS=true
+DUMPTETHER_ALLOW_GUEST_SESSIONS=false
+DUMPTETHER_SIGNUP_MODE=InviteOnly
+DUMPTETHER_SIGNUP_INVITE_CODE_0=<long private invite code>
 DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN=false
 DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE=1000
 DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE=5000
+DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com
 DUMPTETHER_DOMAIN=dumptether.example.com
 ```
 
 Production secrets are never committed. Real production files stay on the server or in a deployment secret store.
+
+Production compose is intended to use PostgreSQL. SQLite mode is for the local/offline runtime and future desktop app, not the hosted server.
+
+For early private hosting, keep registration invite-only or whitelist-based. The API supports `DUMPTETHER_SIGNUP_MODE=Open`, `Whitelist`, `InviteOnly`, or `Closed`. `Whitelist` uses `DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0` and/or `DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0`. `InviteOnly` uses `DUMPTETHER_SIGNUP_INVITE_CODE_0`. Do not commit real invite codes.
+
+## CORS and Origins
+
+If the React frontend and API are served from the same public origin through the reverse proxy, normal browser requests do not need cross-origin access. Keep CORS boring.
+
+If the frontend is served from a different origin, set exact allowed origins with environment variables such as:
+
+```text
+DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com
+```
+
+The API maps that to `Cors:AllowedOrigins:0` and rejects wildcard origins. Use an origin only, not a path.
 
 ## Start Production Compose
 

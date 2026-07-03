@@ -1,0 +1,18 @@
+{
+  "name": "@dumptether/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build:sidecar:dev && tauri dev",
+    "build": "npm run build:desktop",
+    "build:sidecar": "node scripts/build-sidecar.mjs",
+    "build:sidecar:dev": "node scripts/build-sidecar.mjs --self-contained false",
+    "build:desktop": "npm run build:sidecar && tauri build",
+    "build:desktop:msi": "npm run build:sidecar && tauri build --bundles msi",
+    "build:desktop:linux": "npm run build:sidecar && tauri build --bundles appimage,deb,rpm"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

@@ -294,7 +294,8 @@
 
 .task-card-meta .task-meta-chip {
   border-color: var(--context-chip-border, var(--task-note-chip-border, rgba(24, 33, 44, 0.1)));
-  background: var(--context-chip-color, var(--task-note-chip-bg, rgba(255, 255, 255, 0.46)));
+  background: var(--context-chip-lucent-bg, var(--context-chip-color, var(--task-note-chip-bg, rgba(255, 255, 255, 0.46))));
+  box-shadow: var(--context-chip-glow, none);
   color: var(--context-chip-text, inherit);
 }
 
@@ -555,9 +556,10 @@
   gap: 4px;
   align-items: center;
   padding: 4px 8px 4px 5px;
-  border: 1px solid rgba(24, 33, 44, 0.1);
+  border: 1px solid var(--context-chip-border, rgba(24, 33, 44, 0.1));
   border-radius: 999px;
-  background: var(--context-chip-color, rgba(255, 255, 255, 0.62));
+  background: var(--context-chip-lucent-bg, var(--context-chip-color, rgba(255, 255, 255, 0.62)));
+  box-shadow: var(--context-chip-glow, none);
   color: var(--context-chip-text, #405064);
   font-size: 0.75rem;
   font-weight: 740;
@@ -619,8 +621,9 @@
 }
 
 .task-meta-chip {
-  border: 1px solid #dbe3eb;
-  background: var(--context-chip-color, rgba(255, 255, 255, 0.64));
+  border: 1px solid var(--context-chip-border, #dbe3eb);
+  background: var(--context-chip-lucent-bg, var(--context-chip-color, rgba(255, 255, 255, 0.64)));
+  box-shadow: var(--context-chip-glow, none);
   color: var(--context-chip-text, #526172);
   font-weight: 720;
 }
@@ -1053,7 +1056,6 @@
   min-width: 0;
   min-height: var(--template-layout-row-height, 48px);
   display: grid;
-  grid-auto-rows: minmax(var(--template-layout-row-height, 48px), auto);
   align-items: stretch;
   overflow: hidden;
   border: 1px solid rgba(24, 33, 44, 0.1);
@@ -1079,11 +1081,18 @@
 .entry-field-editor-cell {
   min-width: 0;
   display: grid;
-  align-content: center;
+  min-height: var(--template-layout-row-height, 48px);
+  align-content: stretch;
+  align-items: stretch;
+  justify-items: stretch;
   padding: 0;
   border: 1px solid rgba(24, 33, 44, 0.06);
   border-width: 0 0 1px 1px;
   background: transparent;
+  color: #213040;
+  font-size: 0.9rem;
+  font-weight: 520;
+  line-height: 1.45;
 }
 
 .entry-field-editor-cell:first-child {
@@ -1096,11 +1105,16 @@
 }
 
 .entry-field-editor-cell[data-field-type="LongText"] {
+  min-height: max(92px, var(--template-layout-row-height, 132px));
+  display: flex;
   align-content: stretch;
+  align-items: stretch;
 }
 
 .entry-field-editor-cell[data-field-type="Checkbox"] {
   min-width: 0;
+  align-content: center;
+  align-items: center;
 }
 
 .entry-field-editor-cell[data-field-type="Date"],
@@ -1137,6 +1151,21 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  color: inherit;
+  font-weight: 520;
+}
+
+.entry-field-editor-cell input,
+.entry-field-editor-cell select {
+  align-self: center;
+}
+
+.entry-long-text-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 100%;
+  display: flex;
+  align-items: stretch;
 }
 
 .entry-field-editor-cell input:focus,
@@ -1147,10 +1176,16 @@
 }
 
 .entry-field-editor-cell[data-field-type="LongText"] textarea {
-  min-height: max(72px, calc(var(--template-layout-row-height, 132px) - 2px));
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: max(92px, calc(var(--template-layout-row-height, 132px) - 2px));
   height: 100%;
+  padding: 12px;
   overflow: auto;
   resize: vertical;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  vertical-align: top;
 }
 
 .entry-field-editor-cell[data-empty="true"] input::placeholder,

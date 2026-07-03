@@ -12,6 +12,7 @@ public sealed class UserSession
         DateTimeOffset createdAt,
         DateTimeOffset expiresAt,
         string sessionTokenHash,
+        UserSessionType sessionType,
         string? userAgent,
         string? ipAddressHash,
         string? deviceName)
@@ -22,6 +23,7 @@ public sealed class UserSession
         ExpiresAt = expiresAt;
         LastSeenAt = createdAt;
         SessionTokenHash = sessionTokenHash;
+        SessionType = sessionType;
         UserAgent = userAgent;
         IpAddressHash = ipAddressHash;
         DeviceName = deviceName;
@@ -41,6 +43,8 @@ public sealed class UserSession
 
     public string SessionTokenHash { get; private set; } = string.Empty;
 
+    public UserSessionType SessionType { get; private set; } = UserSessionType.Browser;
+
     public string? UserAgent { get; private set; }
 
     public string? IpAddressHash { get; private set; }
@@ -52,6 +56,7 @@ public sealed class UserSession
         string sessionTokenHash,
         DateTimeOffset createdAt,
         DateTimeOffset expiresAt,
+        UserSessionType sessionType = UserSessionType.Browser,
         string? userAgent = null,
         string? ipAddressHash = null,
         string? deviceName = null)
@@ -69,6 +74,7 @@ public sealed class UserSession
             createdAt,
             expiresAt,
             DomainGuards.NotBlank(sessionTokenHash, nameof(sessionTokenHash)),
+            sessionType,
             Truncate(DomainGuards.OptionalTrimmed(userAgent), 512),
             DomainGuards.OptionalTrimmed(ipAddressHash),
             Truncate(DomainGuards.OptionalTrimmed(deviceName), 120));

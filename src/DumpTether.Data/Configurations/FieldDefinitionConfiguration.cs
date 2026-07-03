@@ -40,6 +40,7 @@ internal sealed class FieldDefinitionConfiguration : IEntityTypeConfiguration<Fi
             .HasColumnName("scope")
             .HasConversion<string>()
             .HasMaxLength(40)
+            .HasSentinel((FieldDefinitionScope)0)
             .HasDefaultValue(FieldDefinitionScope.Header)
             .IsRequired();
 

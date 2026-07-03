@@ -40,6 +40,12 @@ internal sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSe
             .HasMaxLength(128)
             .IsRequired();
 
+        builder.Property(session => session.SessionType)
+            .HasColumnName("session_type")
+            .HasConversion<string>()
+            .HasMaxLength(40)
+            .IsRequired();
+
         builder.Property(session => session.UserAgent)
             .HasColumnName("user_agent")
             .HasMaxLength(512);

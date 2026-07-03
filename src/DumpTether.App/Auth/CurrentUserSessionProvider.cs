@@ -82,6 +82,11 @@ internal sealed class CurrentUserSessionProvider : ICurrentUserSessionProvider
             user.Id,
             session.Id,
             user.Email,
-            user.DisplayName);
+            user.DisplayName,
+            session.SessionType,
+            session.DeviceName,
+            session.CreatedAt,
+            session.ExpiresAt,
+            session.LastSeenAt);
     }
 }

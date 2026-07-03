@@ -1,16 +1,12 @@
 import {
   type CSSProperties,
   type MouseEvent,
-  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import { Icon } from './components/Icon';
-import { TaskFilterBar } from './components/TaskFilterBar';
-import { TaskBadges, TaskMetaChip } from './components/TaskMetadata';
 import { ToastStack } from './components/ToastStack';
 import {
   defaultAuthOptions,
@@ -28,19 +24,14 @@ import {
 import {
   clamp,
   findViewId,
-  formatFullDate,
-  formatRelativeDate,
   getErrorMessage,
   getInitialLanguage,
   getInitialMode,
   getInitialViewId,
   getInitialWorkspaceId,
   isAbortError,
-  isOwnerRole,
-  isReadOnlyRole,
   isSystemAllTasksWorkspace,
   isTaskShareWorkspace,
-  isTextEditingTarget,
   pickSavedViewId,
   readStoredStringList,
   updateUrl,
@@ -49,7 +40,6 @@ import {
   addTaskTimelineEntry,
   acceptShareLink,
   acceptIncomingWorkspaceInvitation,
-  ApiError,
   archiveTaskItem,
   copyTaskItems,
   createArchiveResolution,
@@ -69,8 +59,6 @@ import {
   declineIncomingWorkspaceInvitation,
   developmentLogin,
   checkHealth,
-  getAuthOptions,
-  getCurrentUser,
   guestLogin,
   getTaskItem,
   getTaskTemplate,
@@ -79,8 +67,6 @@ import {
   leaveTaskShare,
   leaveWorkspaceTaskShares,
   listArchiveResolutions,
-  listIncomingTaskShares,
-  listIncomingWorkspaceInvitations,
   listProjects,
   listSavedViews,
   listWorkspaceInvitations,
@@ -95,6 +81,7 @@ import {
   reopenTaskItems,
   registerUser,
   removeWorkspaceMember,
+  revokeAuthSession,
   revokeTaskShare,
   revokeWorkspaceInvitation,
   setCurrentWorkspaceId,
@@ -110,17 +97,7 @@ import {
   updateWorkspaceMemberRole,
 } from './api';
 import './App.css';
-import {
-  ArchiveDialog,
-  PermanentDeleteDialog,
-  ReopenDialog,
-} from './features/task-detail/TaskDialogs';
-import { TaskDetail } from './features/task-detail/TaskDetail';
-import { BoardLoadingState } from './features/task-wall/BoardLoadingState';
-import { DraftTaskCard } from './features/task-wall/DraftTaskCard';
-import { FloatingBoardActions } from './features/task-wall/FloatingBoardActions';
-import { WorkspaceHeader } from './features/task-wall/WorkspaceHeader';
-import { ShareDialog } from './features/sharing/ShareDialog';
+import { loadAuthSession } from './features/auth/authSession';
 import { Sidebar } from './features/navigation/Sidebar';
 import {
   AccountPanel,
@@ -128,34 +105,27 @@ import {
   SettingsPanel,
 } from './features/settings/AccountSettingsPanels';
 import { TemplatesPage } from './features/templates/TemplatesPage';
+import { TaskBoard } from './features/task-wall/TaskBoard';
+import { type CreateTaskItemOptions } from './features/task-wall/taskWallTypes';
 import { startLiveUpdates, type LiveUpdateMessage } from './liveUpdates';
 import { type Language, type Translate, translate } from './localization';
 import {
-  applyTaskWallFilters,
-  buildTaskFilterOptions,
-  emptyTaskWallFilters,
-  getContextChipStyle,
-  getFollowUpTone,
   getPrimaryProjectIdForCategories,
-  getTaskCardStyle,
   getTaskColors,
-  getTaskState,
   joinTaskCategories,
   mergeColorOptions,
   splitTaskCategories,
-  taskWallFiltersAreActive,
-  type TaskWallFilters,
   uniqueSorted,
 } from './taskUtils';
 import type {
   AuthClientOptionsResponse,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  AuthSessionListItemResponse,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CreateTaskShareRequest,
   CreateTaskShareLinkRequest,
-  CreateTaskItemRequest,
   CreateWorkspaceInvitationRequest,
   FieldValueMap,
   LoginUserRequest,
@@ -163,10 +133,8 @@ import type {
   RegisterUserRequest,
   SavedViewResponse,
   TaskItemDetailResponse,
-  TaskItemShareRole,
   TaskItemSummaryResponse,
   TaskShareInboxResponse,
-  TaskShareLinkResponse,
   TaskTemplateDetailResponse,
   TaskTemplateLayoutResponse,
   WorkspaceInvitationInboxResponse,
@@ -209,6 +177,7 @@ function App() {
   const [mode, setMode] = useState<WorkspaceMode>(getInitialMode);
   const [currentViewId, setCurrentViewId] = useState<string | null>(getInitialViewId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTaskWorkspaceId, setSelectedTaskWorkspaceId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskItemDetailResponse | null>(null);
   const [archiveDialogIsOpen, setArchiveDialogIsOpen] = useState(false);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
@@ -223,10 +192,12 @@ function App() {
   const [authOptions, setAuthOptions] =
     useState<AuthClientOptionsResponse>(defaultAuthOptions);
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
+  const [authSessions, setAuthSessions] = useState<AuthSessionListItemResponse[]>([]);
   const [incomingWorkspaceInvitations, setIncomingWorkspaceInvitations] =
     useState<WorkspaceInvitationInboxResponse[]>([]);
   const [incomingTaskShares, setIncomingTaskShares] = useState<TaskShareInboxResponse[]>([]);
   const processedWorkspaceInviteTokenRef = useRef<string | null>(null);
+  const [localDesktopSessionIsActive, setLocalDesktopSessionIsActive] = useState(false);
   const [temporarySessionIsActive, setTemporarySessionIsActive] = useState(isTemporarySession);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
   const [lastPingedAt, setLastPingedAt] = useState<string | null>(null);
@@ -262,6 +233,10 @@ function App() {
     () => savedViews.find((view) => view.id === currentViewId) ?? null,
     [currentViewId, savedViews],
   );
+  const selectedTaskRequestWorkspaceId = selectedTaskWorkspaceId ??
+    selectedTask?.workspaceId ??
+    taskItems.find((taskItem) => taskItem.id === selectedTaskId)?.workspaceId ??
+    selectedWorkspaceId;
 
   const showToast = useCallback((message: string, tone: ToastMessage['tone'] = 'info') => {
     const now = Date.now();
@@ -318,30 +293,16 @@ function App() {
     setIsLoadingAuth(true);
 
     try {
-      const options = await getAuthOptions();
-      setAuthOptions(options);
+      const session = await loadAuthSession();
+      setAuthOptions(session.authOptions);
+      setAuthSessions(session.authSessions);
       setConnectionStatus('online');
-
-      try {
-        const user = await getCurrentUser();
-        const [workspaceInvites, taskShares] = await Promise.all([
-          listIncomingWorkspaceInvitations().catch(() => []),
-          listIncomingTaskShares().catch(() => []),
-        ]);
-        setCurrentUser(user);
-        setIncomingWorkspaceInvitations(workspaceInvites);
-        setIncomingTaskShares(taskShares);
-        setTemporarySessionIsActive(isTemporarySession());
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          setCurrentUser(null);
-          setIncomingWorkspaceInvitations([]);
-          setIncomingTaskShares([]);
-          setTemporarySessionIsActive(false);
-        } else {
-          throw error;
-        }
-      }
+      setCurrentUser(session.currentUser);
+      setIncomingWorkspaceInvitations(session.incomingWorkspaceInvitations);
+      setIncomingTaskShares(session.incomingTaskShares);
+      setLocalDesktopSessionIsActive(session.localDesktopSessionIsActive);
+      setTemporarySessionIsActive(session.temporarySessionIsActive);
+      setErrorMessage(null);
     } catch (error) {
       setConnectionStatus('offline');
       setErrorMessage(getErrorMessage(error));
@@ -573,6 +534,7 @@ function App() {
 
         if (selectedTaskId && !selectedTasks.some((taskItem) => taskItem.id === selectedTaskId)) {
           setSelectedTaskId(null);
+          setSelectedTaskWorkspaceId(null);
           setSelectedTask(null);
         }
       } catch (error) {
@@ -681,12 +643,14 @@ function App() {
       }
 
       if (selectedTaskId && message.taskItemId === selectedTaskId) {
-        void getTaskItem(selectedTaskId, { workspaceId: selectedWorkspaceId })
+        void getTaskItem(selectedTaskId, { workspaceId: selectedTaskRequestWorkspaceId })
           .then((taskItem) => {
+            setSelectedTaskWorkspaceId(taskItem.workspaceId);
             setSelectedTask(taskItem);
           })
           .catch(() => {
             setSelectedTaskId(null);
+            setSelectedTaskWorkspaceId(null);
             setSelectedTask(null);
           });
       }
@@ -725,6 +689,7 @@ function App() {
     loadAuth,
     loadWorkspace,
     selectedTaskId,
+    selectedTaskRequestWorkspaceId,
     selectedWorkspaceId,
     showToast,
     t,
@@ -742,7 +707,7 @@ function App() {
     setIsLoadingDetail(true);
 
     getTaskItem(selectedTaskId, {
-      workspaceId: selectedWorkspaceId,
+      workspaceId: selectedTaskRequestWorkspaceId,
       signal: controller.signal,
     })
       .then((taskItem) => {
@@ -751,6 +716,7 @@ function App() {
         }
 
         setSelectedTask(taskItem);
+        setSelectedTaskWorkspaceId(taskItem.workspaceId);
         setTaskItems((currentItems) =>
           currentItems.map((currentItem) =>
             currentItem.id === taskItem.id
@@ -779,12 +745,13 @@ function App() {
       requestIsStale = true;
       controller.abort();
     };
-  }, [mode, selectedTaskId, selectedWorkspaceId]);
+  }, [mode, selectedTaskId, selectedTaskRequestWorkspaceId]);
 
   const handleSelectSavedView = (viewId: string) => {
     setMode('tasks');
     setCurrentViewId(viewId);
     setSelectedTaskId(null);
+    setSelectedTaskWorkspaceId(null);
     updateUrl('tasks', viewId);
     void loadWorkspace(viewId);
   };
@@ -794,6 +761,7 @@ function App() {
     setSelectedWorkspaceId(workspaceId);
     setCurrentViewId(null);
     setSelectedTaskId(null);
+    setSelectedTaskWorkspaceId(null);
     setSelectedTask(null);
     updateUrl('tasks', null);
     void loadWorkspace(null, workspaceId);
@@ -932,6 +900,7 @@ function App() {
       );
       if (selectedTask?.shares.some((share) => share.id === shareId)) {
         setSelectedTaskId(null);
+        setSelectedTaskWorkspaceId(null);
         setSelectedTask(null);
       }
       await loadAuth();
@@ -1008,6 +977,7 @@ function App() {
       if (selectedWorkspaceId === workspaceId) {
         setSelectedWorkspaceId(null);
         setSelectedTaskId(null);
+        setSelectedTaskWorkspaceId(null);
         setSelectedTask(null);
       }
 
@@ -1022,10 +992,31 @@ function App() {
 
   const handleAuthenticated = async (userState: CurrentUserResponse) => {
     setCurrentUser(userState);
-    setTemporarySessionIsActive(isTemporarySession());
+    setAuthSessions([
+      {
+        id: userState.session.id,
+        sessionType: userState.session.sessionType,
+        deviceName: userState.session.deviceName,
+        createdAt: userState.session.createdAt,
+        expiresAt: userState.session.expiresAt,
+        lastSeenAt: userState.session.lastSeenAt,
+        revokedAt: null,
+        isCurrent: true,
+      },
+    ]);
+    setLocalDesktopSessionIsActive(
+      userState.session.sessionType === 'DesktopLocal' ||
+        userState.session.sessionType === 2,
+    );
+    setTemporarySessionIsActive(
+      userState.session.sessionType === 'Guest' ||
+        userState.session.sessionType === 5 ||
+        isTemporarySession(),
+    );
     const workspaceId = userState.workspaces[0]?.id ?? null;
     setSelectedWorkspaceId(workspaceId);
     setSelectedTaskId(null);
+    setSelectedTaskWorkspaceId(null);
     setSelectedTask(null);
     setHasBootstrapped(true);
     await loadWorkspace(null, workspaceId);
@@ -1103,6 +1094,8 @@ function App() {
     try {
       await logoutUser();
       setCurrentUser(null);
+      setAuthSessions([]);
+      setLocalDesktopSessionIsActive(false);
       setTemporarySessionIsActive(false);
       setCurrentWorkspaceId(null);
       setSelectedWorkspaceId(null);
@@ -1116,6 +1109,7 @@ function App() {
       setProjects([]);
       setTaskItems([]);
       setSelectedTaskId(null);
+      setSelectedTaskWorkspaceId(null);
       setSelectedTask(null);
       window.localStorage.removeItem(workspaceStorageKey);
       setHasBootstrapped(false);
@@ -1127,6 +1121,28 @@ function App() {
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleRevokeAuthSession = async (sessionId: string) => {
+    try {
+      await revokeAuthSession(sessionId);
+      const revokedCurrentSession = authSessions.some((session) =>
+        session.id === sessionId && session.isCurrent);
+
+      if (revokedCurrentSession) {
+        await handleLogout();
+        return;
+      }
+
+      await loadAuth();
+      showToast(t('sessionRevoked'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
       throw error;
     }
   };
@@ -1151,6 +1167,7 @@ function App() {
 
     setMode(nextMode);
     setSelectedTaskId(null);
+    setSelectedTaskWorkspaceId(null);
     updateUrl(nextMode, nextMode === 'templates' ? null : currentViewId);
   };
 
@@ -1166,9 +1183,11 @@ function App() {
 
   const handleCreateTaskItem = async (
     title: string,
-    options: Partial<CreateTaskItemRequest> = {},
+    options: CreateTaskItemOptions = {},
   ) => {
-    if (!workspace?.id) {
+    const targetWorkspaceId = options.workspaceId ?? workspace?.id ?? null;
+
+    if (!targetWorkspaceId) {
       const message = t('createBoardBeforeTasks');
       showToast(message, 'error');
       return null;
@@ -1181,13 +1200,31 @@ function App() {
         category: options.category ?? null,
         taskTemplateId: options.taskTemplateId ?? null,
       }, {
-        workspaceId: workspace.id,
+        workspaceId: targetWorkspaceId,
       });
       setMode('tasks');
       setSelectedTaskId(null);
+      setSelectedTaskWorkspaceId(null);
       setSelectedTask(null);
-      setTaskItems((currentItems) => [created, ...currentItems]);
-      if (currentViewId) {
+      if (targetWorkspaceId !== selectedWorkspaceId) {
+        setSelectedWorkspaceId(targetWorkspaceId);
+        setCurrentViewId(null);
+        updateUrl('tasks', null);
+        await loadWorkspace(null, targetWorkspaceId, { force: true });
+      } else {
+        setTaskItems((currentItems) => {
+          const selectedWorkspaceIsAggregate = workspace
+            ? isSystemAllTasksWorkspace(workspace)
+            : false;
+
+          if (!selectedWorkspaceIsAggregate && created.workspaceId !== selectedWorkspaceId) {
+            return currentItems;
+          }
+
+          return [created, ...currentItems];
+        });
+      }
+      if (currentViewId && targetWorkspaceId === selectedWorkspaceId) {
         setViewCounts((counts) => ({
           ...counts,
           [currentViewId]: (counts[currentViewId] ?? 0) + 1,
@@ -1234,7 +1271,11 @@ function App() {
     }
 
     try {
-      const updated = await updateTaskItem(selectedTask.id, requestBody);
+      const updated = await updateTaskItem(
+        selectedTask.id,
+        requestBody,
+        { workspaceId: selectedTask.workspaceId },
+      );
       setSelectedTask(updated);
       await loadWorkspace(currentViewId);
     } catch (error) {
@@ -1250,8 +1291,10 @@ function App() {
     requestBody: CreateTaskShareRequest,
   ) => {
     try {
-      const created = await createTaskShareLink(taskItemId, requestBody);
-      const updated = await getTaskItem(taskItemId);
+      const targetTask = selectedTask?.id === taskItemId ? selectedTask : null;
+      const requestOptions = { workspaceId: targetTask?.workspaceId ?? selectedTaskRequestWorkspaceId };
+      const created = await createTaskShareLink(taskItemId, requestBody, requestOptions);
+      const updated = await getTaskItem(taskItemId, requestOptions);
       setSelectedTask((currentTask) =>
         currentTask?.id === updated.id ? updated : currentTask,
       );
@@ -1289,7 +1332,12 @@ function App() {
 
   const handleRevokeTaskShare = async (taskItemId: string, shareId: string) => {
     try {
-      const updated = await revokeTaskShare(taskItemId, shareId);
+      const targetTask = selectedTask?.id === taskItemId ? selectedTask : null;
+      const updated = await revokeTaskShare(
+        taskItemId,
+        shareId,
+        { workspaceId: targetTask?.workspaceId ?? selectedTaskRequestWorkspaceId },
+      );
       setSelectedTask((currentTask) =>
         currentTask?.id === updated.id ? updated : currentTask,
       );
@@ -1313,7 +1361,13 @@ function App() {
     requestBody: UpdateTaskShareRequest,
   ) => {
     try {
-      const updated = await updateTaskShareRole(taskItemId, shareId, requestBody);
+      const targetTask = selectedTask?.id === taskItemId ? selectedTask : null;
+      const updated = await updateTaskShareRole(
+        taskItemId,
+        shareId,
+        requestBody,
+        { workspaceId: targetTask?.workspaceId ?? selectedTaskRequestWorkspaceId },
+      );
       setSelectedTask((currentTask) =>
         currentTask?.id === updated.id ? updated : currentTask,
       );
@@ -1341,7 +1395,10 @@ function App() {
     }
 
     try {
-      await Promise.all(taskItemIds.map((taskItemId) => updateTaskItem(taskItemId, requestBody)));
+      await Promise.all(taskItemIds.map((taskItemId) => {
+        const taskItem = taskItems.find((currentTask) => currentTask.id === taskItemId);
+        return updateTaskItem(taskItemId, requestBody, { workspaceId: taskItem?.workspaceId });
+      }));
       await loadWorkspace(currentViewId);
       setErrorMessage(null);
     } catch (error) {
@@ -1365,6 +1422,8 @@ function App() {
       const updated = await addTaskTimelineEntry(selectedTask.id, {
         note,
         ...(fieldValues ? { fieldValues } : {}),
+      }, {
+        workspaceId: selectedTask.workspaceId,
       });
       setSelectedTask(updated);
       setTaskItems((currentItems) =>
@@ -1390,6 +1449,8 @@ function App() {
       const updated = await updateTaskTimelineEntry(selectedTask.id, entryId, {
         note,
         ...(fieldValues ? { fieldValues } : {}),
+      }, {
+        workspaceId: selectedTask.workspaceId,
       });
       setSelectedTask(updated);
       setTaskItems((currentItems) =>
@@ -1408,7 +1469,11 @@ function App() {
     }
 
     try {
-      const updated = await deleteTaskTimelineEntry(selectedTask.id, entryId);
+      const updated = await deleteTaskTimelineEntry(
+        selectedTask.id,
+        entryId,
+        { workspaceId: selectedTask.workspaceId },
+      );
       setSelectedTask(updated);
       setTaskItems((currentItems) =>
         currentItems.map((taskItem) =>
@@ -1426,10 +1491,15 @@ function App() {
     }
 
     try {
-      const archived = await archiveTaskItem(selectedTask.id, requestBody);
+      const archived = await archiveTaskItem(
+        selectedTask.id,
+        requestBody,
+        { workspaceId: selectedTask.workspaceId },
+      );
       const archiveViewId = findViewId(savedViews, 'Archive') ?? currentViewId;
       setCurrentViewId(archiveViewId);
       setSelectedTaskId(archived.id);
+      setSelectedTaskWorkspaceId(archived.workspaceId);
       setSelectedTask(archived);
       setArchiveDialogIsOpen(false);
       updateUrl('tasks', archiveViewId);
@@ -1449,9 +1519,13 @@ function App() {
 
     try {
       await Promise.all(
-        taskItemIds.map((taskItemId) => archiveTaskItem(taskItemId, requestBody)),
+        taskItemIds.map((taskItemId) => {
+          const taskItem = taskItems.find((currentTask) => currentTask.id === taskItemId);
+          return archiveTaskItem(taskItemId, requestBody, { workspaceId: taskItem?.workspaceId });
+        }),
       );
       setSelectedTaskId(null);
+      setSelectedTaskWorkspaceId(null);
       setSelectedTask(null);
       setArchiveDialogIsOpen(false);
       await loadWorkspace(currentViewId);
@@ -1501,12 +1575,17 @@ function App() {
     }
 
     try {
-      const reopened = await reopenTaskItem(selectedTask.id, { note });
+      const reopened = await reopenTaskItem(
+        selectedTask.id,
+        { note },
+        { workspaceId: selectedTask.workspaceId },
+      );
       const activeViewId = findViewId(savedViews, 'All Tasks') ??
         findViewId(savedViews, 'Overview') ??
         currentViewId;
       setCurrentViewId(activeViewId);
       setSelectedTaskId(reopened.id);
+      setSelectedTaskWorkspaceId(reopened.workspaceId);
       setSelectedTask(reopened);
       updateUrl('tasks', activeViewId);
       await loadWorkspace(activeViewId);
@@ -1526,6 +1605,7 @@ function App() {
         note: note?.trim() || null,
       });
       setSelectedTaskId(null);
+      setSelectedTaskWorkspaceId(null);
       setSelectedTask(null);
       await loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
       showToast(t('tasksUnarchived'));
@@ -1545,6 +1625,7 @@ function App() {
     try {
       await deleteTaskItemsPermanently({ taskItemIds });
       setSelectedTaskId(null);
+      setSelectedTaskWorkspaceId(null);
       setSelectedTask(null);
       await loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
       showToast(t('tasksDeletedPermanently'));
@@ -1716,6 +1797,7 @@ function App() {
       if (selectedWorkspaceId === workspaceId) {
         setSelectedWorkspaceId(null);
         setSelectedTaskId(null);
+        setSelectedTaskWorkspaceId(null);
         setSelectedTask(null);
       }
       await loadAuth();
@@ -1775,6 +1857,7 @@ function App() {
         savedViews={savedViews}
         sidebarIsCollapsed={sidebarIsCollapsed}
         templateCount={templates.length}
+        localDesktopSessionIsActive={localDesktopSessionIsActive}
         temporarySessionIsActive={temporarySessionIsActive}
         t={t}
         workspace={workspace}
@@ -1796,6 +1879,7 @@ function App() {
             onGuestLogin={handleGuestLogin}
             onLogin={handleLogin}
             onRegister={handleRegister}
+            localDesktopSessionIsActive={localDesktopSessionIsActive}
             temporarySessionIsActive={temporarySessionIsActive}
             t={t}
             variant="gate"
@@ -1837,11 +1921,13 @@ function App() {
             onRevokeTaskShare={handleRevokeTaskShare}
             onRevokeWorkspaceInvitation={handleRevokeWorkspaceInvitation}
             onRemoveWorkspaceMember={handleRemoveWorkspaceMember}
-            onSelectTaskItem={(id) => {
+            onSelectTaskItem={(id, workspaceId) => {
               setSelectedTaskId(id);
+              setSelectedTaskWorkspaceId(workspaceId);
             }}
             onCloseTaskItem={() => {
               setSelectedTaskId(null);
+              setSelectedTaskWorkspaceId(null);
               setSelectedTask(null);
             }}
             onUpdateFieldValues={handleUpdateFieldValues}
@@ -1884,6 +1970,7 @@ function App() {
       ) : null}
       {accountIsOpen ? (
         <AccountPanel
+          authSessions={authSessions}
           authOptions={authOptions}
           currentUser={currentUser}
           incomingTaskShares={incomingTaskShares}
@@ -1898,6 +1985,8 @@ function App() {
           onLogin={handleLogin}
           onLogout={handleLogout}
           onRegister={handleRegister}
+          onRevokeAuthSession={handleRevokeAuthSession}
+          localDesktopSessionIsActive={localDesktopSessionIsActive}
           temporarySessionIsActive={temporarySessionIsActive}
           t={t}
         />
@@ -1907,681 +1996,6 @@ function App() {
   );
 }
 
-function TaskBoard({
-  archiveDialogIsOpen,
-  archiveResolutions,
-  colorOptions,
-  currentView,
-  currentUserEmail,
-  isLoading,
-  isLoadingDetail,
-  isRefreshing,
-  onAddTimelineEntry,
-  onArchive,
-  onArchiveTaskItems,
-  onCloseArchiveDialog,
-  onCopyTaskItemsToWorkspace,
-  onCreateProject,
-  onCreateTaskShareLink,
-  onCreateTaskShareLinks,
-  onCreateTaskItem,
-  onCreateWorkspaceInvitation,
-  onDeleteProject,
-  onDeleteTimelineEntry,
-  onOpenArchiveDialog,
-  onReopen,
-  onReopenTaskItems,
-  onDeleteTaskItemsPermanently,
-  onRemoveWorkspaceMember,
-  onRevokeTaskShare,
-  onRevokeWorkspaceInvitation,
-  onCloseTaskItem,
-  onSelectTaskItem,
-  onUpdateFieldValues,
-  onUpdateProject,
-  onUpdateTaskShareRole,
-  onUpdateTaskItems,
-  onUpdateTaskItem,
-  onUpdateTimelineEntry,
-  onUpdateWorkspace,
-  onUpdateWorkspaceMemberRole,
-  onShowToast,
-  projects,
-  selectedTask,
-  selectedTaskId,
-  statusOptions,
-  taskItems,
-  templates,
-  t,
-  workspaceInvitations,
-  workspaceMembers,
-  workspace,
-  workspaces,
-}: {
-  archiveDialogIsOpen: boolean;
-  archiveResolutions: ArchiveResolutionResponse[];
-  colorOptions: string[];
-  currentView: SavedViewResponse | null;
-  currentUserEmail: string | null;
-  isLoading: boolean;
-  isLoadingDetail: boolean;
-  isRefreshing: boolean;
-  onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
-  onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
-  onArchiveTaskItems: (taskItemIds: string[], requestBody: ArchiveTaskItemRequest) => Promise<void>;
-  onCloseArchiveDialog: () => void;
-  onCopyTaskItemsToWorkspace: (taskItemIds: string[], workspaceId: string) => Promise<void>;
-  onCreateProject: (name: string, color?: string | null) => Promise<void>;
-  onCreateTaskShareLink: (
-    taskItemId: string,
-    requestBody: CreateTaskShareRequest,
-  ) => Promise<TaskShareLinkResponse>;
-  onCreateTaskShareLinks: (
-    requestBody: CreateTaskShareLinkRequest,
-  ) => Promise<TaskShareLinkResponse>;
-  onCreateTaskItem: (
-    title: string,
-    options?: Partial<CreateTaskItemRequest>,
-  ) => Promise<TaskItemDetailResponse | null>;
-  onCreateWorkspaceInvitation: (
-    requestBody: CreateWorkspaceInvitationRequest,
-  ) => Promise<WorkspaceInvitationResponse>;
-  onDeleteProject: (projectId: string) => Promise<void>;
-  onDeleteTimelineEntry: (entryId: string) => Promise<void>;
-  onOpenArchiveDialog: () => void;
-  onReopen: (note?: string) => Promise<void>;
-  onReopenTaskItems: (taskItemIds: string[], note?: string) => Promise<void>;
-  onDeleteTaskItemsPermanently: (taskItemIds: string[]) => Promise<void>;
-  onRemoveWorkspaceMember: (userId: string) => Promise<void>;
-  onRevokeTaskShare: (taskItemId: string, shareId: string) => Promise<void>;
-  onRevokeWorkspaceInvitation: (id: string) => Promise<void>;
-  onCloseTaskItem: () => void;
-  onSelectTaskItem: (id: string) => void;
-  onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
-  onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
-  onUpdateTaskShareRole: (
-    taskItemId: string,
-    shareId: string,
-    requestBody: UpdateTaskShareRequest,
-  ) => Promise<TaskItemDetailResponse>;
-  onUpdateTaskItems: (taskItemIds: string[], requestBody: UpdateTaskItemRequest) => Promise<void>;
-  onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
-  onUpdateTimelineEntry: (
-    entryId: string,
-    note: string | null,
-    fieldValues?: FieldValueMap,
-  ) => Promise<void>;
-  onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
-  onUpdateWorkspaceMemberRole: (
-    userId: string,
-    requestBody: UpdateWorkspaceMemberRequest,
-  ) => Promise<WorkspaceMemberResponse>;
-  onShowToast: (message: string, tone?: ToastTone) => void;
-  projects: ProjectResponse[];
-  selectedTask: TaskItemDetailResponse | null;
-  selectedTaskId: string | null;
-  statusOptions: string[];
-  taskItems: TaskItemSummaryResponse[];
-  templates: TaskTemplateDetailResponse[];
-  t: Translate;
-  workspaceInvitations: WorkspaceInvitationResponse[];
-  workspaceMembers: WorkspaceMemberResponse[];
-  workspace: WorkspaceResponse | null;
-  workspaces: WorkspaceResponse[];
-}) {
-  const currentWorkspaceMember = currentUserEmail
-    ? workspaceMembers.find((member) =>
-        member.email.toLowerCase() === currentUserEmail.toLowerCase())
-    : null;
-  const currentUserOwnsWorkspace = currentWorkspaceMember
-    ? isOwnerRole(currentWorkspaceMember.role)
-    : !currentUserEmail;
-  const workspaceIsTaskShareOnly = isTaskShareWorkspace(workspace ?? { accessKind: 'Membership' });
-  const currentUserHasReadOnlyWorkspaceAccess = currentWorkspaceMember
-    ? isReadOnlyRole(currentWorkspaceMember.role)
-    : false;
-  const hasWorkspace = Boolean(workspace?.id);
-  const canManageSharing = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
-  const canManageWorkspaceMetadata = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
-  const archiveViewIsActive = currentView?.filter.archive === 'Archived';
-  const canCreateTask = hasWorkspace &&
-    !archiveViewIsActive &&
-    !workspaceIsTaskShareOnly &&
-    !currentUserHasReadOnlyWorkspaceAccess;
-  const canUseBatchActions = hasWorkspace &&
-    !workspaceIsTaskShareOnly &&
-    !currentUserHasReadOnlyWorkspaceAccess;
-  const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
-  const [pendingDeletedNoteIds, setPendingDeletedNoteIds] = useState<string[]>([]);
-  const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
-  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
-  const [batchArchiveIsOpen, setBatchArchiveIsOpen] = useState(false);
-  const [batchReopenIsOpen, setBatchReopenIsOpen] = useState(false);
-  const [batchPermanentDeleteIsOpen, setBatchPermanentDeleteIsOpen] = useState(false);
-  const [batchShareIsOpen, setBatchShareIsOpen] = useState(false);
-  const longPressTimerRef = useRef<number | null>(null);
-  const longPressHandledRef = useRef(false);
-  const visibleTaskItems = useMemo(
-    () => applyTaskWallFilters(taskItems, filters, currentUserEmail, projects),
-    [currentUserEmail, filters, projects, taskItems],
-  );
-  const [draftTaskIsOpen, setDraftTaskIsOpen] = useState(false);
-  const focusedTaskItem = selectedTaskId
-    ? visibleTaskItems.find((taskItem) => taskItem.id === selectedTaskId) ?? null
-    : null;
-  const focusModeIsEnabled = Boolean(focusedTaskItem) || draftTaskIsOpen;
-  const displayedTaskItems = focusedTaskItem || draftTaskIsOpen
-    ? focusedTaskItem ? [focusedTaskItem] : []
-    : visibleTaskItems;
-  const projectByName = useMemo(
-    () => new Map(projects.map((project) => [project.name.toLowerCase(), project])),
-    [projects],
-  );
-  const filterOptions = useMemo(
-    () => buildTaskFilterOptions(taskItems, colorOptions),
-    [colorOptions, taskItems],
-  );
-  const filtersAreActive = taskWallFiltersAreActive(filters);
-  const selectedProjectIds = filters.projectIds;
-  const toggleProjectFilter = useCallback((projectId: string) => {
-    setFilters((currentFilters) => {
-      if (!projectId) {
-        return {
-          ...currentFilters,
-          category: '',
-          projectIds: [],
-        };
-      }
 
-      const nextProjectIds = currentFilters.projectIds.includes(projectId)
-        ? currentFilters.projectIds.filter((currentProjectId) => currentProjectId !== projectId)
-        : [...currentFilters.projectIds, projectId];
-
-      return {
-        ...currentFilters,
-        category: '',
-        projectIds: nextProjectIds,
-      };
-    });
-  }, []);
-  useEffect(() => {
-    setPendingDeletedNoteIds([]);
-  }, [selectedTaskId]);
-
-  useEffect(() => {
-    setSelectedTaskIds((currentIds) =>
-      currentIds.filter((id) => visibleTaskItems.some((taskItem) => taskItem.id === id)),
-    );
-  }, [visibleTaskItems]);
-
-  const toggleSelectedTask = useCallback((taskItemId: string) => {
-    setSelectedTaskIds((currentIds) =>
-      currentIds.includes(taskItemId)
-        ? currentIds.filter((currentId) => currentId !== taskItemId)
-        : [...currentIds, taskItemId],
-    );
-  }, []);
-
-  const closeEditMode = useCallback(() => {
-    setEditModeIsEnabled(false);
-    setSelectedTaskIds([]);
-    setBatchArchiveIsOpen(false);
-    setBatchReopenIsOpen(false);
-    setBatchPermanentDeleteIsOpen(false);
-    setBatchShareIsOpen(false);
-  }, []);
-
-  const clearLongPressTimer = useCallback(() => {
-    if (longPressTimerRef.current) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
-
-  const startTaskLongPress = useCallback((
-    event: ReactPointerEvent<HTMLButtonElement>,
-    taskItemId: string,
-  ) => {
-    if (event.pointerType === 'mouse' || editModeIsEnabled || focusModeIsEnabled) {
-      return;
-    }
-
-    clearLongPressTimer();
-    longPressHandledRef.current = false;
-    longPressTimerRef.current = window.setTimeout(() => {
-      setEditModeIsEnabled(true);
-      setSelectedTaskIds((currentIds) =>
-        currentIds.includes(taskItemId) ? currentIds : [...currentIds, taskItemId],
-      );
-      longPressHandledRef.current = true;
-      longPressTimerRef.current = null;
-    }, 420);
-  }, [clearLongPressTimer, editModeIsEnabled, focusModeIsEnabled]);
-
-  useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
-
-  const closeFocusedTask = useCallback(async () => {
-    const idsToDelete = pendingDeletedNoteIds;
-
-    setPendingDeletedNoteIds([]);
-
-    for (const entryId of idsToDelete) {
-      await onDeleteTimelineEntry(entryId);
-    }
-
-    onCloseTaskItem();
-  }, [onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
-
-  const openCreateTask = useCallback(() => {
-    if (!hasWorkspace) {
-      onShowToast(t('createBoardBeforeTasks'), 'error');
-      return;
-    }
-
-    if (!canCreateTask) {
-      onShowToast(t('boardAccessCannotCreateTasks'), 'error');
-      return;
-    }
-
-    if (focusedTaskItem || draftTaskIsOpen) {
-      return;
-    }
-
-    setDraftTaskIsOpen(true);
-  }, [canCreateTask, draftTaskIsOpen, focusedTaskItem, hasWorkspace, onShowToast, t]);
-
-  useEffect(() => {
-    if (!selectedTaskId || archiveDialogIsOpen) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape' || isTextEditingTarget(event.target)) {
-        return;
-      }
-
-      void closeFocusedTask();
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [archiveDialogIsOpen, closeFocusedTask, selectedTaskId]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (isTextEditingTarget(event.target)) {
-        return;
-      }
-
-      if (event.altKey && event.key.toLowerCase() === 'n') {
-        event.preventDefault();
-        openCreateTask();
-      }
-
-      if (event.altKey && event.key.toLowerCase() === 'x') {
-        event.preventDefault();
-        if (canUseBatchActions && visibleTaskItems.length > 0) {
-          if (editModeIsEnabled) {
-            closeEditMode();
-          } else {
-            setEditModeIsEnabled(true);
-          }
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canUseBatchActions, closeEditMode, editModeIsEnabled, openCreateTask, visibleTaskItems.length]);
-
-  if (isLoading && !focusModeIsEnabled) {
-    return (
-      <section
-        className="task-board"
-        aria-busy="true"
-        aria-labelledby="task-board-title"
-        data-loading="true"
-      >
-        <BoardLoadingState t={t} />
-      </section>
-    );
-  }
-
-  return (
-    <section
-      className="task-board"
-      aria-labelledby="task-board-title"
-      data-focus-mode={focusModeIsEnabled}
-      data-refreshing={isRefreshing && !focusModeIsEnabled}
-    >
-      {!focusModeIsEnabled ? (
-        <WorkspaceHeader
-          currentView={currentView}
-          onCreateProject={onCreateProject}
-          onDeleteProject={onDeleteProject}
-          onSelectProjectFilter={toggleProjectFilter}
-          onUpdateProject={onUpdateProject}
-          onUpdateWorkspace={onUpdateWorkspace}
-          onCreateWorkspaceInvitation={onCreateWorkspaceInvitation}
-          onRemoveWorkspaceMember={onRemoveWorkspaceMember}
-          onRevokeWorkspaceInvitation={onRevokeWorkspaceInvitation}
-          onUpdateWorkspaceMemberRole={onUpdateWorkspaceMemberRole}
-          colorOptions={colorOptions}
-          invitations={workspaceInvitations}
-          members={workspaceMembers}
-          projects={projects}
-          selectedProjectIds={selectedProjectIds}
-          t={t}
-          workspace={workspace}
-          canManageWorkspaceMetadata={canManageWorkspaceMetadata}
-          canManageSharing={canManageSharing}
-        />
-      ) : null}
-
-      {!focusModeIsEnabled ? (
-        <TaskFilterBar
-          filters={filters}
-          filtersAreActive={filtersAreActive}
-          onChange={setFilters}
-          onReset={() => setFilters(emptyTaskWallFilters)}
-          options={{
-            ...filterOptions,
-            statuses: uniqueSorted([...filterOptions.statuses, ...statusOptions]),
-          }}
-          t={t}
-        />
-      ) : null}
-
-      {isRefreshing && !focusModeIsEnabled ? (
-        <div className="board-refresh-overlay">
-          <BoardLoadingState compact t={t} />
-        </div>
-      ) : null}
-
-      <div className="task-grid" aria-busy={isLoading}>
-        {isLoading ? <p className="empty-copy">{t('loadingTasks')}</p> : null}
-        {!isLoading && displayedTaskItems.length === 0 ? (
-          <p className="empty-copy board-empty">
-            {!hasWorkspace
-              ? t('noBoardSelected')
-              : filtersAreActive
-              ? t('noTasksMatch')
-              : t('noTasks')}
-          </p>
-        ) : null}
-
-        {draftTaskIsOpen ? (
-          <DraftTaskCard
-            onCancel={() => setDraftTaskIsOpen(false)}
-            onCreateTaskItem={onCreateTaskItem}
-            onCreated={(createdTask) => {
-              setDraftTaskIsOpen(false);
-              onSelectTaskItem(createdTask.id);
-            }}
-            projects={projects}
-            selectedProjectId={selectedProjectIds[0] ?? ''}
-            t={t}
-            templates={templates}
-          />
-        ) : null}
-
-        {displayedTaskItems.map((taskItem) => {
-          const isExpanded = selectedTaskId === taskItem.id;
-          const isSelectedForEdit = selectedTaskIds.includes(taskItem.id);
-          const taskCategoryNames = splitTaskCategories(taskItem.category);
-
-          return (
-            <article
-              className="task-card"
-              data-expanded={isExpanded}
-              data-edit-selected={isSelectedForEdit}
-              data-edit-mode={editModeIsEnabled}
-              data-state={getTaskState(taskItem)}
-              key={taskItem.id}
-              style={getTaskCardStyle(taskItem.color)}
-            >
-              {editModeIsEnabled && !isExpanded ? (
-                <span
-                  className="task-edit-selector"
-                  aria-hidden="true"
-                  data-selected={isSelectedForEdit}
-                >
-                  {isSelectedForEdit ? <Icon name="check" /> : null}
-                </span>
-              ) : null}
-              <button
-                aria-expanded={isExpanded}
-                aria-pressed={editModeIsEnabled ? isSelectedForEdit : undefined}
-                className="task-card-button"
-                onClick={() => {
-                  if (longPressHandledRef.current) {
-                    longPressHandledRef.current = false;
-                    return;
-                  }
-
-                  if (editModeIsEnabled) {
-                    toggleSelectedTask(taskItem.id);
-                    return;
-                  }
-
-                  if (isExpanded) {
-                    void closeFocusedTask();
-                  } else {
-                    onSelectTaskItem(taskItem.id);
-                  }
-                }}
-                onPointerCancel={clearLongPressTimer}
-                onPointerDown={(event) => startTaskLongPress(event, taskItem.id)}
-                onPointerLeave={clearLongPressTimer}
-                onPointerUp={clearLongPressTimer}
-                title={isExpanded ? t('backToWall') : taskItem.title}
-                type="button"
-              >
-                <span className="task-card-topline">
-                  <span className="task-card-title">{taskItem.title}</span>
-                  {taskItem.noteCount > 0 ? (
-                    <span className="note-count">{taskItem.noteCount}</span>
-                  ) : null}
-                  {taskItem.shares.length > 0 ? (
-                    <span className="note-count share-count" title={t('sharing')}>
-                      <Icon name="user" />
-                      {taskItem.shares.length}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="task-card-main">
-                  <span className="task-card-latest">
-                    {taskItem.latestTimelineEntry ? (
-                      <>
-                        <span className="task-card-latest-date">
-                          {formatFullDate(taskItem.latestTimelineEntry.occurredAt)}
-                        </span>
-                        {taskItem.latestTimelineEntry.details ?? taskItem.latestTimelineEntry.summary}
-                      </>
-                    ) : (
-                      t('noNotesYet')
-                    )}
-                  </span>
-                </span>
-                <span className="task-card-meta">
-                  {taskItem.status ? (
-                    <TaskMetaChip icon="status" label={t('status')} value={taskItem.status} />
-                  ) : null}
-                  <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
-                    <Icon name="clock" />
-                    {formatRelativeDate(taskItem.lastTouchedAt)}
-                  </span>
-                  {taskItem.followUpAt ? (
-                    <span
-                      className="follow-up-chip"
-                      data-tone={getFollowUpTone(taskItem.followUpAt)}
-                      title={`${t('followUpDate')}: ${formatFullDate(taskItem.followUpAt)}`}
-                    >
-                      <Icon name="calendarX" />
-                      {t('followUp')} {formatFullDate(taskItem.followUpAt)}
-                    </span>
-                  ) : null}
-                </span>
-                <TaskBadges taskItem={taskItem} t={t} />
-                <span className="task-card-created">
-                  {taskCategoryNames.length > 0 && selectedProjectIds.length === 0 ? (
-                    <span
-                      className="task-card-category-markers"
-                      title={`${t('category')}: ${taskCategoryNames.join(', ')}`}
-                    >
-                      <Icon name="tag" />
-                      {taskCategoryNames.map((categoryName) => {
-                        const categoryProject = projectByName.get(categoryName.toLowerCase()) ?? null;
-
-                        return (
-                          <span
-                            aria-hidden="true"
-                            className="task-card-category-dot"
-                            key={categoryName}
-                            style={getContextChipStyle(categoryProject?.color ?? null)}
-                          />
-                        );
-                      })}
-                    </span>
-                  ) : null}
-                  <span title={`${t('created')}: ${formatFullDate(taskItem.createdAt)}`}>
-                    {formatFullDate(taskItem.createdAt)}
-                  </span>
-                </span>
-              </button>
-
-              {isExpanded ? (
-                <div className="task-card-detail">
-                  {isLoadingDetail || !selectedTask ? (
-                    <p className="empty-copy">Opening task...</p>
-                  ) : (
-                    <TaskDetail
-                      archiveDialogIsOpen={archiveDialogIsOpen}
-                      archiveResolutions={archiveResolutions}
-                      onAddTimelineEntry={onAddTimelineEntry}
-                      onArchive={onArchive}
-                      onClose={closeFocusedTask}
-                      onCloseArchiveDialog={onCloseArchiveDialog}
-                      onOpenArchiveDialog={onOpenArchiveDialog}
-                      onReopen={onReopen}
-                      onQueueDeleteTimelineEntry={(entryId) =>
-                        setPendingDeletedNoteIds((currentIds) =>
-                          currentIds.includes(entryId) ? currentIds : [...currentIds, entryId],
-                        )}
-                      onUndoDeleteTimelineEntry={(entryId) =>
-                        setPendingDeletedNoteIds((currentIds) =>
-                          currentIds.filter((currentId) => currentId !== entryId),
-                        )}
-                      onUpdateFieldValues={onUpdateFieldValues}
-                      onCreateTaskShareLink={onCreateTaskShareLink}
-                      onRevokeTaskShare={onRevokeTaskShare}
-                      onUpdateTaskShareRole={onUpdateTaskShareRole}
-                      onUpdateTaskItem={onUpdateTaskItem}
-                      onUpdateTimelineEntry={onUpdateTimelineEntry}
-                      colorOptions={colorOptions}
-                      canManageSharing={canManageSharing}
-                      pendingDeletedNoteIds={pendingDeletedNoteIds}
-                      projects={projects}
-                      statusOptions={statusOptions}
-                      t={t}
-                      taskItem={selectedTask}
-                    />
-                  )}
-                </div>
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
-      {!isLoading &&
-      (canCreateTask || (canUseBatchActions && visibleTaskItems.length > 0)) &&
-      !focusModeIsEnabled ? (
-        <FloatingBoardActions
-          archiveModeIsActive={archiveViewIsActive}
-          canCreateTask={canCreateTask}
-          editModeIsEnabled={editModeIsEnabled}
-          taskCount={visibleTaskItems.length}
-          colorOptions={colorOptions}
-          onBatchUpdate={async (requestBody) => {
-            await onUpdateTaskItems(selectedTaskIds, requestBody);
-            setSelectedTaskIds([]);
-          }}
-          onCopyTaskItemsToWorkspace={async (workspaceId) => {
-            await onCopyTaskItemsToWorkspace(selectedTaskIds, workspaceId);
-            setSelectedTaskIds([]);
-            closeEditMode();
-          }}
-          onOpenCreateTask={openCreateTask}
-          onOpenBatchArchive={() => setBatchArchiveIsOpen(true)}
-          onOpenBatchReopen={() => setBatchReopenIsOpen(true)}
-          onOpenBatchPermanentDelete={() => setBatchPermanentDeleteIsOpen(true)}
-          onOpenBatchShare={() => setBatchShareIsOpen(true)}
-          onToggleEditMode={() =>
-            editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
-          selectedTaskCount={selectedTaskIds.length}
-          canManageSharing={canManageSharing}
-          canPermanentlyDelete={currentUserOwnsWorkspace && !workspaceIsTaskShareOnly}
-          projects={projects}
-          statusOptions={statusOptions}
-          t={t}
-          workspaces={workspaces}
-        />
-      ) : null}
-      {batchShareIsOpen ? (
-        <ShareDialog
-          existingTaskShares={[]}
-          onClose={() => setBatchShareIsOpen(false)}
-          onCreate={async (email, role) =>
-            await onCreateTaskShareLinks({
-              email,
-              taskItemIds: selectedTaskIds,
-              role: role as TaskItemShareRole,
-            })}
-          onRevokeTaskShare={undefined}
-          pendingInvitations={[]}
-          roleMode="task"
-          t={t}
-          title={`${selectedTaskIds.length} ${t('selectedTasks')}`}
-        />
-      ) : null}
-      {batchArchiveIsOpen ? (
-        <ArchiveDialog
-          archiveResolutions={archiveResolutions}
-          onArchive={async (requestBody) => {
-            await onArchiveTaskItems(selectedTaskIds, requestBody);
-            closeEditMode();
-          }}
-          onClose={() => setBatchArchiveIsOpen(false)}
-          t={t}
-          taskTitle={`${selectedTaskIds.length} ${t('selectedTasks')}`}
-        />
-      ) : null}
-      {batchReopenIsOpen ? (
-        <ReopenDialog
-          onClose={() => setBatchReopenIsOpen(false)}
-          onReopen={async (note) => {
-            await onReopenTaskItems(selectedTaskIds, note);
-            closeEditMode();
-          }}
-          t={t}
-          taskTitle={`${selectedTaskIds.length} ${t('selectedTasks')}`}
-        />
-      ) : null}
-      {batchPermanentDeleteIsOpen ? (
-        <PermanentDeleteDialog
-          count={selectedTaskIds.length}
-          onClose={() => setBatchPermanentDeleteIsOpen(false)}
-          onDelete={async () => {
-            await onDeleteTaskItemsPermanently(selectedTaskIds);
-            closeEditMode();
-          }}
-          t={t}
-        />
-      ) : null}
-    </section>
-  );
-}
 
 export default App;

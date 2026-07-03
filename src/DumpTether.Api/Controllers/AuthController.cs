@@ -49,6 +49,7 @@ public sealed class AuthController : ControllerBase
             options.AllowGuestSessions,
             _environment.IsDevelopment() && options.EnableDevelopmentLogin,
             _emailConfirmationOptions.Value.Enabled,
+            options.SignupMode,
             _oauthOptions.Value.EnabledProviders()));
     }
 
@@ -245,6 +246,33 @@ public sealed class AuthController : ControllerBase
     }
 
     [EnableRateLimiting("auth")]
+    [HttpPost("local-desktop")]
+    public async Task<ActionResult<LoginUserResponse>> LocalDesktopLogin(CancellationToken cancellationToken)
+    {
+        if (!string.Equals(_environment.EnvironmentName, "Desktop", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _authService.LocalDesktopLoginAsync(
+                new AuthRequestMetadata(
+                    Request.Headers.UserAgent.FirstOrDefault(),
+                    HttpContext.Connection.RemoteIpAddress?.ToString()),
+                cancellationToken);
+
+            AppendSessionCookie(response);
+
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return NotFound();
+        }
+    }
+
+    [EnableRateLimiting("auth")]
     [HttpPost("guest")]
     public async Task<ActionResult<LoginUserResponse>> GuestLogin(CancellationToken cancellationToken)
     {
@@ -288,6 +316,50 @@ public sealed class AuthController : ControllerBase
     {
         var response = await _authService.GetCurrentAsync(cancellationToken);
         return response is null ? Unauthorized() : Ok(response);
+    }
+
+    [Authorize(Policy = AuthPolicies.SessionRequired)]
+    [HttpGet("sessions")]
+    public async Task<ActionResult<IReadOnlyList<AuthSessionListItemResponse>>> ListSessions(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _authService.ListSessionsAsync(cancellationToken));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized();
+        }
+    }
+
+    [Authorize(Policy = AuthPolicies.SessionRequired)]
+    [HttpDelete("sessions/{sessionId:guid}")]
+    public async Task<IActionResult> RevokeSession(
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _authService.RevokeSessionAsync(sessionId, cancellationToken);
+
+            if (!response.Revoked)
+            {
+                return NotFound();
+            }
+
+            if (response.CurrentSessionRevoked)
+            {
+                Response.Cookies.Delete(SessionCsrfProtectionMiddleware.SessionCookieName);
+                Response.Cookies.Delete(SessionCsrfProtectionMiddleware.CsrfCookieName);
+            }
+
+            return NoContent();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized();
+        }
     }
 
     [EnableRateLimiting("auth")]

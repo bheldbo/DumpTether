@@ -65,7 +65,8 @@ internal sealed class SessionCsrfProtectionMiddleware
             return true;
         }
 
-        return !string.IsNullOrWhiteSpace(context.Request.Query["access_token"].FirstOrDefault());
+        return IsLiveUpdateTransport(context.Request.Path) &&
+            !string.IsNullOrWhiteSpace(context.Request.Query["access_token"].FirstOrDefault());
     }
 
     private static bool TokensMatch(string left, string right)

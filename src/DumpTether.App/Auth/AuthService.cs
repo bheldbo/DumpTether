@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using DumpTether.App.Email;
 using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
@@ -11,6 +13,9 @@ namespace DumpTether.App.Auth;
 
 internal sealed class AuthService : IAuthService
 {
+    private const string LocalDesktopEmail = "local@desktop.dumptether.local";
+    private const string LocalDesktopDisplayName = "Local user";
+
     private readonly IAuthRepository _authRepository;
     private readonly IAuthTokenAccessor _authTokenAccessor;
     private readonly IClock _clock;
@@ -56,6 +61,8 @@ internal sealed class AuthService : IAuthService
         ArgumentNullException.ThrowIfNull(request);
 
         var normalizedEmail = AppUser.NormalizeEmail(request.Email);
+        EnsureSignupIsAllowed(normalizedEmail, request.InviteCode, allowInviteCode: true);
+
         var existingUser = await _authRepository.GetUserByNormalizedEmailAsync(
             normalizedEmail,
             trackChanges: false,
@@ -94,6 +101,19 @@ internal sealed class AuthService : IAuthService
         AuthRequestMetadata metadata,
         CancellationToken cancellationToken)
     {
+        return await LoginCoreAsync(
+            request,
+            metadata,
+            UserSessionType.Browser,
+            cancellationToken);
+    }
+
+    private async Task<LoginUserResponse> LoginCoreAsync(
+        LoginUserRequest request,
+        AuthRequestMetadata metadata,
+        UserSessionType sessionType,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(request);
 
         var normalizedEmail = AppUser.NormalizeEmail(request.Email);
@@ -126,9 +146,10 @@ internal sealed class AuthService : IAuthService
             throw new EmailConfirmationRequiredException();
         }
 
-        var (sessionToken, expiresAt) = await CreateSessionAsync(
+        var (sessionToken, session) = await CreateSessionAsync(
             user,
             metadata,
+            sessionType,
             request.DeviceName,
             cancellationToken);
         await _authRepository.SaveChangesAsync(cancellationToken);
@@ -139,7 +160,8 @@ internal sealed class AuthService : IAuthService
             MapUser(user),
             workspaces.Select(MapWorkspace).ToList(),
             sessionToken,
-            expiresAt);
+            session.ExpiresAt,
+            MapSession(session));
     }
 
     public async Task<LoginUserResponse> DevelopmentLoginAsync(
@@ -161,21 +183,91 @@ internal sealed class AuthService : IAuthService
 
         if (existingUser is null)
         {
-            await RegisterAsync(
-                new RegisterUserRequest(
-                    options.DevelopmentEmail,
-                    options.DevelopmentPassword,
-                    options.DevelopmentDisplayName),
+            var now = _clock.UtcNow;
+            await CreateUserWithWorkspaceAsync(
+                options.DevelopmentEmail,
+                options.DevelopmentDisplayName,
+                _passwordHashService.HashPassword(options.DevelopmentPassword),
+                now,
+                emailIsConfirmed: true,
                 cancellationToken);
+            await _authRepository.SaveChangesAsync(cancellationToken);
         }
 
-        return await LoginAsync(
+        return await LoginCoreAsync(
             new LoginUserRequest(
                 options.DevelopmentEmail,
                 options.DevelopmentPassword,
                 "development browser"),
             metadata,
+            UserSessionType.Development,
             cancellationToken);
+    }
+
+    public async Task<LoginUserResponse> LocalDesktopLoginAsync(
+        AuthRequestMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        var now = _clock.UtcNow;
+        var normalizedEmail = AppUser.NormalizeEmail(LocalDesktopEmail);
+        var createdLocalUser = false;
+        var user = await _authRepository.GetUserByNormalizedEmailAsync(
+            normalizedEmail,
+            trackChanges: true,
+            cancellationToken);
+
+        if (user is null)
+        {
+            var created = await CreateUserWithWorkspaceAsync(
+                LocalDesktopEmail,
+                LocalDesktopDisplayName,
+                _passwordHashService.HashPassword(_sessionTokenService.CreateSessionToken()),
+                now,
+                emailIsConfirmed: true,
+                cancellationToken);
+            user = created.User;
+            createdLocalUser = true;
+        }
+        else if (!user.IsActive)
+        {
+            throw new UnauthorizedAccessException("Local desktop user is inactive.");
+        }
+
+        if (!createdLocalUser)
+        {
+            var existingWorkspaces = await _authRepository.ListWorkspacesForUserAsync(
+                user.Id,
+                cancellationToken);
+
+            if (existingWorkspaces.Count == 0)
+            {
+                var workspace = Workspace.Create("All Tasks", now);
+                var membership = WorkspaceMembership.Create(
+                    workspace.Id,
+                    user.Id,
+                    WorkspaceMembershipRole.Owner,
+                    now);
+                await _workspaceRepository.AddAsync(workspace, cancellationToken);
+                await _authRepository.AddWorkspaceMembershipAsync(membership, cancellationToken);
+            }
+        }
+
+        var (sessionToken, session) = await CreateSessionAsync(
+            user,
+            metadata,
+            UserSessionType.DesktopLocal,
+            "desktop local app",
+            cancellationToken);
+        await _authRepository.SaveChangesAsync(cancellationToken);
+
+        var workspaces = await _authRepository.ListWorkspacesForUserAsync(user.Id, cancellationToken);
+
+        return new LoginUserResponse(
+            MapUser(user),
+            workspaces.Select(MapWorkspace).ToList(),
+            sessionToken,
+            session.ExpiresAt,
+            MapSession(session));
     }
 
     public async Task<LoginUserResponse> GuestLoginAsync(
@@ -198,9 +290,10 @@ internal sealed class AuthService : IAuthService
             now,
             emailIsConfirmed: true,
             cancellationToken);
-        var (sessionToken, expiresAt) = await CreateSessionAsync(
+        var (sessionToken, session) = await CreateSessionAsync(
             created.User,
             metadata,
+            UserSessionType.Guest,
             "temporary browser tab",
             cancellationToken);
 
@@ -210,7 +303,8 @@ internal sealed class AuthService : IAuthService
             MapUser(created.User),
             [MapWorkspace(created.Workspace, created.Membership)],
             sessionToken,
-            expiresAt);
+            session.ExpiresAt,
+            MapSession(session));
     }
 
     public async Task<LoginUserResponse> ExternalLoginAsync(
@@ -252,6 +346,11 @@ internal sealed class AuthService : IAuthService
 
             if (user is null)
             {
+                EnsureSignupIsAllowed(
+                    AppUser.NormalizeEmail(request.Email),
+                    inviteCode: null,
+                    allowInviteCode: false);
+
                 var created = await CreateUserWithWorkspaceAsync(
                     request.Email,
                     request.DisplayName,
@@ -280,9 +379,10 @@ internal sealed class AuthService : IAuthService
         }
 
         user.MarkEmailConfirmed(now);
-        var (sessionToken, expiresAt) = await CreateSessionAsync(
+        var (sessionToken, session) = await CreateSessionAsync(
             user,
             metadata,
+            UserSessionType.Browser,
             $"{provider} login",
             cancellationToken);
         await _authRepository.SaveChangesAsync(cancellationToken);
@@ -293,7 +393,8 @@ internal sealed class AuthService : IAuthService
             MapUser(user),
             workspaces.Select(MapWorkspace).ToList(),
             sessionToken,
-            expiresAt);
+            session.ExpiresAt,
+            MapSession(session));
     }
 
     public async Task<ConfirmEmailResponse> ConfirmEmailAsync(
@@ -383,7 +484,61 @@ internal sealed class AuthService : IAuthService
 
         return new CurrentUserResponse(
             MapUser(user),
-            workspaces.Select(MapWorkspace).ToList());
+            workspaces.Select(MapWorkspace).ToList(),
+            new AuthSessionResponse(
+                current.SessionId,
+                current.SessionType,
+                current.DeviceName,
+                current.CreatedAt,
+                current.ExpiresAt,
+                current.LastSeenAt));
+    }
+
+    public async Task<IReadOnlyList<AuthSessionListItemResponse>> ListSessionsAsync(
+        CancellationToken cancellationToken)
+    {
+        var current = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        if (current is null)
+        {
+            throw new UnauthorizedAccessException("Authentication is required.");
+        }
+
+        var sessions = await _authRepository.ListSessionsForUserAsync(
+            current.UserId,
+            cancellationToken);
+
+        return sessions
+            .Select(session => MapSessionListItem(session, current.SessionId))
+            .ToList();
+    }
+
+    public async Task<RevokeAuthSessionResponse> RevokeSessionAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        var current = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+
+        if (current is null)
+        {
+            throw new UnauthorizedAccessException("Authentication is required.");
+        }
+
+        var session = await _authRepository.GetSessionByIdAsync(
+            sessionId,
+            trackChanges: true,
+            cancellationToken);
+
+        if (session is null || session.UserId != current.UserId)
+        {
+            return new RevokeAuthSessionResponse(false, false);
+        }
+
+        var currentSessionRevoked = session.Id == current.SessionId;
+        session.Revoke(_clock.UtcNow);
+        await _authRepository.SaveChangesAsync(cancellationToken);
+
+        return new RevokeAuthSessionResponse(true, currentSessionRevoked);
     }
 
     private static AuthUserResponse MapUser(AppUser user)
@@ -421,6 +576,32 @@ internal sealed class AuthService : IAuthService
             sharedTaskCount);
     }
 
+    private static AuthSessionResponse MapSession(UserSession session)
+    {
+        return new AuthSessionResponse(
+            session.Id,
+            session.SessionType,
+            session.DeviceName,
+            session.CreatedAt,
+            session.ExpiresAt,
+            session.LastSeenAt);
+    }
+
+    private static AuthSessionListItemResponse MapSessionListItem(
+        UserSession session,
+        Guid currentSessionId)
+    {
+        return new AuthSessionListItemResponse(
+            session.Id,
+            session.SessionType,
+            session.DeviceName,
+            session.CreatedAt,
+            session.ExpiresAt,
+            session.LastSeenAt,
+            session.RevokedAt,
+            session.Id == currentSessionId);
+    }
+
     private async Task<(AppUser User, Workspace Workspace, WorkspaceMembership Membership)>
         CreateUserWithWorkspaceAsync(
             string email,
@@ -449,6 +630,90 @@ internal sealed class AuthService : IAuthService
 
         return (user, workspace, membership);
     }
+
+    private void EnsureSignupIsAllowed(
+        string normalizedEmail,
+        string? inviteCode,
+        bool allowInviteCode)
+    {
+        var options = _authOptions.Value;
+
+        switch (options.SignupMode)
+        {
+            case AuthSignupMode.Open:
+                return;
+            case AuthSignupMode.Whitelist:
+                if (EmailIsWhitelisted(normalizedEmail, options))
+                {
+                    return;
+                }
+
+                LogSignupAuditEvent("signup_rejected_not_whitelisted", normalizedEmail);
+                throw new ValidationException("Registration is not available for this email.");
+            case AuthSignupMode.InviteOnly:
+                if (allowInviteCode &&
+                    InviteCodeMatches(inviteCode, options.SignupInviteCodes))
+                {
+                    return;
+                }
+
+                LogSignupAuditEvent("signup_rejected_invite_required", normalizedEmail);
+                throw new ValidationException("A valid invite code is required.");
+            case AuthSignupMode.Closed:
+                LogSignupAuditEvent("signup_rejected_closed", normalizedEmail);
+                throw new ValidationException("Registration is closed on this server.");
+            default:
+                LogSignupAuditEvent("signup_rejected_invalid_mode", normalizedEmail);
+                throw new ValidationException("Registration is not available.");
+        }
+    }
+
+    private static bool EmailIsWhitelisted(string normalizedEmail, AuthOptions options)
+    {
+        if (options.SignupWhitelistEmails
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Any(email =>
+                string.Equals(
+                    AppUser.NormalizeEmail(email),
+                    normalizedEmail,
+                    StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        var atIndex = normalizedEmail.LastIndexOf('@');
+        if (atIndex < 0 || atIndex == normalizedEmail.Length - 1)
+        {
+            return false;
+        }
+
+        var domain = normalizedEmail[(atIndex + 1)..];
+        return options.SignupWhitelistDomains.Any(candidate =>
+        {
+            var normalizedDomain = candidate.Trim().TrimStart('@').ToUpperInvariant();
+            return normalizedDomain.Length > 0 &&
+                string.Equals(normalizedDomain, domain, StringComparison.Ordinal);
+        });
+    }
+
+    private static bool InviteCodeMatches(string? inviteCode, IEnumerable<string> configuredCodes)
+    {
+        var trimmedInviteCode = inviteCode?.Trim();
+
+        if (string.IsNullOrWhiteSpace(trimmedInviteCode))
+        {
+            return false;
+        }
+
+        var inviteCodeHash = Sha256(trimmedInviteCode);
+        return configuredCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => Sha256(code.Trim()))
+            .Any(hash => CryptographicOperations.FixedTimeEquals(inviteCodeHash, hash));
+    }
+
+    private static byte[] Sha256(string value) =>
+        SHA256.HashData(Encoding.UTF8.GetBytes(value));
 
     private async Task CreateAndSendEmailConfirmationAsync(
         AppUser user,
@@ -499,9 +764,10 @@ internal sealed class AuthService : IAuthService
         return $"{baseUrl}{path}?token={Uri.EscapeDataString(token)}";
     }
 
-    private async Task<(string SessionToken, DateTimeOffset ExpiresAt)> CreateSessionAsync(
+    private async Task<(string SessionToken, UserSession Session)> CreateSessionAsync(
         AppUser user,
         AuthRequestMetadata metadata,
+        UserSessionType sessionType,
         string? deviceName,
         CancellationToken cancellationToken)
     {
@@ -514,6 +780,7 @@ internal sealed class AuthService : IAuthService
             _sessionTokenService.HashToken(sessionToken),
             now,
             now.Add(GetSessionDuration()),
+            sessionType,
             metadata.UserAgent,
             _sessionTokenService.HashOptionalMetadata(metadata.IpAddress),
             deviceName);
@@ -521,7 +788,7 @@ internal sealed class AuthService : IAuthService
         user.MarkLoggedIn(now);
         await _authRepository.AddSessionAsync(session, cancellationToken);
 
-        return (sessionToken, session.ExpiresAt);
+        return (sessionToken, session);
     }
 
     private TimeSpan GetSessionDuration()
@@ -559,5 +826,15 @@ internal sealed class AuthService : IAuthService
             _sessionTokenService.HashOptionalMetadata(normalizedEmail),
             _sessionTokenService.HashOptionalMetadata(metadata.IpAddress),
             metadata.UserAgent?.Length ?? 0);
+    }
+
+    private void LogSignupAuditEvent(
+        string eventName,
+        string normalizedEmail)
+    {
+        _logger.LogWarning(
+            "Auth audit event {EventName}. EmailHash: {EmailHash}.",
+            eventName,
+            _sessionTokenService.HashOptionalMetadata(normalizedEmail));
     }
 }

@@ -5,7 +5,8 @@ namespace DumpTether.App.Auth;
 public sealed record RegisterUserRequest(
     string Email,
     string Password,
-    string? DisplayName = null);
+    string? DisplayName = null,
+    string? InviteCode = null);
 
 public sealed record LoginUserRequest(
     string Email,
@@ -37,21 +38,46 @@ public sealed record RegisterUserResponse(
     AuthWorkspaceResponse Workspace,
     bool EmailConfirmationRequired);
 
+public sealed record AuthSessionResponse(
+    Guid Id,
+    UserSessionType SessionType,
+    string? DeviceName,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset LastSeenAt);
+
 public sealed record LoginUserResponse(
     AuthUserResponse User,
     IReadOnlyList<AuthWorkspaceResponse> Workspaces,
     string SessionToken,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    AuthSessionResponse Session);
 
 public sealed record CurrentUserResponse(
     AuthUserResponse User,
-    IReadOnlyList<AuthWorkspaceResponse> Workspaces);
+    IReadOnlyList<AuthWorkspaceResponse> Workspaces,
+    AuthSessionResponse Session);
+
+public sealed record AuthSessionListItemResponse(
+    Guid Id,
+    UserSessionType SessionType,
+    string? DeviceName,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset LastSeenAt,
+    DateTimeOffset? RevokedAt,
+    bool IsCurrent);
+
+public sealed record RevokeAuthSessionResponse(
+    bool Revoked,
+    bool CurrentSessionRevoked);
 
 public sealed record AuthClientOptionsResponse(
     bool RequiresAuthentication,
     bool GuestSessionsEnabled,
     bool DevelopmentLoginEnabled,
     bool EmailConfirmationEnabled,
+    AuthSignupMode SignupMode,
     IReadOnlyList<string> OAuthProviders);
 
 public sealed record ConfirmEmailResponse(
@@ -72,7 +98,12 @@ public sealed record CurrentUserSession(
     Guid UserId,
     Guid SessionId,
     string Email,
-    string DisplayName);
+    string DisplayName,
+    UserSessionType SessionType,
+    string? DeviceName,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset LastSeenAt);
 
 public sealed record UserWorkspaceMembership(
     Workspace Workspace,

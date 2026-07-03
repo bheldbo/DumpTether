@@ -14,4 +14,8 @@ public sealed record DevelopmentWorkspaceContext(
     public bool CanDeleteWorkspaceData =>
         !IsSharedOnly &&
         (MembershipRole is null || MembershipRole == WorkspaceMembershipRole.Owner);
+
+    public bool CanManageWorkspaceSharing =>
+        !IsSharedOnly &&
+        (MembershipRole is null || MembershipRole == WorkspaceMembershipRole.Owner);
 }

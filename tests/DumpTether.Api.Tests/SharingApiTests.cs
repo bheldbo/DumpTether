@@ -157,6 +157,83 @@ public sealed class SharingApiTests
     }
 
     [Fact]
+    public async Task LiveUpdates_TaskShareRecipientsReceiveDirectTaskEvents()
+    {
+        var liveUpdates = new RecordingLiveUpdatePublisher();
+        using var factory = new DumpTetherApiFactory(liveUpdatePublisher: liveUpdates);
+        using var ownerClient = factory.CreateClient();
+        using var sharedClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "live-task-share-owner@example.com",
+            "correct horse battery");
+        var sharedUser = await RegisterAndLoginAsync(
+            sharedClient,
+            "live-task-share-user@example.com",
+            "correct horse battery");
+        var sharedTask = await CreateTaskAsync(ownerClient, "Shared live task");
+        var privateTask = await CreateTaskAsync(ownerClient, "Private live task");
+
+        var shareResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{sharedTask.Id}/shares",
+            new
+            {
+                email = sharedUser.User.Email
+            });
+        shareResponse.EnsureSuccessStatusCode();
+
+        var privateUpdateResponse = await ownerClient.PatchAsJsonAsync(
+            $"/api/tasks/{privateTask.Id}",
+            new
+            {
+                title = "Private live task updated"
+            });
+        privateUpdateResponse.EnsureSuccessStatusCode();
+
+        var sharedUpdateResponse = await ownerClient.PatchAsJsonAsync(
+            $"/api/tasks/{sharedTask.Id}",
+            new
+            {
+                title = "Shared live task updated"
+            });
+        sharedUpdateResponse.EnsureSuccessStatusCode();
+
+        var sharedMessage = await liveUpdates.WaitForAsync(
+            update => update.EventName == LiveUpdateEvents.TaskUpdated &&
+                update.TaskItemId == sharedTask.Id &&
+                update.RecipientUserIds?.Contains(sharedUser.User.Id) == true,
+            TimeSpan.FromSeconds(5));
+        var privateMessages = liveUpdates.Messages
+            .Where(message => message.TaskItemId == privateTask.Id)
+            .ToList();
+
+        Assert.Equal(owner.User.Id, sharedMessage.ActorUserId);
+        Assert.DoesNotContain(
+            privateMessages,
+            message => message.RecipientUserIds?.Contains(sharedUser.User.Id) == true);
+    }
+
+    [Fact]
+    public async Task Cors_AllowedOriginPreflightReturnsCorsHeaders()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Cors:AllowedOrigins:0"] = "http://localhost:5173"
+            });
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/api/tasks");
+        request.Headers.TryAddWithoutValidation("Origin", "http://localhost:5173");
+        request.Headers.TryAddWithoutValidation("Access-Control-Request-Method", "GET");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.True(response.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
+        Assert.Contains("http://localhost:5173", origins);
+    }
+
+    [Fact]
     public async Task LiveUpdates_WithoutSession_WhenAuthRequired_CannotConnect()
     {
         using var factory = new DumpTetherApiFactory(requireAuthentication: true);
@@ -1168,6 +1245,62 @@ public sealed class SharingApiTests
     }
 
     [Fact]
+    public async Task TaskShare_WorkspaceMemberCannotManageTaskShares()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var memberClient = factory.CreateClient();
+        using var thirdClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "member-share-owner@example.com",
+            "correct horse battery");
+        var member = await RegisterAndLoginAsync(
+            memberClient,
+            "member-share-member@example.com",
+            "correct horse battery");
+        var thirdUser = await RegisterAndLoginAsync(
+            thirdClient,
+            "member-share-third@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+        var ownerTask = await CreateTaskAsync(ownerClient, "Member cannot reshare this");
+
+        var inviteResponse = await ownerClient.PostAsJsonAsync(
+            "/api/workspace/invitations",
+            new
+            {
+                email = member.User.Email
+            });
+        inviteResponse.EnsureSuccessStatusCode();
+        var invite = (await inviteResponse.Content.ReadFromJsonAsync<WorkspaceInvitationResponse>())!;
+        var acceptResponse = await memberClient.PostAsJsonAsync(
+            "/api/workspace/invitations/accept",
+            new
+            {
+                token = invite.Token
+            });
+        acceptResponse.EnsureSuccessStatusCode();
+
+        SetWorkspaceHeader(memberClient, ownerWorkspaceId);
+        var shareResponse = await memberClient.PostAsJsonAsync(
+            $"/api/tasks/{ownerTask.Id}/shares",
+            new
+            {
+                email = thirdUser.User.Email
+            });
+        var updateResponse = await memberClient.PatchAsJsonAsync(
+            $"/api/tasks/{ownerTask.Id}",
+            new
+            {
+                title = "Member can still edit the task"
+            });
+
+        Assert.Equal(HttpStatusCode.NotFound, shareResponse.StatusCode);
+        updateResponse.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task TaskShare_ViewerCanReadButCannotEditSharedTask()
     {
         using var factory = new DumpTetherApiFactory();
@@ -1669,6 +1802,17 @@ public sealed class SharingApiTests
         private readonly object _lock = new();
         private readonly List<LiveUpdateMessage> _messages = [];
         private readonly List<Waiter> _waiters = [];
+
+        public IReadOnlyList<LiveUpdateMessage> Messages
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _messages.ToList();
+                }
+            }
+        }
 
         public Task PublishAsync(
             LiveUpdateMessage message,

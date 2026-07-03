@@ -24,6 +24,10 @@ public interface IAuthRepository
         bool trackChanges,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<UserSession>> ListSessionsForUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken);
+
     Task<EmailConfirmationToken?> GetEmailConfirmationTokenByHashAsync(
         string tokenHash,
         bool trackChanges,

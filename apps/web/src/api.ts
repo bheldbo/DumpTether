@@ -6,6 +6,7 @@ import type {
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   AuthClientOptionsResponse,
+  AuthSessionListItemResponse,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CopyTaskItemsRequest,
@@ -54,8 +55,9 @@ import type {
   UpdateWorkspaceMemberRequest,
 } from './types';
 
+const desktopLocalApiBaseUrl = 'http://127.0.0.1:55868';
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
-const apiBaseUrl = configuredBaseUrl ?? '';
+const apiBaseUrl = configuredBaseUrl ?? getDefaultApiBaseUrl();
 const sessionTokenStorageKey = 'dumptether.sessionToken';
 const guestSessionTokenStorageKey = 'dumptether.guestSessionToken';
 const csrfCookieName = 'DumpTether.Csrf';
@@ -84,6 +86,30 @@ export function getApiBaseUrl() {
 export function getCookieAuthCsrfHeader(): Record<string, string> {
   const csrfToken = readCookie(csrfCookieName);
   return csrfToken ? { [csrfHeaderName]: csrfToken } : {};
+}
+
+function getDefaultApiBaseUrl() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  if (isDesktopRuntime()) {
+    return desktopLocalApiBaseUrl;
+  }
+
+  return '';
+}
+
+export function isDesktopRuntime() {
+  const desktopWindow = window as Window & {
+    __TAURI_INTERNALS__?: unknown;
+    __TAURI__?: unknown;
+  };
+
+  return Boolean(desktopWindow.__TAURI_INTERNALS__ || desktopWindow.__TAURI__) ||
+    window.location.protocol === 'tauri:' ||
+    window.location.protocol === 'file:' ||
+    window.location.hostname === 'tauri.localhost';
 }
 
 export function isTemporarySession() {
@@ -229,6 +255,16 @@ export function getCurrentUser(): Promise<CurrentUserResponse> {
   return request<CurrentUserResponse>('/api/auth/me');
 }
 
+export function listAuthSessions(): Promise<AuthSessionListItemResponse[]> {
+  return request<AuthSessionListItemResponse[]>('/api/auth/sessions');
+}
+
+export function revokeAuthSession(sessionId: string): Promise<void> {
+  return request<void>(`/api/auth/sessions/${sessionId}`, {
+    method: 'DELETE',
+  });
+}
+
 export function getAuthOptions(): Promise<AuthClientOptionsResponse> {
   return request<AuthClientOptionsResponse>('/api/auth/options');
 }
@@ -253,6 +289,15 @@ export async function guestLogin(): Promise<LoginUserResponse> {
   });
 
   setSessionToken(response.sessionToken, { temporary: true });
+  return response;
+}
+
+export async function localDesktopLogin(): Promise<LoginUserResponse> {
+  const response = await request<LoginUserResponse>('/api/auth/local-desktop', {
+    method: 'POST',
+  });
+
+  setSessionToken(response.sessionToken);
   return response;
 }
 
@@ -327,41 +372,45 @@ export function copyTaskItems(
 export function updateTaskItem(
   id: string,
   requestBody: UpdateTaskItemRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function addTaskTimelineEntry(
   id: string,
   requestBody: AddTaskTimelineEntryRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/timeline`, {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function archiveTaskItem(
   id: string,
   requestBody: ArchiveTaskItemRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/archive`, {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function reopenTaskItem(
   id: string,
   requestBody: ReopenTaskItemRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/reopen`, {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function reopenTaskItems(
@@ -600,6 +649,7 @@ export function updateTaskTimelineEntry(
   taskItemId: string,
   entryId: string,
   requestBody: UpdateTaskTimelineEntryRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(
     `/api/tasks/${taskItemId}/timeline/${entryId}`,
@@ -607,18 +657,21 @@ export function updateTaskTimelineEntry(
       method: 'PATCH',
       body: JSON.stringify(requestBody),
     },
+    options,
   );
 }
 
 export function deleteTaskTimelineEntry(
   taskItemId: string,
   entryId: string,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(
     `/api/tasks/${taskItemId}/timeline/${entryId}`,
     {
       method: 'DELETE',
     },
+    options,
   );
 }
 
@@ -639,11 +692,12 @@ export function createTaskShare(
 export function createTaskShareLink(
   id: string,
   requestBody: CreateTaskShareRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskShareLinkResponse> {
   return request<TaskShareLinkResponse>(`/api/tasks/${id}/share-links`, {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function createTaskShareLinks(
@@ -658,21 +712,23 @@ export function createTaskShareLinks(
 export function revokeTaskShare(
   id: string,
   shareId: string,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/shares/${shareId}`, {
     method: 'DELETE',
-  });
+  }, options);
 }
 
 export function updateTaskShareRole(
   id: string,
   shareId: string,
   requestBody: UpdateTaskShareRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/shares/${shareId}`, {
     method: 'PATCH',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function listIncomingTaskShares(): Promise<TaskShareInboxResponse[]> {

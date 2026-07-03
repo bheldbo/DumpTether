@@ -6,23 +6,26 @@ import {
   getTaskCardStyle,
 } from '../../taskUtils';
 import type {
-  CreateTaskItemRequest,
   ProjectResponse,
   TaskItemDetailResponse,
   TaskTemplateDetailResponse,
 } from '../../types';
+import { type CreateTaskItemOptions } from './taskWallTypes';
 
 interface DraftTaskCardProps {
   onCancel: () => void;
   onCreateTaskItem: (
     title: string,
-    options?: Partial<CreateTaskItemRequest>,
+    options?: CreateTaskItemOptions,
   ) => Promise<TaskItemDetailResponse | null>;
   onCreated: (taskItem: TaskItemDetailResponse) => void;
   projects: ProjectResponse[];
   selectedProjectId: string;
   t: Translate;
   templates: TaskTemplateDetailResponse[];
+  workspaceColor: string | null;
+  workspaceId: string;
+  workspaceName: string;
 }
 
 export function DraftTaskCard({
@@ -33,6 +36,9 @@ export function DraftTaskCard({
   selectedProjectId,
   t,
   templates,
+  workspaceColor,
+  workspaceId,
+  workspaceName,
 }: DraftTaskCardProps) {
   const [title, setTitle] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -61,6 +67,7 @@ export function DraftTaskCard({
 
     setIsSubmitting(true);
     const created = await onCreateTaskItem(trimmedTitle, {
+      workspaceId,
       projectId: selectedProject?.id ?? null,
       category: selectedProject?.name ?? null,
       taskTemplateId: selectedTemplateId || null,
@@ -82,7 +89,7 @@ export function DraftTaskCard({
       className="task-card task-card-draft"
       data-expanded="true"
       data-state="active"
-      style={getTaskCardStyle('#FFF3A6')}
+      style={getTaskCardStyle(workspaceColor ?? '#FFF3A6')}
     >
       <div className="task-card-detail">
         <section className="task-detail draft-task-detail" aria-label={t('newTask')}>
@@ -100,7 +107,9 @@ export function DraftTaskCard({
               <span className="sr-only">{t('backToWall')}</span>
             </button>
             <div className="task-header-editor">
-              <p className="detail-kicker">{t('newTask')}</p>
+              <p className="detail-kicker">
+                {workspaceName} / {t('newTask')}
+              </p>
               <div className="task-title-row">
                 <input
                   aria-label={t('taskTitleRequired')}

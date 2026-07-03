@@ -32,7 +32,9 @@ Application services still enforce workspace membership, owner/member boundaries
 - Session tokens are stored hashed in the database.
 - Expired, revoked, and inactive-user sessions are rejected.
 - Production forces `Auth:RequireAuthentication=true`.
+- Server signup can be `Open`, `Whitelist`, `InviteOnly`, or `Closed`; production examples default to invite-only.
 - Development login is disabled outside development.
+- Temporary browser `Guest` sessions are blocked from unsafe non-auth API writes so they cannot persist task data on a hosted server.
 - Protected controllers use the session policy.
 - SignalR live updates use the same session policy, authenticated user identity, and hub-time session revalidation.
 - SignalR transport requests are exempt from the JSON CSRF middleware because the hub validates sessions separately.
