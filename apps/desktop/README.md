@@ -50,9 +50,20 @@ is Tauri's security allow-list saying the shell may start the bundled sidecar wi
 that one `--environment=Desktop` argument. In other words: edit ASP.NET config for
 DumpTether behavior; edit Tauri config only for shell/window/bundle permissions.
 
+The Tauri app identifier is `net.heldbo.dumptether`. This is a reverse-DNS-style
+stable application ID for the operating system, installer, app data identity and
+future signing/update flows. The bundle publisher is `bheldbo`.
+
 There is no second desktop business-config file. The desktop sidecar uses normal
 ASP.NET configuration, so environment variables can still override
 `appsettings.Desktop.json` when needed.
+
+Endpoint shape:
+
+- Normal desktop use talks to the local sidecar at `http://127.0.0.1:55868`.
+- Cloud sync asks for a hosted DumpTether API URL per sync run.
+- A future online-only desktop mode could make the API base URL configurable, but
+  that is not the offline-first default.
 
 ## Prerequisites
 

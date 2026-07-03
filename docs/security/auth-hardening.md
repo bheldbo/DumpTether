@@ -57,5 +57,4 @@ The HTTP policy proves that a request belongs to a valid session. Workspace-writ
 
 - Add image-storage rules before image uploads are implemented.
 - Revisit file scanning only if DumpTether later accepts arbitrary documents.
-- Add a periodic server-side cleanup job for expired or revoked sessions.
 - Add deeper audit events for suspicious auth behavior once production observability exists.

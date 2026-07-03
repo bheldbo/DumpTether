@@ -506,6 +506,45 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task PostLocalDesktopLogin_WhenEnabledForSqliteDevelopment_CreatesPersistentLocalUserSession()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Database:Provider"] = "Sqlite",
+                ["Auth:EnableLocalDesktopLogin"] = "true"
+            });
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        response.EnsureSuccessStatusCode();
+        var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>();
+
+        Assert.NotNull(login);
+        Assert.Equal(UserSessionType.DesktopLocal, login!.Session.SessionType);
+        Assert.Contains(login.Workspaces, workspace => workspace.Name == "All Tasks");
+    }
+
+    [Fact]
+    public async Task PostLocalDesktopLogin_WhenEnabledForPostgres_ReturnsNotFound()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Database:Provider"] = "Postgres",
+                ["Auth:EnableLocalDesktopLogin"] = "true"
+            });
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task PostLocalDesktopLogin_WhenDesktop_CreatesPersistentLocalUserSession()
     {
         using var factory = new DumpTetherApiFactory(

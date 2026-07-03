@@ -94,6 +94,10 @@ On first desktop launch, the local API creates or reuses a local SQLite `AppUser
 
 The session token can expire or be replaced. The durable local identity is the SQLite `AppUser`, plus future sync metadata such as `DeviceId`.
 
+Local desktop login must be explicitly enabled with `Auth:EnableLocalDesktopLogin` and is only valid when `Database:Provider=Sqlite`. Hosted PostgreSQL deployments must not expose the local desktop login endpoint.
+
+The packaged desktop app should normally talk to its local sidecar API. A configurable remote API base URL would be an online-client mode, not the default offline runtime.
+
 ## Login and Sync Mapping
 
 Full login-driven sync is future work. A first manual board sync pass exists so the local API can push/pull task header state through the same hosted API contract.
@@ -115,6 +119,8 @@ When the user logs in to the hosted DumpTether service, the app should not silen
 The local session is not the sync relationship. Cloud login creates the cloud authority; sync maps local SQLite records to hosted PostgreSQL records deliberately.
 
 Shared tasks and shared boards are server-side concepts. They are visible in the local app only after login and successful sync.
+
+Future organization/teams features should follow the same rule. Tasks assigned by a manager or another server-side actor are cloud-owned/shared data. The desktop app should fetch them only after cloud login succeeds, show a clear notification when they arrive, and keep local-only data separate from assigned/shared server data.
 
 If the user loses the SQLite database, any local-only data and local sync mappings are lost. Already-synced cloud data can be downloaded again after login because the cloud keeps remote IDs and membership. Unsynced local-only tasks cannot be recovered without a backup/export. After reinstall, the app should rebuild local mappings from downloaded cloud records or ask the user to link local boards again if local data still exists.
 

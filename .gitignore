@@ -39,6 +39,9 @@ appsettings.Staging.json
 *.rsuser
 *.local.json
 *.tsbuildinfo
+/dumptether-api.exe
+/dumptether-desktop.exe
+/uninstall.exe
 
 src/**/appsettings.Development.json
 src/**/appsettings.Local.json

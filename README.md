@@ -118,7 +118,7 @@ Local SQLite path:
 .\scripts\dev.ps1 -Target LocalBoth -OpenBrowser
 ```
 
-That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation. A first manual cloud sync pass exists for task headers, but full notes/templates/archive sync is still future work.
+That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation. Local SQLite mode enables a local desktop-style session automatically, so you can edit local data without creating a hosted account. A first manual cloud sync pass exists for task headers, but full notes/templates/archive sync is still future work.
 
 Quick chooser:
 
@@ -221,6 +221,17 @@ Typed config is bound in C# through `DumpTetherApiSetup` and the option classes 
 
 Tauri config is different: `apps/desktop/src-tauri/tauri.conf.json` and `capabilities/default.json` configure the desktop shell, window, bundler and sidecar permission. They do not replace `appsettings*.json`.
 
+The desktop app identifier is `net.heldbo.dumptether`. That reverse-DNS ID is the stable cross-platform application identity used by Tauri/operating systems for packaging, app data identity and future signing/update flows. The bundle publisher is `bheldbo`.
+
+API endpoint configuration is intentionally split by runtime:
+
+- Hosted website: set `VITE_API_BASE_URL` at frontend build time if the React app should call a different API origin. Leave it empty when the website and API are served from the same origin.
+- Vite dev: `apps/web/vite.config.ts` proxies `/api` and `/health` to `http://127.0.0.1:55868`.
+- Desktop local app: the React UI talks to the local sidecar API at `http://127.0.0.1:55868`.
+- Desktop cloud sync: the sync dialog asks for the hosted API URL and a cloud session token for that sync run. The app stores the URL only, not the token.
+
+So the WCF-style mental model is close, but the knob is an HTTP API base URL. The offline desktop runtime should keep using its local sidecar for normal work; pointing the whole desktop UI directly at a remote backend would be an online-client mode and is future work.
+
 Common local PostgreSQL defaults:
 
 ```text
@@ -235,6 +246,7 @@ Database__Provider
 Database__Sqlite__Path
 Auth__RequireAuthentication
 Auth__AllowGuestSessions
+Auth__EnableLocalDesktopLogin
 Auth__SignupMode
 Auth__SignupWhitelistEmails__0
 Auth__SignupWhitelistDomains__0
@@ -410,6 +422,8 @@ Tauri window
   -> SQLite local database
   -> same React task wall UI
 ```
+
+The desktop shell does not contain business logic. It starts the local API sidecar with `--environment=Desktop`; the API reads `appsettings.Desktop.json`, uses SQLite and creates/reuses a local desktop session. Cloud login/sync is layered on top of that local session instead of replacing it.
 
 Install desktop prerequisites first:
 

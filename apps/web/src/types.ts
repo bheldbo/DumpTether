@@ -234,6 +234,7 @@ export interface AuthClientOptionsResponse {
   requiresAuthentication: boolean;
   guestSessionsEnabled: boolean;
   developmentLoginEnabled: boolean;
+  localDesktopLoginEnabled: boolean;
   emailConfirmationEnabled: boolean;
   signupMode: 'Open' | 'Whitelist' | 'InviteOnly' | 'Closed' | 1 | 2 | 3 | 4;
   oAuthProviders: string[];

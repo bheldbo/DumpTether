@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "publisher": "bheldbo",
     "externalBin": ["binaries/dumptether-api"],
     "icon": ["icons/icon.ico"]
   }

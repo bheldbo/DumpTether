@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
+using DumpTether.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +21,7 @@ public sealed class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly IEmailSender _emailSender;
     private readonly IWebHostEnvironment _environment;
+    private readonly IConfiguration _configuration;
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<EmailConfirmationOptions> _emailConfirmationOptions;
     private readonly IOptions<OAuthOptions> _oauthOptions;
@@ -28,6 +30,7 @@ public sealed class AuthController : ControllerBase
         IAuthService authService,
         IEmailSender emailSender,
         IWebHostEnvironment environment,
+        IConfiguration configuration,
         IOptions<AuthOptions> authOptions,
         IOptions<EmailConfirmationOptions> emailConfirmationOptions,
         IOptions<OAuthOptions> oauthOptions)
@@ -35,6 +38,7 @@ public sealed class AuthController : ControllerBase
         _authService = authService;
         _emailSender = emailSender;
         _environment = environment;
+        _configuration = configuration;
         _authOptions = authOptions;
         _emailConfirmationOptions = emailConfirmationOptions;
         _oauthOptions = oauthOptions;
@@ -48,6 +52,7 @@ public sealed class AuthController : ControllerBase
             options.RequireAuthentication,
             options.AllowGuestSessions,
             _environment.IsDevelopment() && options.EnableDevelopmentLogin,
+            LocalDesktopLoginIsEnabled(),
             _emailConfirmationOptions.Value.Enabled,
             options.SignupMode,
             _oauthOptions.Value.EnabledProviders()));
@@ -249,7 +254,7 @@ public sealed class AuthController : ControllerBase
     [HttpPost("local-desktop")]
     public async Task<ActionResult<LoginUserResponse>> LocalDesktopLogin(CancellationToken cancellationToken)
     {
-        if (!string.Equals(_environment.EnvironmentName, "Desktop", StringComparison.OrdinalIgnoreCase))
+        if (!LocalDesktopLoginIsEnabled())
         {
             return NotFound();
         }
@@ -429,6 +434,10 @@ public sealed class AuthController : ControllerBase
             ? normalized
             : null;
     }
+
+    private bool LocalDesktopLoginIsEnabled() =>
+        _authOptions.Value.EnableLocalDesktopLogin &&
+        DumpTetherDatabaseOptions.IsSqlite(DumpTetherDatabaseOptions.GetProvider(_configuration));
 
     private string NormalizeReturnUrl(string? returnUrl)
     {

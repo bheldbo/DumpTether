@@ -69,3 +69,12 @@ This roadmap is directional. The MVP should stay plain, fast, and focused on a p
 
 - Add read-only MCP access for external tools.
 - Do not allow MCP write actions until the read model, permissions, and audit story are mature.
+
+## Future: Teams and Enterprise Self-Hosting
+
+- Optional organization/tenant layer.
+- Manager/team-lead task assignment to users.
+- In-app notifications for newly assigned tasks.
+- Microsoft Entra ID/Active Directory and Google Workspace login options.
+- Self-hosted API/PostgreSQL deployment for organizations.
+- See `docs/product/enterprise-teams.md`.

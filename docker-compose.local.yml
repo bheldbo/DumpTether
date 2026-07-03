@@ -34,6 +34,7 @@ services:
       Auth__SignupWhitelistDomains__0: ${DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0:-}
       Auth__SignupInviteCodes__0: ${DUMPTETHER_SIGNUP_INVITE_CODE_0:-}
       Auth__EnableDevelopmentLogin: ${DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN:-true}
+      Auth__EnableLocalDesktopLogin: ${DUMPTETHER_ENABLE_LOCAL_DESKTOP_LOGIN:-false}
       Auth__DevelopmentEmail: ${DUMPTETHER_DEVELOPMENT_EMAIL:-dev@dumptether.local}
       Auth__DevelopmentPassword: ${DUMPTETHER_DEVELOPMENT_PASSWORD:-dumptether-dev-password}
       Auth__DevelopmentDisplayName: ${DUMPTETHER_DEVELOPMENT_DISPLAY_NAME:-Dev User}

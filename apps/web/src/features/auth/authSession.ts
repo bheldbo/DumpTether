@@ -88,7 +88,7 @@ function shouldStartDesktopLocalSession(
   error: unknown,
 ) {
   return authOptions.requiresAuthentication &&
-    isDesktopRuntime() &&
+    (authOptions.localDesktopLoginEnabled || isDesktopRuntime()) &&
     error instanceof ApiError &&
     error.status === 401;
 }

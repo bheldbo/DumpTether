@@ -81,6 +81,7 @@ function Set-DumpTetherConfigAliases {
         "DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0" = "Auth__SignupWhitelistDomains__0"
         "DUMPTETHER_SIGNUP_INVITE_CODE_0" = "Auth__SignupInviteCodes__0"
         "DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN" = "Auth__EnableDevelopmentLogin"
+        "DUMPTETHER_ENABLE_LOCAL_DESKTOP_LOGIN" = "Auth__EnableLocalDesktopLogin"
         "DUMPTETHER_DEVELOPMENT_EMAIL" = "Auth__DevelopmentEmail"
         "DUMPTETHER_DEVELOPMENT_PASSWORD" = "Auth__DevelopmentPassword"
         "DUMPTETHER_DEVELOPMENT_DISPLAY_NAME" = "Auth__DevelopmentDisplayName"
@@ -219,6 +220,7 @@ function Set-DumpTetherLocalRuntimeEnvironment {
     Set-DumpTetherConfigAliases
     $env:Database__Provider = "Sqlite"
     $env:Database__ApplyMigrationsOnStartup = "true"
+    $env:Auth__EnableLocalDesktopLogin = "true"
     $env:ConnectionStrings__DumpTether = $null
     $env:ASPNETCORE_ENVIRONMENT = Get-EnvValue "ASPNETCORE_ENVIRONMENT" "Development"
 

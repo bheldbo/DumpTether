@@ -57,6 +57,7 @@ Do not introduce calendar/email integrations into the MVP.
 Use these docs as the repo grows instead of rediscovering the same decisions from code alone:
 
 - Product direction: `docs/product/product-principles.md`, `docs/product/ui-principles.md`, `docs/product/roadmap.md`
+- Future teams/enterprise direction: `docs/product/enterprise-teams.md`
 - Frontend structure: `docs/product/web-frontend-architecture.md`
 - Core architecture/config: `docs/adr/0001-architecture.md`, `docs/adr/0002-configuration.md`
 - Desktop/offline/sync: `docs/adr/0003-desktop-offline-architecture.md`, `docs/adr/0006-local-offline-runtime-and-sync.md`

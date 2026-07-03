@@ -28,6 +28,7 @@ services:
       Auth__SignupWhitelistDomains__0: ${DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0}
       Auth__SignupInviteCodes__0: ${DUMPTETHER_SIGNUP_INVITE_CODE_0}
       Auth__EnableDevelopmentLogin: ${DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN:-false}
+      Auth__EnableLocalDesktopLogin: ${DUMPTETHER_ENABLE_LOCAL_DESKTOP_LOGIN:-false}
       Auth__SessionDays: ${DUMPTETHER_AUTH_SESSION_DAYS:-30}
       Auth__SessionCleanupDays: ${DUMPTETHER_AUTH_SESSION_CLEANUP_DAYS:-90}
       Auth__SessionCleanupIntervalHours: ${DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS:-24}

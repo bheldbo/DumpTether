@@ -76,6 +76,7 @@ public sealed record AuthClientOptionsResponse(
     bool RequiresAuthentication,
     bool GuestSessionsEnabled,
     bool DevelopmentLoginEnabled,
+    bool LocalDesktopLoginEnabled,
     bool EmailConfirmationEnabled,
     AuthSignupMode SignupMode,
     IReadOnlyList<string> OAuthProviders);
