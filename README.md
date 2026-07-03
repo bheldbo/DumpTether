@@ -126,6 +126,7 @@ Quick chooser:
 Web dev with PostgreSQL:    .\scripts\dev.ps1 -Target Both -OpenBrowser
 Offline-style web dev:      .\scripts\dev.ps1 -Target LocalBoth -OpenBrowser
 Desktop dev shell:          .\scripts\desktop.ps1 -Target Dev
+Desktop metadata sync:      .\scripts\desktop.ps1 -Target SyncManifest
 Windows desktop installer:  .\scripts\desktop.ps1 -Target Build
 Linux server deployment:    Docker Compose, see docs/deployment/docker-compose-production.md
 Linux desktop bundles:      build on a Linux host or Linux CI runner, see apps/desktop/README.md
@@ -233,10 +234,24 @@ Tauri config is different: `apps/desktop/src-tauri/tauri.conf.json` and `capabil
 
 The desktop app identifier is `net.heldbo.dumptether`. That reverse-DNS ID is the stable cross-platform application identity used by Tauri/operating systems for packaging, app data identity and future signing/update flows. The bundle publisher is `bheldbo`.
 
+Desktop release metadata is centralized in `apps/desktop/desktop.manifest.json`.
+Edit that file for desktop version, product name, app identifier, publisher and
+the default hosted/cloud API URL. Then run:
+
+```powershell
+.\scripts\desktop.ps1 -Target SyncManifest
+```
+
+The sync step writes the generated values into `apps/desktop/package.json`,
+`apps/desktop/package-lock.json`, `apps/desktop/src-tauri/tauri.conf.json` and
+`apps/desktop/src-tauri/Cargo.toml`. Desktop dev/build scripts run the sync
+automatically, and CI checks that the generated files match the manifest.
+
 API endpoint configuration is intentionally split by runtime:
 
 - Hosted website: set `VITE_API_BASE_URL` at frontend build time if the React app should call a different API origin. Leave it empty when the website and API are served from the same origin.
-- Packaged desktop/cloud sync default: set `VITE_DEFAULT_CLOUD_API_BASE_URL` at frontend build time to pre-fill the cloud sync dialog with your hosted API. The user can still override and save another URL later.
+- Packaged desktop/cloud sync default: set `defaultCloudApiBaseUrl` in `apps/desktop/desktop.manifest.json` to pre-fill the cloud sync dialog with your hosted API. The Tauri build passes that through as `VITE_DEFAULT_CLOUD_API_BASE_URL`. The user can still override and save another URL later.
+- Direct web build cloud sync default: set `VITE_DEFAULT_CLOUD_API_BASE_URL` at frontend build time.
 - Vite dev: `apps/web/vite.config.ts` proxies `/api` and `/health` to `http://127.0.0.1:55868`.
 - Desktop local app: the React UI talks to the local sidecar API at `http://127.0.0.1:55868`.
 - Desktop cloud sync: the sync dialog asks for the hosted API URL and a cloud session token for that sync run. The app stores the URL only, not the token.

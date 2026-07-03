@@ -1,0 +1,9 @@
+{
+  "productName": "DumpTether",
+  "version": "0.1.0",
+  "identifier": "net.heldbo.dumptether",
+  "publisher": "bheldbo",
+  "windowTitle": "DumpTether",
+  "description": "DumpTether desktop shell",
+  "defaultCloudApiBaseUrl": ""
+}

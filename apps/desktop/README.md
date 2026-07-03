@@ -54,6 +54,37 @@ The Tauri app identifier is `net.heldbo.dumptether`. This is a reverse-DNS-style
 stable application ID for the operating system, installer, app data identity and
 future signing/update flows. The bundle publisher is `bheldbo`.
 
+Desktop release metadata has one source file:
+
+```text
+apps/desktop/desktop.manifest.json
+```
+
+Edit that file for:
+
+- product name
+- desktop version
+- app identifier
+- publisher
+- window title
+- default hosted/cloud API URL
+
+Then sync the generated config files:
+
+```powershell
+.\scripts\desktop.ps1 -Target SyncManifest
+```
+
+or:
+
+```powershell
+cd apps\desktop
+npm run sync:manifest
+```
+
+That updates `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`
+and `src-tauri/Cargo.toml`. CI checks that those files match the manifest.
+
 There is no second desktop business-config file. The desktop sidecar uses normal
 ASP.NET configuration, so environment variables can still override
 `appsettings.Desktop.json` when needed.
@@ -63,7 +94,9 @@ Endpoint shape:
 - Normal desktop use talks to the local sidecar at `http://127.0.0.1:55868`.
 - Cloud sync asks for a hosted DumpTether API URL per sync run.
 - Packaged builds can set `VITE_DEFAULT_CLOUD_API_BASE_URL` so the cloud sync
-  dialog is pre-filled with the default hosted API.
+  dialog is pre-filled with the default hosted API. For desktop releases, prefer
+  setting `defaultCloudApiBaseUrl` in `desktop.manifest.json`; the Tauri build
+  runner passes that value to the shared React build.
 - The user can override the cloud API URL after install; that saved URL is local
   user configuration, not installer configuration.
 - A future online-only desktop mode could make the API base URL configurable, but

@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "net.heldbo.dumptether",
   "build": {
-    "beforeDevCommand": "npm --prefix ../web run dev",
-    "beforeBuildCommand": "npm --prefix ../web run build",
+    "beforeDevCommand": "node scripts/run-web.mjs dev",
+    "beforeBuildCommand": "node scripts/run-web.mjs build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../../web/dist"
   },
@@ -27,9 +27,15 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "bheldbo",
-    "externalBin": ["binaries/dumptether-api"],
-    "icon": ["icons/icon.ico"]
+    "externalBin": [
+      "binaries/dumptether-api"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ]
   }
 }

@@ -100,6 +100,8 @@ The packaged desktop app should normally talk to its local sidecar API. A config
 
 For sync/login, the desktop UI may use a packaged default hosted API URL via `VITE_DEFAULT_CLOUD_API_BASE_URL`, then allow the user to override that URL locally. This keeps the installer useful out of the box for the default DumpTether server while preserving a future self-hosted endpoint path.
 
+Desktop release metadata is centralized in `apps/desktop/desktop.manifest.json`. The manifest owns desktop product/version/identifier/publisher/default cloud API values, and the sync script propagates those values into Tauri, npm and Cargo metadata. It is not a replacement for ASP.NET `appsettings.Desktop.json`; appsettings still owns the local sidecar runtime behavior such as SQLite, local URLs and auth mode.
+
 ## Login and Sync Mapping
 
 Full login-driven sync is future work. A first manual board sync pass exists so the local API can push/pull task header state through the same hosted API contract.

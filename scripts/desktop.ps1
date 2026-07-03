@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Install", "Sidecar", "Dev", "Build", "BuildMsi", "BuildLinux")]
+    [ValidateSet("Install", "SyncManifest", "Sidecar", "Dev", "Build", "BuildMsi", "BuildLinux")]
     [string] $Target = "Dev"
 )
 
@@ -79,6 +79,17 @@ function Install-DesktopDependencies {
         & $npmCommand install
         if ($LASTEXITCODE -ne 0) {
             throw "npm install failed with exit code $LASTEXITCODE."
+        }
+    }
+}
+
+function Sync-DesktopManifest {
+    Assert-Command "node" "Install Node.js 24 LTS or newer."
+
+    Invoke-InDesktopRoot {
+        & node scripts/sync-desktop-manifest.mjs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Desktop manifest sync failed with exit code $LASTEXITCODE."
         }
     }
 }
@@ -195,6 +206,7 @@ function Get-WindowsNativeToolsCommand {
 
 switch ($Target) {
     "Install" { Install-DesktopDependencies }
+    "SyncManifest" { Sync-DesktopManifest }
     "Sidecar" { Build-Sidecar }
     "Dev" { Start-DesktopDev }
     "Build" { Build-DesktopInstaller }

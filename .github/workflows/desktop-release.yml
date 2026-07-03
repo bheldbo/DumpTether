@@ -92,6 +92,10 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
+      - name: Check desktop manifest
+        working-directory: apps/desktop
+        run: npm run sync:manifest:check
+
       - name: Build desktop bundle
         working-directory: apps/desktop
         run: npm run ${{ matrix.npm_script }}
