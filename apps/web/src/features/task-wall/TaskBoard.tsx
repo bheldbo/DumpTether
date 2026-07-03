@@ -9,6 +9,7 @@ import {
 import { Icon } from '../../components/Icon';
 import { TaskFilterBar } from '../../components/TaskFilterBar';
 import { TaskBadges, TaskMetaChip } from '../../components/TaskMetadata';
+import { TaskSyncIndicator } from '../../components/TaskSyncIndicator';
 import { type ToastTone } from '../../appTypes';
 import {
   formatFullDate,
@@ -584,6 +585,7 @@ export function TaskBoard({
                       {taskItem.shares.length}
                     </span>
                   ) : null}
+                  <TaskSyncIndicator syncState={taskItem.syncState} t={t} />
                 </span>
                 <span className="task-card-main">
                   <span className="task-card-latest">

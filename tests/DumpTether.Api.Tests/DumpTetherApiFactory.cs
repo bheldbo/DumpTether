@@ -1,4 +1,5 @@
 using DumpTether.App.LiveUpdates;
+using DumpTether.App.Auth;
 using DumpTether.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -14,11 +15,13 @@ namespace DumpTether.Api.Tests;
 internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
 {
     private const string ConnectionStringKey = "ConnectionStrings__DumpTether";
+    private const string ApplyMigrationsOnStartupKey = "Database__ApplyMigrationsOnStartup";
     private const string TestConnectionString =
         "Host=localhost;Database=dumptether_tests;Username=dumptether;Password=dumptether";
 
     private SqliteConnection? _connection;
     private readonly string? _previousConnectionString;
+    private readonly string? _previousApplyMigrationsOnStartup;
     private readonly bool _requireAuthentication;
     private readonly bool _enableDevelopmentLogin;
     private readonly int _maxActiveTasksPerWorkspace;
@@ -44,19 +47,21 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         _extraConfiguration = extraConfiguration ?? new Dictionary<string, string?>();
         _liveUpdatePublisher = liveUpdatePublisher;
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
+        _previousApplyMigrationsOnStartup =
+            Environment.GetEnvironmentVariable(ApplyMigrationsOnStartupKey);
         Environment.SetEnvironmentVariable(
             ConnectionStringKey,
             string.Equals(environmentName, "Desktop", StringComparison.OrdinalIgnoreCase)
                 ? "Data Source=:memory:"
                 : TestConnectionString);
+        Environment.SetEnvironmentVariable(ApplyMigrationsOnStartupKey, "false");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        if (!string.IsNullOrWhiteSpace(_environmentName))
-        {
-            builder.UseEnvironment(_environmentName);
-        }
+        builder.UseEnvironment(string.IsNullOrWhiteSpace(_environmentName)
+            ? "Development"
+            : _environmentName);
 
         builder.ConfigureLogging(loggingBuilder =>
         {
@@ -76,6 +81,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
                 ["ConnectionStrings:DumpTether"] = connectionString,
                 ["Auth:RequireAuthentication"] = _requireAuthentication.ToString(),
                 ["Auth:EnableDevelopmentLogin"] = _enableDevelopmentLogin.ToString(),
+                ["Database:ApplyMigrationsOnStartup"] = "false",
                 ["Usage:MaxActiveTasksPerWorkspace"] = _maxActiveTasksPerWorkspace.ToString(),
                 ["Usage:MaxTotalTasksPerWorkspace"] = _maxTotalTasksPerWorkspace.ToString()
             };
@@ -104,6 +110,12 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
                 services.AddSingleton(_liveUpdatePublisher);
             }
 
+            services.PostConfigure<AuthOptions>(options =>
+            {
+                options.RequireAuthentication = _requireAuthentication;
+                options.EnableDevelopmentLogin = _enableDevelopmentLogin;
+            });
+
             using var serviceProvider = services.BuildServiceProvider();
             using var scope = serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
@@ -119,6 +131,9 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         {
             _connection?.Dispose();
             Environment.SetEnvironmentVariable(ConnectionStringKey, _previousConnectionString);
+            Environment.SetEnvironmentVariable(
+                ApplyMigrationsOnStartupKey,
+                _previousApplyMigrationsOnStartup);
         }
     }
 }

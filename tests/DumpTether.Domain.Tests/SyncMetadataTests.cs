@@ -69,4 +69,23 @@ public sealed class SyncMetadataTests
             "v2",
             mapping.CreatedAt.AddMinutes(2)));
     }
+
+    [Fact]
+    public void Mapping_MarkSyncFailed_StoresFailureEvidence()
+    {
+        var mapping = SyncMapping.CreateLocal(
+            Guid.NewGuid(),
+            SyncEntityType.TaskItem,
+            Guid.NewGuid(),
+            new DateTimeOffset(2026, 7, 1, 14, 30, 0, TimeSpan.Zero));
+        var attemptedAt = mapping.CreatedAt.AddMinutes(5);
+
+        mapping.MarkSyncFailed("Cloud API was unavailable.", attemptedAt);
+
+        Assert.Equal(SyncMappingStatus.SyncFailed, mapping.Status);
+        Assert.Equal("Cloud API was unavailable.", mapping.LastError);
+        Assert.Equal(attemptedAt, mapping.LastAttemptedAt);
+        Assert.Equal(attemptedAt, mapping.UpdatedAt);
+        Assert.Null(mapping.LastSyncedAt);
+    }
 }

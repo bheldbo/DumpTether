@@ -22,3 +22,10 @@ public sealed record SyncRootResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     DateTimeOffset? LastSyncedAt);
+
+public sealed record MarkTaskItemSyncedRequest(
+    Guid RemoteTaskItemId,
+    string? RemoteVersion = null);
+
+public sealed record MarkTaskItemSyncFailedRequest(
+    string Error);

@@ -43,6 +43,13 @@ internal sealed class SyncMappingConfiguration : IEntityTypeConfiguration<SyncMa
             .HasMaxLength(40)
             .IsRequired();
 
+        builder.Property(mapping => mapping.LastError)
+            .HasColumnName("last_error")
+            .HasMaxLength(1000);
+
+        builder.Property(mapping => mapping.LastAttemptedAt)
+            .HasColumnName("last_attempted_at");
+
         builder.Property(mapping => mapping.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();

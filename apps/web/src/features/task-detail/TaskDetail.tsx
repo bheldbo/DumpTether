@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { ColorPickerPopover } from '../../components/ColorPickerPopover';
 import { Icon } from '../../components/Icon';
+import { TaskSyncIndicator } from '../../components/TaskSyncIndicator';
 import {
   formatFullDate,
   formatRelativeDate,
@@ -201,6 +202,7 @@ export function TaskDetail({
         />
 
         <div className="detail-actions">
+          <TaskSyncIndicator syncState={taskItem.syncState} t={t} />
           {!taskItem.archivedAt ? (
             <ColorPickerPopover
               color={taskItem.color ?? ''}

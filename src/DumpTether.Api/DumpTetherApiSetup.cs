@@ -79,13 +79,14 @@ internal static class DumpTetherApiSetup
         {
             try
             {
-                await dbContext.Database.EnsureCreatedAsync();
+                await dbContext.Database.MigrateAsync();
             }
             catch (Exception exception)
             {
                 throw new InvalidOperationException(
-                    "DumpTether could not create the local SQLite database on startup. " +
-                    "Check Database:Sqlite:Path permissions or remove the local database file and retry.",
+                    "DumpTether could not apply SQLite migrations for the local database on startup. " +
+                    "Check Database:Sqlite:Path permissions, run the DumpTether.Database maintenance tool, " +
+                    "or remove the local database file and retry if this is disposable development data.",
                     exception);
             }
         }

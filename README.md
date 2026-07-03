@@ -69,6 +69,7 @@ src/DumpTether.Api/       ASP.NET Core HTTP API
 src/DumpTether.App/       Application services and use cases
 src/DumpTether.Domain/    Domain model and business rules
 src/DumpTether.Data/      EF Core persistence with PostgreSQL/SQLite provider selection
+src/DumpTether.Data.Sqlite/ SQLite provider-specific EF Core migrations
 src/DumpTether.Database/  Runnable database maintenance shell for migrations/local data chores
 docs/                     ADRs, security notes, deployment notes
 deploy/docker/            Production Docker Compose examples
@@ -86,7 +87,7 @@ Design principles:
 
 Current shortcomings:
 
-- Desktop/offline mode has the first SQLite/API foundation and Tauri scaffold, but no sync yet.
+- Desktop/offline mode has the SQLite/API foundation, Tauri scaffold, and local sync status metadata. Cloud push/pull sync is not implemented yet.
 - Email confirmation/OAuth plumbing exists, but provider setup is still rough.
 - Sharing works as an MVP flow, but permissions and notifications need more polish.
 - Live updates are early and should be hardened before real multi-user use.
@@ -395,7 +396,7 @@ Windows: %APPDATA%\DumpTether\dumptether.db
 Linux:   ~/.local/share/DumpTether/dumptether.db
 ```
 
-The current SQLite path is for local/offline development. Full login sync, conflict resolution and desktop packaging are tracked in `docs/adr/0006-local-offline-runtime-and-sync.md`.
+The current SQLite path is for local/offline development. SQLite uses provider-specific EF Core migrations in `src/DumpTether.Data.Sqlite`. Full login sync and conflict resolution are tracked in `docs/adr/0006-local-offline-runtime-and-sync.md`.
 
 ## Desktop App
 
@@ -433,7 +434,7 @@ npm run dev
 npm run build:desktop
 ```
 
-`build:sidecar` publishes `DumpTether.Api` as a generated sidecar binary for Tauri. `build:desktop` runs `tauri build`, which is the path toward `.exe`/`.msi` bundles. Signing certificates, update feeds and sync are still future work.
+`build:sidecar` publishes `DumpTether.Api` as a generated sidecar binary for Tauri. `build:desktop` runs `tauri build`, which is the path toward `.exe`/`.msi` bundles. Signing certificates, update feeds and cloud sync are still future work.
 
 The first sidecar build may download .NET runtime packs from NuGet for the selected runtime, for example `win-x64`.
 

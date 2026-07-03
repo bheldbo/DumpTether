@@ -17,6 +17,7 @@ export interface TaskItemSummaryResponse {
   archiveResolutionId: string | null;
   noteCount: number;
   shares: TaskItemShareResponse[];
+  syncState: TaskSyncStateResponse | null;
   latestTimelineEntry: TaskTimelineEntryResponse | null;
 }
 
@@ -24,6 +25,23 @@ export interface TaskItemDetailResponse extends TaskItemSummaryResponse {
   template: TaskTemplateDetailResponse | null;
   fieldValues: FieldValueResponse[];
   timelineEntries: TaskTimelineEntryResponse[];
+}
+
+export type TaskSyncStatus =
+  | 'LocalOnly'
+  | 'Synced'
+  | 'Conflict'
+  | 'Deleted'
+  | 'SyncFailed'
+  | string;
+
+export interface TaskSyncStateResponse {
+  status: TaskSyncStatus;
+  remoteId: string | null;
+  lastRemoteVersion: string | null;
+  lastAttemptedAt: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
 }
 
 export interface TaskItemViewCountResponse {

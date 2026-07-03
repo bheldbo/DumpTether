@@ -235,6 +235,37 @@
   font-weight: 780;
 }
 
+.task-sync-indicator {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(24, 33, 44, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  color: #166534;
+  box-shadow: 0 8px 18px rgba(24, 33, 44, 0.06);
+}
+
+.task-sync-indicator .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.task-sync-indicator[data-state="SyncFailed"] {
+  border-color: rgba(190, 58, 45, 0.28);
+  background: rgba(254, 226, 226, 0.88);
+  color: #84241e;
+}
+
+.task-sync-indicator[data-state="Conflict"],
+.task-sync-indicator[data-state="Deleted"] {
+  border-color: rgba(180, 125, 28, 0.28);
+  background: rgba(254, 243, 199, 0.9);
+  color: #6e4b12;
+}
+
 .task-card-latest {
   min-height: 6.2em;
   overflow: hidden;

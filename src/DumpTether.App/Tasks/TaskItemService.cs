@@ -3,6 +3,7 @@ using System.Text.Json;
 using DumpTether.App.Auth;
 using DumpTether.App.LiveUpdates;
 using DumpTether.App.Projects;
+using DumpTether.App.Sync;
 using DumpTether.App.Templates;
 using DumpTether.App.Usage;
 using DumpTether.App.Views;
@@ -23,6 +24,7 @@ internal sealed class TaskItemService : ITaskItemService
     private readonly IProjectRepository _projectRepository;
     private readonly ISavedViewRepository _savedViewRepository;
     private readonly ISessionTokenService _sessionTokenService;
+    private readonly ISyncService _syncService;
     private readonly ITaskItemRepository _taskItemRepository;
     private readonly ITaskTemplateRepository _taskTemplateRepository;
     private readonly IOptions<UsageOptions> _usageOptions;
@@ -36,6 +38,7 @@ internal sealed class TaskItemService : ITaskItemService
         IProjectRepository projectRepository,
         ISavedViewRepository savedViewRepository,
         ISessionTokenService sessionTokenService,
+        ISyncService syncService,
         ITaskItemRepository taskItemRepository,
         ITaskTemplateRepository taskTemplateRepository,
         IOptions<UsageOptions> usageOptions)
@@ -48,6 +51,7 @@ internal sealed class TaskItemService : ITaskItemService
         _projectRepository = projectRepository;
         _savedViewRepository = savedViewRepository;
         _sessionTokenService = sessionTokenService;
+        _syncService = syncService;
         _taskItemRepository = taskItemRepository;
         _taskTemplateRepository = taskTemplateRepository;
         _usageOptions = usageOptions;
@@ -95,13 +99,20 @@ internal sealed class TaskItemService : ITaskItemService
 
         await _taskItemRepository.AddAsync(taskItem, cancellationToken);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await _syncService.EnsureLocalTaskMappingAsync(
+            context.WorkspaceId,
+            taskItem.Id,
+            cancellationToken);
         await PublishTaskEventAsync(
             LiveUpdateEvents.TaskCreated,
             taskItem,
             now,
             cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(
+            taskItem,
+            taskTemplate,
+            await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     private async Task<DevelopmentWorkspaceContext> GetRequiredWorkspaceContextAsync(
@@ -165,7 +176,16 @@ internal sealed class TaskItemService : ITaskItemService
             query,
             cancellationToken);
 
-        return taskItems.Select(MapSummary).ToList();
+        var syncStates = await _syncService.ListTaskSyncStatesAsync(
+            context.WorkspaceId,
+            taskItems.Select(taskItem => taskItem.Id).ToArray(),
+            cancellationToken);
+
+        return taskItems
+            .Select(taskItem => MapSummary(
+                taskItem,
+                syncStates.GetValueOrDefault(taskItem.Id)))
+            .ToList();
     }
 
     public async Task<IReadOnlyList<TaskItemViewCountResponse>> CountByViewsAsync(
@@ -238,7 +258,7 @@ internal sealed class TaskItemService : ITaskItemService
             includeDeleted: true,
             cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<TaskItemDetailResponse?> UpdateAsync(
@@ -329,7 +349,7 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken,
             currentSession);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<CopyTaskItemsResponse> CopyAsync(
@@ -462,6 +482,25 @@ internal sealed class TaskItemService : ITaskItemService
 
         foreach (var copiedTask in copiedTasks)
         {
+            await _syncService.EnsureLocalTaskMappingAsync(
+                copiedTask.WorkspaceId,
+                copiedTask.Id,
+                cancellationToken);
+        }
+
+        var copiedSyncStates = await _syncService.ListTaskSyncStatesAsync(
+            request.DestinationWorkspaceId,
+            copiedTasks.Select(copiedTask => copiedTask.Id).ToArray(),
+            cancellationToken);
+        copiedTasks = copiedTasks
+            .Select(copiedTask => copiedTask with
+            {
+                SyncState = copiedSyncStates.GetValueOrDefault(copiedTask.Id)
+            })
+            .ToList();
+
+        foreach (var copiedTask in copiedTasks)
+        {
             await _liveUpdatePublisher.PublishAsync(
                 new LiveUpdateMessage(
                     LiveUpdateEvents.TaskCreated,
@@ -524,7 +563,10 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken,
             timelineEntryId: entryId);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(
+            taskItem,
+            taskTemplate,
+            await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<TaskItemDetailResponse?> DeleteTimelineEntryAsync(
@@ -553,7 +595,7 @@ internal sealed class TaskItemService : ITaskItemService
             includeDeleted: true,
             cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<TaskItemDetailResponse?> AddTimelineEntryAsync(
@@ -592,7 +634,7 @@ internal sealed class TaskItemService : ITaskItemService
             now,
             cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<TaskItemDetailResponse?> ArchiveAsync(
@@ -651,7 +693,7 @@ internal sealed class TaskItemService : ITaskItemService
             includeDeleted: true,
             cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<TaskItemDetailResponse?> ReopenAsync(
@@ -681,7 +723,7 @@ internal sealed class TaskItemService : ITaskItemService
             includeDeleted: true,
             cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<TaskItemBatchResponse> ReopenAsync(
@@ -843,7 +885,7 @@ internal sealed class TaskItemService : ITaskItemService
             includeDeleted: true,
             cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<TaskShareLinkResponse?> CreateShareLinkAsync(
@@ -1044,7 +1086,7 @@ internal sealed class TaskItemService : ITaskItemService
             includeDeleted: true,
             cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<TaskItemDetailResponse?> UpdateShareRoleAsync(
@@ -1075,7 +1117,7 @@ internal sealed class TaskItemService : ITaskItemService
             includeDeleted: true,
             cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate);
+        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
     }
 
     public async Task<bool> LeaveShareAsync(
@@ -1968,7 +2010,22 @@ internal sealed class TaskItemService : ITaskItemService
             !string.IsNullOrWhiteSpace(value.GetString()));
     }
 
-    private static TaskItemSummaryResponse MapSummary(TaskItem taskItem)
+    private async Task<TaskSyncStateResponse?> GetTaskSyncStateAsync(
+        Guid workspaceId,
+        Guid taskItemId,
+        CancellationToken cancellationToken)
+    {
+        var states = await _syncService.ListTaskSyncStatesAsync(
+            workspaceId,
+            [taskItemId],
+            cancellationToken);
+
+        return states.GetValueOrDefault(taskItemId);
+    }
+
+    private static TaskItemSummaryResponse MapSummary(
+        TaskItem taskItem,
+        TaskSyncStateResponse? syncState = null)
     {
         var latestTimelineEntry = taskItem.TimelineEntries
             .Where(entry => entry.DeletedAt == null && entry.Kind == TaskTimelineEntryKind.NoteAdded)
@@ -1994,6 +2051,7 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.ArchiveResolutionId,
             noteCount,
             MapShares(taskItem),
+            syncState,
             latestTimelineEntry is null
                 ? null
                 : new TaskTimelineEntryResponse(
@@ -2008,7 +2066,8 @@ internal sealed class TaskItemService : ITaskItemService
 
     private static TaskItemDetailResponse MapDetail(
         TaskItem taskItem,
-        TaskTemplate? taskTemplate)
+        TaskTemplate? taskTemplate,
+        TaskSyncStateResponse? syncState = null)
     {
         return new TaskItemDetailResponse(
             taskItem.Id,
@@ -2027,6 +2086,7 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.ArchiveResolutionId,
             CountNotes(taskItem),
             MapShares(taskItem),
+            syncState,
             taskTemplate is null ? null : MapTaskTemplateForTask(taskTemplate, taskItem),
             taskItem.FieldValues
                 .OrderBy(value => value.UpdatedAt)

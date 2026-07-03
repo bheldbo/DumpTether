@@ -34,7 +34,7 @@ Tauri shell
   -> same React UI
 ```
 
-The first implementation step is not the Tauri shell. The first step is making `DumpTether.Api` run against SQLite with `Database:Provider=Sqlite`.
+The first implementation step was making `DumpTether.Api` run against SQLite with `Database:Provider=Sqlite`. The current local runtime also has a Tauri development shell scaffold, but sync is still deliberately minimal.
 
 The desktop project should later live in `apps/desktop`. It should package the built React UI and start the local .NET API sidecar on localhost.
 
@@ -46,6 +46,7 @@ This is the intended ownership:
 - `DumpTether.App`: use cases and validation
 - `DumpTether.Api`: HTTP API used by web and desktop
 - `DumpTether.Data`: EF Core repositories and provider selection
+- `DumpTether.Data.Sqlite`: SQLite provider-specific EF migrations
 - `apps/web`: shared React UI
 - `apps/desktop`: future Tauri shell only
 - `DumpTether.Sync`: future sync engine
@@ -64,6 +65,8 @@ Linux:   ~/.local/share/DumpTether/dumptether.db
 ```
 
 JSON remains appropriate for lightweight app preferences and export/import metadata, not the live task database.
+
+SQLite uses provider-specific EF Core migrations in `DumpTether.Data.Sqlite`. The local API should apply migrations at startup in desktop/local mode, and the database maintenance shell can run the same migrations explicitly. Do not use `EnsureCreated` for real local desktop data upgrades because it bypasses migration history.
 
 ## Packaging
 
@@ -133,7 +136,9 @@ SyncMapping
   RemoteId
   LastRemoteVersion
   Status
+  LastAttemptedAt
   LastSyncedAt
+  LastError
 ```
 
 `SyncRoot` represents a board-level sync relationship. `SyncMapping` represents individual local-to-remote entity links. These records prevent duplicate uploads because retries can resolve "this local thing already became that remote thing" before creating new remote rows.
@@ -169,6 +174,17 @@ Permanent deletion should be delayed until tombstones have synced. Archive and s
 ## Conflict Handling
 
 DumpTether should avoid noisy conflicts, but not silently destroy user work.
+
+The MVP sync strategy is best-effort and status-first:
+
+- Local-only tasks stay local until the user deliberately maps/syncs a board.
+- Successful sync stores the remote ID/version in `SyncMapping`.
+- Failed sync stores a short failure reason and the last attempt time.
+- The UI should make failed/conflicted sync obvious with a small cloud/status indicator.
+- If a task cannot be pushed safely, leave the local task intact and show the failure instead of guessing.
+- If a duplicate is created during an early sync implementation, prefer user-visible recovery over destructive automatic merge.
+
+Full field-level conflict UI is future work. The state-of-the-art target remains:
 
 Recommended policy:
 
