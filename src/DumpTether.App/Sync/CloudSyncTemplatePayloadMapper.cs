@@ -28,7 +28,8 @@ internal static class CloudSyncTemplatePayloadMapper
 
         return new RemoteTaskTemplateProjection(
             remoteTemplate.Id,
-            localToRemoteHeaderFieldIds);
+            localToRemoteHeaderFieldIds,
+            localTemplate);
     }
 
     public static CloudSyncCreateTaskTemplateRequest CreateRequest(
@@ -290,9 +291,10 @@ internal static class CloudSyncTemplatePayloadMapper
 
 internal sealed record RemoteTaskTemplateProjection(
     Guid? RemoteTemplateId,
-    IReadOnlyDictionary<Guid, Guid> LocalToRemoteHeaderFieldIds)
+    IReadOnlyDictionary<Guid, Guid> LocalToRemoteHeaderFieldIds,
+    TaskTemplate? LocalTemplate)
 {
-    public static readonly RemoteTaskTemplateProjection Empty = new(null, new Dictionary<Guid, Guid>());
+    public static readonly RemoteTaskTemplateProjection Empty = new(null, new Dictionary<Guid, Guid>(), null);
 }
 
 internal sealed record RemoteToLocalTaskTemplateProjection(

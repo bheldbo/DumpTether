@@ -382,6 +382,34 @@ internal sealed class SyncService : ISyncService
 
         if (request.PullRemoteChanges)
         {
+            if (!request.PushLocalChanges)
+            {
+                foreach (var localTask in localTasks)
+                {
+                    if (!mappings.TryGetValue(localTask.Id, out var mapping) ||
+                        mapping.RemoteId is not Guid remoteTaskId ||
+                        !remoteTasks.TryGetValue(remoteTaskId, out var remoteTask))
+                    {
+                        continue;
+                    }
+
+                    await PullMappedRemoteTaskAsync(
+                        connection,
+                        root,
+                        localTask,
+                        mapping,
+                        remoteTask,
+                        stats,
+                        messages,
+                        cancellationToken);
+                }
+
+                remoteIdsAlreadyMapped = mappings.Values
+                    .Where(mapping => mapping.RemoteId.HasValue)
+                    .Select(mapping => mapping.RemoteId!.Value)
+                    .ToHashSet();
+            }
+
             foreach (var remoteTask in remoteTasks.Values)
             {
                 if (remoteIdsAlreadyMapped.Contains(remoteTask.Id))
@@ -623,7 +651,83 @@ internal sealed class SyncService : ISyncService
                 return;
             }
 
-            if (remoteChanged && ApplyRemoteHeaderToLocal(localTask, remoteTask, _clock.UtcNow))
+            if (remoteChanged)
+            {
+                var trackedLocalTask = await GetTrackedLocalTaskForSyncAsync(localTask, cancellationToken);
+                var changed = ApplyRemoteHeaderToLocal(trackedLocalTask, remoteTask, _clock.UtcNow);
+                changed |= ApplyRemoteFieldValuesToMappedLocal(
+                    trackedLocalTask,
+                    templateProjection,
+                    remoteTask,
+                    _clock.UtcNow);
+
+                if (changed)
+                {
+                    stats.UpdatedLocal++;
+                }
+            }
+
+            mapping.LinkRemote(
+                remoteTask.Id,
+                CreateRemoteVersion(remoteTask),
+                _clock.UtcNow);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or ValidationException)
+        {
+            mapping.MarkSyncFailed(exception.Message, _clock.UtcNow);
+            stats.Failed++;
+        }
+    }
+
+    private async Task PullMappedRemoteTaskAsync(
+        CloudSyncConnection connection,
+        SyncRoot root,
+        TaskItem localTask,
+        SyncMapping mapping,
+        CloudSyncTaskResponse remoteTask,
+        SyncWorkspaceStats stats,
+        List<string> messages,
+        CancellationToken cancellationToken)
+    {
+        if (remoteTask.ArchivedAt.HasValue)
+        {
+            messages.Add($"Skipped archived cloud task \"{remoteTask.Title}\". Archive sync is not implemented yet.");
+            return;
+        }
+
+        try
+        {
+            var trackedLocalTask = await GetTrackedLocalTaskForSyncAsync(localTask, cancellationToken);
+            var lastSyncedAt = mapping.LastSyncedAt;
+            var localChanged = !lastSyncedAt.HasValue || trackedLocalTask.LastTouchedAt > lastSyncedAt.Value;
+            var remoteChanged = !lastSyncedAt.HasValue || remoteTask.LastTouchedAt > lastSyncedAt.Value;
+
+            if (!remoteChanged)
+            {
+                return;
+            }
+
+            if (localChanged)
+            {
+                mapping.MarkConflict(_clock.UtcNow);
+                stats.Conflicts++;
+                messages.Add($"Conflict kept for \"{trackedLocalTask.Title}\". Local and cloud changed since last sync.");
+                return;
+            }
+
+            var templateProjection = await ResolveMappedRemoteTaskTemplateProjectionAsync(
+                connection,
+                trackedLocalTask,
+                remoteTask,
+                cancellationToken);
+            var changed = ApplyRemoteHeaderToLocal(trackedLocalTask, remoteTask, _clock.UtcNow);
+            changed |= ApplyRemoteFieldValuesToMappedLocal(
+                trackedLocalTask,
+                templateProjection,
+                remoteTask,
+                _clock.UtcNow);
+
+            if (changed)
             {
                 stats.UpdatedLocal++;
             }
@@ -793,6 +897,46 @@ internal sealed class SyncService : ISyncService
         return changed;
     }
 
+    private static bool ApplyRemoteFieldValuesToMappedLocal(
+        TaskItem localTask,
+        RemoteTaskTemplateProjection templateProjection,
+        CloudSyncTaskResponse remoteTask,
+        DateTimeOffset occurredAt)
+    {
+        if (templateProjection.LocalTemplate is null)
+        {
+            return false;
+        }
+
+        var remoteToLocalHeaderFieldIds = templateProjection.LocalToRemoteHeaderFieldIds
+            .ToDictionary(pair => pair.Value, pair => pair.Key);
+        var fieldValues = CloudSyncTemplatePayloadMapper.BuildLocalFieldValuePayload(
+            remoteTask,
+            remoteToLocalHeaderFieldIds);
+
+        if (fieldValues is null || fieldValues.Count == 0)
+        {
+            return false;
+        }
+
+        var definitions = templateProjection.LocalTemplate.FieldDefinitions
+            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Header)
+            .ToDictionary(field => field.Id);
+        var changed = false;
+
+        foreach (var (fieldDefinitionId, valueJson) in fieldValues)
+        {
+            if (!definitions.TryGetValue(fieldDefinitionId, out var definition))
+            {
+                continue;
+            }
+
+            changed |= localTask.SetFieldValue(definition, valueJson, occurredAt);
+        }
+
+        return changed;
+    }
+
     private async Task<SyncMapping> EnsureMappingForLocalTaskAsync(
         SyncRoot root,
         TaskItem localTask,
@@ -813,6 +957,19 @@ internal sealed class SyncService : ISyncService
         mappings[localTask.Id] = mapping;
 
         return mapping;
+    }
+
+    private async Task<TaskItem> GetTrackedLocalTaskForSyncAsync(
+        TaskItem localTask,
+        CancellationToken cancellationToken)
+    {
+        return await _taskItemRepository.GetByIdAsync(
+                localTask.Id,
+                localTask.WorkspaceId,
+                projectId: null,
+                trackChanges: true,
+                cancellationToken) ??
+            throw new ValidationException("Local task was not found.");
     }
 
     private static bool HeaderDiffers(TaskItem localTask, CloudSyncTaskResponse remoteTask)
@@ -911,6 +1068,31 @@ internal sealed class SyncService : ISyncService
                 _clock.UtcNow);
             messages.Add($"Updated cloud template \"{localTemplate.Name}\".");
         }
+
+        return CloudSyncTemplatePayloadMapper.CreateProjection(remoteTemplate, localTemplate);
+    }
+
+    private async Task<RemoteTaskTemplateProjection> ResolveMappedRemoteTaskTemplateProjectionAsync(
+        CloudSyncConnection connection,
+        TaskItem localTask,
+        CloudSyncTaskResponse remoteTask,
+        CancellationToken cancellationToken)
+    {
+        if (!localTask.TaskTemplateId.HasValue || !remoteTask.TaskTemplateId.HasValue)
+        {
+            return RemoteTaskTemplateProjection.Empty;
+        }
+
+        var localTemplate = await _taskItemRepository.GetTaskTemplateByIdAsync(
+                localTask.TaskTemplateId.Value,
+                includeDeleted: true,
+                cancellationToken) ??
+            throw new ValidationException("Local task template was not found.");
+        var remoteTemplate = await _cloudSyncClient.GetTaskTemplateAsync(
+                connection,
+                remoteTask.TaskTemplateId.Value,
+                cancellationToken) ??
+            throw new ValidationException("Cloud task template was not found.");
 
         return CloudSyncTemplatePayloadMapper.CreateProjection(remoteTemplate, localTemplate);
     }

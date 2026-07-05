@@ -22,7 +22,10 @@ archive behavior, sharing boundaries and future sync rules stay in the C# projec
 - This folder contains a Tauri scaffold and a sidecar publish script.
 - `scripts/desktop.ps1 -Target Build` builds the desktop executable and NSIS installer.
 - Linux desktop bundles can be built on a Linux host or Linux CI runner.
-- Installer signing and sync are not implemented yet.
+- Installer signing is future release work.
+- A manual first-pass cloud sync exists for board/task headers, templates and
+  task header field values. Notes, archive/delete sync and richer conflict
+  recovery remain future work.
 
 ## Desktop Configuration
 
@@ -272,6 +275,7 @@ Offline data is local SQLite. When the user later logs in and syncs:
 
 - local-only tasks upload to the server
 - remote changes download into SQLite
+- existing mapped cloud task changes update local task headers and header fields
 - append-only notes/timeline entries merge by stable IDs
 - independent field changes merge field-by-field
 - conflicting edits on the same scalar field become visible conflicts

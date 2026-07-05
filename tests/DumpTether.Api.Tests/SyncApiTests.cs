@@ -328,6 +328,60 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenPullOnlyAndMappedRemoteChanged_UpdatesLocalTask()
+    {
+        var cloud = new FakeCloudSyncClient();
+        var remoteWorkspace = cloud.AddWorkspace("Cloud board");
+        var remoteTask = cloud.AddTask(
+            remoteWorkspace.Id,
+            "Original",
+            status: "Waiting",
+            color: "#FFE58A",
+            lastTouchedAt: DateTimeOffset.UtcNow);
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        var localTask = await CreateTaskItemAsync(client, "Original");
+
+        var markResponse = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/tasks/{localTask.Id}/synced",
+            new MarkTaskItemSyncedRequest(remoteTask.Id, "v1"));
+        markResponse.EnsureSuccessStatusCode();
+
+        cloud.ReplaceTask(remoteWorkspace.Id, remoteTask with
+        {
+            Title = "Cloud title",
+            Status = "Follow-up",
+            Color = "#A7F3D0",
+            LastTouchedAt = DateTimeOffset.UtcNow.AddMinutes(5)
+        });
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest(
+                "https://cloud.example",
+                "cloud-token",
+                remoteWorkspace.Id,
+                PushLocalChanges: false));
+
+        response.EnsureSuccessStatusCode();
+        var sync = (await response.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+        var detail = await client.GetFromJsonAsync<TaskItemDetailResponse>($"/api/tasks/{localTask.Id}");
+
+        Assert.Equal(0, sync.Pulled);
+        Assert.Equal(1, sync.UpdatedLocal);
+        Assert.Equal(0, sync.Conflicts);
+        Assert.Equal("Cloud title", detail!.Title);
+        Assert.Equal("Follow-up", detail.Status);
+        Assert.Equal("#A7F3D0", detail.Color);
+        Assert.Equal(SyncMappingStatus.Synced.ToString(), detail.SyncState?.Status);
+    }
+
+    [Fact]
     public async Task SyncWorkspaceWithCloud_WhenRemoteTaskHasTemplate_PullsTemplateAndHeaderFieldValues()
     {
         var cloud = new FakeCloudSyncClient();
@@ -387,6 +441,86 @@ public sealed class SyncApiTests
         Assert.Equal("Context", localField.Name);
         Assert.Equal(localField.Id, localFieldValue.FieldDefinitionId);
         Assert.Equal("\"Buy sunscreen\"", localFieldValue.ValueJson);
+    }
+
+    [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenMappedRemoteFieldValueChanged_UpdatesLocalFieldValue()
+    {
+        var cloud = new FakeCloudSyncClient();
+        var remoteWorkspace = cloud.AddWorkspace("Cloud board");
+        var remoteTemplate = cloud.AddTemplate(
+            "Cloud Travel Note",
+            new CloudSyncUpsertFieldDefinitionRequest(
+                Id: null,
+                Name: "Context",
+                Type: "LongText",
+                Scope: "Header",
+                Required: false,
+                SortOrder: 0,
+                Options: [],
+                LayoutRow: 1,
+                LayoutColumn: 1,
+                LayoutRowSpan: 1,
+                LayoutColumnSpan: 1,
+                LayoutWeight: 1));
+        var remoteField = Assert.Single(remoteTemplate.Fields);
+        var remoteTask = cloud.AddTask(
+            remoteWorkspace.Id,
+            "Pulled templated task",
+            taskTemplateId: remoteTemplate.Id,
+            lastTouchedAt: DateTimeOffset.UtcNow,
+            fieldValues: new Dictionary<Guid, string>
+            {
+                [remoteField.Id] = "\"Old context\""
+            });
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+
+        var firstSyncResponse = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest(
+                "https://cloud.example",
+                "cloud-token",
+                remoteWorkspace.Id,
+                PushLocalChanges: false));
+        firstSyncResponse.EnsureSuccessStatusCode();
+        var tasks = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+        var localTask = Assert.Single(tasks!, task => task.Title == "Pulled templated task");
+
+        cloud.ReplaceTask(remoteWorkspace.Id, remoteTask with
+        {
+            FieldValues =
+            [
+                new CloudSyncFieldValueResponse(
+                    remoteField.Id,
+                    "\"New context\"",
+                    DateTimeOffset.UtcNow.AddMinutes(5))
+            ],
+            LastTouchedAt = DateTimeOffset.UtcNow.AddMinutes(5)
+        });
+
+        var secondSyncResponse = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest(
+                "https://cloud.example",
+                "cloud-token",
+                remoteWorkspace.Id,
+                PushLocalChanges: false));
+
+        secondSyncResponse.EnsureSuccessStatusCode();
+        var sync = (await secondSyncResponse.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+        var detail = await client.GetFromJsonAsync<TaskItemDetailResponse>($"/api/tasks/{localTask.Id}");
+        var fieldValue = Assert.Single(detail!.FieldValues);
+
+        Assert.Equal(0, sync.Pulled);
+        Assert.Equal(1, sync.UpdatedLocal);
+        Assert.Equal("\"New context\"", fieldValue.ValueJson);
+        Assert.Equal(SyncMappingStatus.Synced.ToString(), detail.SyncState?.Status);
     }
 
     [Fact]
