@@ -70,6 +70,7 @@ import {
   listArchiveResolutions,
   listProjects,
   listSavedViews,
+  listWorkspaceSyncRoots,
   listWorkspaceInvitations,
   listWorkspaceMembers,
   listTaskItems,
@@ -138,6 +139,7 @@ import type {
   TaskItemSummaryResponse,
   SyncWorkspaceWithCloudRequest,
   SyncWorkspaceWithCloudResponse,
+  SyncRootResponse,
   TaskShareInboxResponse,
   TaskTemplateDetailResponse,
   TaskTemplateLayoutResponse,
@@ -170,6 +172,7 @@ function App() {
   const [archiveResolutions, setArchiveResolutions] = useState<ArchiveResolutionResponse[]>([]);
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMemberResponse[]>([]);
   const [workspaceInvitations, setWorkspaceInvitations] = useState<WorkspaceInvitationResponse[]>([]);
+  const [syncRoots, setSyncRoots] = useState<SyncRootResponse[]>([]);
   const [templates, setTemplates] = useState<TaskTemplateDetailResponse[]>([]);
   const [importedTemplateSourceIds, setImportedTemplateSourceIds] = useState<string[]>([]);
   const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(
@@ -328,6 +331,7 @@ function App() {
     setArchiveResolutions(snapshot.archiveResolutions);
     setWorkspaceMembers(snapshot.workspaceMembers ?? []);
     setWorkspaceInvitations(snapshot.workspaceInvitations ?? []);
+    setSyncRoots(snapshot.syncRoots ?? []);
     setTemplates(snapshot.templates);
     setTaskColorOptions(snapshot.taskColorOptions);
     setKnownStatuses(snapshot.knownStatuses);
@@ -412,6 +416,7 @@ function App() {
           templateSummaries,
           members,
           invitations,
+          roots,
         ] = await Promise.all([
           getWorkspace(workspaceRequestOptions),
           listSavedViews(workspaceRequestOptions),
@@ -420,6 +425,18 @@ function App() {
           listTaskTemplates(workspaceRequestOptions),
           listWorkspaceMembers(workspaceRequestOptions).catch(() => []),
           listWorkspaceInvitations(workspaceRequestOptions).catch(() => []),
+          localDesktopSessionIsActive
+            ? listWorkspaceSyncRoots({
+                signal: controller.signal,
+                workspaceId: null,
+              }).catch((error) => {
+                if (isAbortError(error)) {
+                  throw error;
+                }
+
+                return [];
+              })
+            : Promise.resolve([]),
         ]);
         if (!isCurrentLoad()) {
           return;
@@ -512,6 +529,7 @@ function App() {
         setArchiveResolutions(resolutions);
         setWorkspaceMembers(members);
         setWorkspaceInvitations(invitations);
+        setSyncRoots(roots);
         setTemplates(templateDetails);
         setTaskColorOptions(colorOptions);
         setKnownStatuses(statuses);
@@ -524,6 +542,7 @@ function App() {
           knownStatuses: statuses,
           projects: projectList,
           savedViews: views,
+          syncRoots: roots,
           taskColorOptions: colorOptions,
           taskItems: selectedTasks,
           templates: templateDetails,
@@ -561,6 +580,7 @@ function App() {
       applyWorkspaceSnapshot,
       currentUser,
       currentViewId,
+      localDesktopSessionIsActive,
       selectedTaskId,
       selectedWorkspaceId,
     ],
@@ -2005,6 +2025,7 @@ function App() {
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
             statusOptions={statusOptions}
+            syncRoot={syncRoots.find((root) => root.localWorkspaceId === workspace?.id) ?? null}
             taskItems={taskItems}
             templates={templates}
             importedTemplateSourceIds={importedTemplateSourceIds}

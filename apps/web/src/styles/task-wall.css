@@ -458,9 +458,41 @@ button.member-chip:hover {
 
 .board-sync-strip {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   margin: -10px 0 10px;
   pointer-events: none;
+}
+
+.board-sync-status {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid rgba(24, 76, 72, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #48615e;
+  font-size: 0.8rem;
+  font-weight: 760;
+  pointer-events: auto;
+}
+
+.board-sync-status .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.board-sync-status[data-state="Linked"] {
+  color: #1b6f57;
+  background: rgba(214, 255, 239, 0.7);
+}
+
+.board-sync-status[data-state="Conflict"] {
+  color: #8a3b12;
+  background: rgba(255, 230, 188, 0.78);
 }
 
 .sync-board-button {

@@ -54,6 +54,7 @@ import type {
   ShareLinkAcceptResponse,
   SyncWorkspaceWithCloudRequest,
   SyncWorkspaceWithCloudResponse,
+  SyncRootResponse,
   UpdateTaskShareRequest,
   UpdateWorkspaceMemberRequest,
 } from './types';
@@ -821,4 +822,10 @@ export function syncWorkspaceWithCloud(
     method: 'POST',
     body: JSON.stringify(requestBody),
   }, { workspaceId });
+}
+
+export function listWorkspaceSyncRoots(
+  options: ApiRequestOptions = {},
+): Promise<SyncRootResponse[]> {
+  return request<SyncRootResponse[]>('/api/sync/workspace-roots', undefined, options);
 }

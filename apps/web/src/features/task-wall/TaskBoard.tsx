@@ -48,6 +48,7 @@ import type {
   TaskItemSummaryResponse,
   TaskShareLinkResponse,
   TaskTemplateDetailResponse,
+  SyncRootResponse,
   SyncWorkspaceWithCloudRequest,
   SyncWorkspaceWithCloudResponse,
   WorkspaceInvitationResponse,
@@ -71,6 +72,7 @@ import { BoardLoadingState } from './BoardLoadingState';
 import { DraftTaskCard } from './DraftTaskCard';
 import { FloatingBoardActions } from './FloatingBoardActions';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { BoardSyncStatus } from '../sync/BoardSyncStatus';
 import { CloudSyncDialog } from '../sync/CloudSyncDialog';
 
 interface DraftTaskTarget {
@@ -126,6 +128,7 @@ export function TaskBoard({
   selectedTask,
   selectedTaskId,
   statusOptions,
+  syncRoot,
   taskItems,
   templates,
   importedTemplateSourceIds,
@@ -204,6 +207,7 @@ export function TaskBoard({
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
   statusOptions: string[];
+  syncRoot: SyncRootResponse | null;
   taskItems: TaskItemSummaryResponse[];
   templates: TaskTemplateDetailResponse[];
   importedTemplateSourceIds: string[];
@@ -502,6 +506,7 @@ export function TaskBoard({
       !workspaceIsSystemAllTasks &&
       currentUserOwnsWorkspace ? (
         <div className="board-sync-strip">
+          <BoardSyncStatus syncRoot={syncRoot} t={t} />
           <button
             className="sync-board-button"
             onClick={() => openCloudSync(workspace?.id)}
