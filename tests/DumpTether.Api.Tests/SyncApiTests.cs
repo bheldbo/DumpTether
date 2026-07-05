@@ -227,6 +227,29 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenCloudUrlIsInvalid_ReturnsBadRequest()
+    {
+        var cloud = new FakeCloudSyncClient();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        await CreateTaskItemAsync(client, "Do not sync yet");
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest("https://token@cloud.example", "cloud-token"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("absolute HTTP(S) URL without credentials", body);
+        Assert.Empty(cloud.Workspaces);
+    }
+
+    [Fact]
     public async Task SyncWorkspaceWithCloud_WhenDesktop_PullsRemoteTask()
     {
         var cloud = new FakeCloudSyncClient();

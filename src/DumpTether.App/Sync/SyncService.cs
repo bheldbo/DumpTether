@@ -436,8 +436,17 @@ internal sealed class SyncService : ISyncService
             throw new ArgumentException("Cloud session token is required.", nameof(request));
         }
 
+        if (!Uri.TryCreate(request.CloudApiBaseUrl.Trim(), UriKind.Absolute, out var cloudApiBaseUrl) ||
+            (cloudApiBaseUrl.Scheme != Uri.UriSchemeHttps && cloudApiBaseUrl.Scheme != Uri.UriSchemeHttp) ||
+            !string.IsNullOrWhiteSpace(cloudApiBaseUrl.UserInfo))
+        {
+            throw new ArgumentException(
+                "Cloud API base URL must be an absolute HTTP(S) URL without credentials.",
+                nameof(request));
+        }
+
         return new CloudSyncConnection(
-            request.CloudApiBaseUrl.Trim(),
+            cloudApiBaseUrl.AbsoluteUri.TrimEnd('/'),
             request.CloudSessionToken.Trim());
     }
 
