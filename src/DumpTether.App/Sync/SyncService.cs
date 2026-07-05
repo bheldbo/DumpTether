@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
+using DumpTether.App.Templates;
 using DumpTether.App.Workspaces;
 using DumpTether.Domain;
 
@@ -16,6 +17,7 @@ internal sealed class SyncService : ISyncService
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly ISyncRepository _syncRepository;
     private readonly ITaskItemRepository _taskItemRepository;
+    private readonly ITaskTemplateRepository _taskTemplateRepository;
     private readonly IWorkspaceRepository _workspaceRepository;
 
     public SyncService(
@@ -25,6 +27,7 @@ internal sealed class SyncService : ISyncService
         ICurrentUserSessionProvider currentUserSessionProvider,
         ISyncRepository syncRepository,
         ITaskItemRepository taskItemRepository,
+        ITaskTemplateRepository taskTemplateRepository,
         IWorkspaceRepository workspaceRepository)
     {
         _authRepository = authRepository;
@@ -33,6 +36,7 @@ internal sealed class SyncService : ISyncService
         _currentUserSessionProvider = currentUserSessionProvider;
         _syncRepository = syncRepository;
         _taskItemRepository = taskItemRepository;
+        _taskTemplateRepository = taskTemplateRepository;
         _workspaceRepository = workspaceRepository;
     }
 
@@ -386,8 +390,10 @@ internal sealed class SyncService : ISyncService
                 }
 
                 await PullNewRemoteTaskAsync(
+                    connection,
                     root,
                     workspaceId,
+                    currentSession.UserId,
                     remoteTask,
                     mappings,
                     stats,
@@ -635,8 +641,10 @@ internal sealed class SyncService : ISyncService
     }
 
     private async Task PullNewRemoteTaskAsync(
+        CloudSyncConnection connection,
         SyncRoot root,
         Guid localWorkspaceId,
+        Guid ownerUserId,
         CloudSyncTaskResponse remoteTask,
         Dictionary<Guid, SyncMapping> mappings,
         SyncWorkspaceStats stats,
@@ -649,13 +657,25 @@ internal sealed class SyncService : ISyncService
             return;
         }
 
+        var localTemplate = await EnsureLocalTaskTemplateAsync(
+            connection,
+            root,
+            ownerUserId,
+            remoteTask,
+            messages,
+            cancellationToken);
         var localTask = TaskItem.Create(
             localWorkspaceId,
             projectId: null,
             remoteTask.Title,
             _clock.UtcNow,
-            taskTemplateId: null);
+            localTemplate.LocalTemplateId);
         ApplyRemoteHeaderToLocal(localTask, remoteTask, _clock.UtcNow);
+        ApplyRemoteFieldValuesToLocal(
+            localTask,
+            localTemplate,
+            remoteTask,
+            _clock.UtcNow);
 
         await _taskItemRepository.AddAsync(localTask, cancellationToken);
         var mapping = SyncMapping.CreateLocal(
@@ -670,6 +690,107 @@ internal sealed class SyncService : ISyncService
         await _syncRepository.AddMappingAsync(mapping, cancellationToken);
         mappings[localTask.Id] = mapping;
         stats.Pulled++;
+    }
+
+    private async Task<RemoteToLocalTaskTemplateProjection> EnsureLocalTaskTemplateAsync(
+        CloudSyncConnection connection,
+        SyncRoot root,
+        Guid ownerUserId,
+        CloudSyncTaskResponse remoteTask,
+        List<string> messages,
+        CancellationToken cancellationToken)
+    {
+        if (!remoteTask.TaskTemplateId.HasValue)
+        {
+            return RemoteToLocalTaskTemplateProjection.Empty;
+        }
+
+        var remoteTemplate = await _cloudSyncClient.GetTaskTemplateAsync(
+                connection,
+                remoteTask.TaskTemplateId.Value,
+                cancellationToken) ??
+            throw new ValidationException("Cloud task template was not found.");
+        var templateMappings = await _syncRepository.ListMappingsForRootAsync(
+            root.Id,
+            SyncEntityType.TaskTemplate,
+            trackChanges: true,
+            cancellationToken);
+        var mapping = templateMappings.FirstOrDefault(candidate =>
+            candidate.RemoteId == remoteTemplate.Id);
+
+        if (mapping is not null)
+        {
+            var existingLocalTemplate = await _taskTemplateRepository.GetByIdAsync(
+                    mapping.LocalId,
+                    ownerUserId,
+                    trackChanges: true,
+                    includeDeleted: true,
+                    cancellationToken) ??
+                throw new ValidationException("Mapped local task template was not found.");
+
+            return CloudSyncTemplatePayloadMapper.CreateRemoteToLocalProjection(
+                remoteTemplate,
+                existingLocalTemplate);
+        }
+
+        var localTemplate = CloudSyncTemplatePayloadMapper.CreateLocalTemplate(
+            remoteTemplate,
+            ownerUserId,
+            _clock.UtcNow);
+        await _taskTemplateRepository.AddAsync(localTemplate, cancellationToken);
+        mapping = SyncMapping.CreateLocal(
+            root.Id,
+            SyncEntityType.TaskTemplate,
+            localTemplate.Id,
+            _clock.UtcNow);
+        mapping.LinkRemote(
+            remoteTemplate.Id,
+            CreateRemoteVersion(remoteTemplate),
+            _clock.UtcNow);
+        await _syncRepository.AddMappingAsync(mapping, cancellationToken);
+        messages.Add($"Imported cloud template \"{remoteTemplate.Name}\".");
+
+        return CloudSyncTemplatePayloadMapper.CreateRemoteToLocalProjection(
+            remoteTemplate,
+            localTemplate);
+    }
+
+    private static bool ApplyRemoteFieldValuesToLocal(
+        TaskItem localTask,
+        RemoteToLocalTaskTemplateProjection localTemplate,
+        CloudSyncTaskResponse remoteTask,
+        DateTimeOffset occurredAt)
+    {
+        if (localTemplate.LocalTemplate is null)
+        {
+            return false;
+        }
+
+        var fieldValues = CloudSyncTemplatePayloadMapper.BuildLocalFieldValuePayload(
+            remoteTask,
+            localTemplate.RemoteToLocalHeaderFieldIds);
+
+        if (fieldValues is null || fieldValues.Count == 0)
+        {
+            return false;
+        }
+
+        var definitions = localTemplate.LocalTemplate.FieldDefinitions
+            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Header)
+            .ToDictionary(field => field.Id);
+        var changed = false;
+
+        foreach (var (fieldDefinitionId, valueJson) in fieldValues)
+        {
+            if (!definitions.TryGetValue(fieldDefinitionId, out var definition))
+            {
+                continue;
+            }
+
+            changed |= localTask.SetFieldValue(definition, valueJson, occurredAt);
+        }
+
+        return changed;
     }
 
     private async Task<SyncMapping> EnsureMappingForLocalTaskAsync(

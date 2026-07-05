@@ -166,6 +166,7 @@ The first implemented cloud sync pass is intentionally narrow:
 - Remote task header fields can be pulled into the local SQLite board.
 - Local task templates used by synced tasks can be created or updated in the cloud for that sync root.
 - Local task header field values can be pushed to the cloud when the task template is synced first. Field IDs are mapped through template field key/scope because local SQLite and hosted PostgreSQL generate different field IDs.
+- Cloud task templates and header field values can be imported into the local SQLite board when pulling new cloud tasks.
 - `SyncMapping` stores the remote task ID and remote version after successful sync.
 - If both local and remote changed the same task header since the previous sync checkpoint, the mapping is marked `Conflict` and both records are left intact.
 - Failed task sync attempts are marked `SyncFailed` with a short user-visible error.
@@ -173,7 +174,7 @@ The first implemented cloud sync pass is intentionally narrow:
 Not included in the first pass:
 
 - note/timeline entry sync
-- pull-side template and field-value import
+- updating already-mapped local templates from later cloud template edits
 - entry-level field-value sync
 - archive/delete/tombstone sync
 - shared-board/task download

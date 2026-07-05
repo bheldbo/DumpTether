@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DumpTether.App.Templates;
 using DumpTether.App.Tasks;
 using DumpTether.Domain;
@@ -6,6 +7,8 @@ namespace DumpTether.App.Sync;
 
 internal static class CloudSyncTemplatePayloadMapper
 {
+    private static readonly JsonSerializerOptions JsonSerializerOptions = new(JsonSerializerDefaults.Web);
+
     public static RemoteTaskTemplateProjection CreateProjection(
         CloudSyncTaskTemplateResponse remoteTemplate,
         TaskTemplate localTemplate)
@@ -114,6 +117,93 @@ internal static class CloudSyncTemplatePayloadMapper
         return values.Count == 0 ? null : values;
     }
 
+    public static TaskTemplate CreateLocalTemplate(
+        CloudSyncTaskTemplateResponse remoteTemplate,
+        Guid ownerUserId,
+        DateTimeOffset createdAt)
+    {
+        var localTemplate = TaskTemplate.Create(ownerUserId, remoteTemplate.Name, createdAt);
+        localTemplate.UpdateLayout(
+            JsonSerializer.Serialize(remoteTemplate.Layout.Header, JsonSerializerOptions),
+            JsonSerializer.Serialize(remoteTemplate.Layout.Entry, JsonSerializerOptions),
+            createdAt);
+
+        foreach (var field in remoteTemplate.Fields
+                     .OrderBy(field => field.Scope)
+                     .ThenBy(field => field.SortOrder)
+                     .ThenBy(field => field.Name))
+        {
+            localTemplate.AddFieldDefinition(
+                field.Key,
+                field.Name,
+                ParseFieldType(field.Type),
+                ParseFieldScope(field.Scope),
+                field.Required,
+                field.SortOrder,
+                field.Options.Count == 0
+                    ? null
+                    : JsonSerializer.Serialize(field.Options, JsonSerializerOptions),
+                field.LayoutRow,
+                field.LayoutColumn,
+                field.LayoutRowSpan,
+                field.LayoutColumnSpan,
+                field.LayoutWeight);
+        }
+
+        return localTemplate;
+    }
+
+    public static RemoteToLocalTaskTemplateProjection CreateRemoteToLocalProjection(
+        CloudSyncTaskTemplateResponse remoteTemplate,
+        TaskTemplate localTemplate)
+    {
+        var localHeaderFieldsByKey = localTemplate.FieldDefinitions
+            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Header)
+            .ToDictionary(
+                field => field.Key,
+                field => field.Id,
+                StringComparer.Ordinal);
+        var remoteToLocalHeaderFieldIds = remoteTemplate.Fields
+            .Where(field => string.Equals(field.Scope, FieldDefinitionScope.Header.ToString(), StringComparison.Ordinal))
+            .Where(field => localHeaderFieldsByKey.ContainsKey(field.Key))
+            .ToDictionary(
+                field => field.Id,
+                field => localHeaderFieldsByKey[field.Key]);
+
+        return new RemoteToLocalTaskTemplateProjection(
+            localTemplate.Id,
+            remoteToLocalHeaderFieldIds,
+            localTemplate);
+    }
+
+    public static IReadOnlyDictionary<Guid, string>? BuildLocalFieldValuePayload(
+        CloudSyncTaskResponse remoteTask,
+        IReadOnlyDictionary<Guid, Guid> remoteToLocalHeaderFieldIds)
+    {
+        if (remoteTask.FieldValues is null ||
+            remoteTask.FieldValues.Count == 0 ||
+            remoteToLocalHeaderFieldIds.Count == 0)
+        {
+            return null;
+        }
+
+        var values = new Dictionary<Guid, string>();
+        foreach (var fieldValue in remoteTask.FieldValues)
+        {
+            if (!remoteToLocalHeaderFieldIds.TryGetValue(
+                    fieldValue.FieldDefinitionId,
+                    out var localFieldDefinitionId))
+            {
+                continue;
+            }
+
+            using var document = JsonDocument.Parse(fieldValue.ValueJson);
+            values[localFieldDefinitionId] = document.RootElement.GetRawText();
+        }
+
+        return values.Count == 0 ? null : values;
+    }
+
     private static IReadOnlyList<CloudSyncUpsertFieldDefinitionRequest> CreateFieldRequests(
         TaskTemplate localTemplate,
         CloudSyncTaskTemplateResponse? remoteTemplate)
@@ -173,6 +263,28 @@ internal static class CloudSyncTemplatePayloadMapper
                 .ToList());
     }
 
+    private static FieldDefinitionType ParseFieldType(string value)
+    {
+        return Enum.TryParse<FieldDefinitionType>(
+                value,
+                ignoreCase: true,
+                out var type) &&
+            Enum.IsDefined(type)
+            ? type
+            : throw new InvalidOperationException($"Cloud template field type '{value}' is not supported.");
+    }
+
+    private static FieldDefinitionScope ParseFieldScope(string value)
+    {
+        return Enum.TryParse<FieldDefinitionScope>(
+                value,
+                ignoreCase: true,
+                out var scope) &&
+            Enum.IsDefined(scope)
+            ? scope
+            : throw new InvalidOperationException($"Cloud template field scope '{value}' is not supported.");
+    }
+
     private sealed record TemplateFieldKey(string Scope, string Key);
 }
 
@@ -181,4 +293,15 @@ internal sealed record RemoteTaskTemplateProjection(
     IReadOnlyDictionary<Guid, Guid> LocalToRemoteHeaderFieldIds)
 {
     public static readonly RemoteTaskTemplateProjection Empty = new(null, new Dictionary<Guid, Guid>());
+}
+
+internal sealed record RemoteToLocalTaskTemplateProjection(
+    Guid? LocalTemplateId,
+    IReadOnlyDictionary<Guid, Guid> RemoteToLocalHeaderFieldIds,
+    TaskTemplate? LocalTemplate)
+{
+    public static readonly RemoteToLocalTaskTemplateProjection Empty = new(
+        null,
+        new Dictionary<Guid, Guid>(),
+        null);
 }

@@ -328,6 +328,68 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenRemoteTaskHasTemplate_PullsTemplateAndHeaderFieldValues()
+    {
+        var cloud = new FakeCloudSyncClient();
+        var remoteWorkspace = cloud.AddWorkspace("Cloud board");
+        var remoteTemplate = cloud.AddTemplate(
+            "Cloud Travel Note",
+            new CloudSyncUpsertFieldDefinitionRequest(
+                Id: null,
+                Name: "Context",
+                Type: "LongText",
+                Scope: "Header",
+                Required: false,
+                SortOrder: 0,
+                Options: [],
+                LayoutRow: 1,
+                LayoutColumn: 1,
+                LayoutRowSpan: 1,
+                LayoutColumnSpan: 1,
+                LayoutWeight: 1));
+        var remoteField = Assert.Single(remoteTemplate.Fields);
+        cloud.AddTask(
+            remoteWorkspace.Id,
+            "Pulled templated task",
+            taskTemplateId: remoteTemplate.Id,
+            lastTouchedAt: DateTimeOffset.UtcNow,
+            fieldValues: new Dictionary<Guid, string>
+            {
+                [remoteField.Id] = "\"Buy sunscreen\""
+            });
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest(
+                "https://cloud.example",
+                "cloud-token",
+                remoteWorkspace.Id,
+                PushLocalChanges: false));
+
+        response.EnsureSuccessStatusCode();
+        var sync = (await response.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+        var tasks = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+        var pulled = Assert.Single(tasks!, task => task.Title == "Pulled templated task");
+        var detail = await client.GetFromJsonAsync<TaskItemDetailResponse>($"/api/tasks/{pulled.Id}");
+        var localField = Assert.Single(detail!.Template!.Fields);
+        var localFieldValue = Assert.Single(detail.FieldValues);
+
+        Assert.Equal(1, sync.Pulled);
+        Assert.Contains(sync.Messages, message => message.Contains("Imported cloud template", StringComparison.Ordinal));
+        Assert.Equal("Cloud Travel Note", detail.Template.Name);
+        Assert.Equal("Context", localField.Name);
+        Assert.Equal(localField.Id, localFieldValue.FieldDefinitionId);
+        Assert.Equal("\"Buy sunscreen\"", localFieldValue.ValueJson);
+    }
+
+    [Fact]
     public async Task SyncWorkspaceWithCloud_WhenBothSidesChanged_MarksConflict()
     {
         var cloud = new FakeCloudSyncClient();
@@ -589,6 +651,22 @@ public sealed class SyncApiTests
             TasksByWorkspace[workspace.Id] = [];
 
             return workspace;
+        }
+
+        public CloudSyncTaskTemplateResponse AddTemplate(
+            string name,
+            params CloudSyncUpsertFieldDefinitionRequest[] fields)
+        {
+            var template = CreateTemplate(
+                Guid.NewGuid(),
+                name,
+                fields,
+                new CloudSyncTaskTemplateLayoutRequest(
+                    [new CloudSyncTaskTemplateLayoutRowRequest(1, [1], 132)],
+                    [new CloudSyncTaskTemplateLayoutRowRequest(1, [1], 132)]));
+            Templates.Add(template);
+
+            return template;
         }
 
         public CloudSyncTaskResponse AddTask(
