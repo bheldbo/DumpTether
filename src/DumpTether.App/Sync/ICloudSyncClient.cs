@@ -15,6 +15,26 @@ public interface ICloudSyncClient
         CloudSyncCreateWorkspaceRequest request,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<CloudSyncTaskTemplateResponse>> ListTaskTemplatesAsync(
+        CloudSyncConnection connection,
+        CancellationToken cancellationToken);
+
+    Task<CloudSyncTaskTemplateResponse?> GetTaskTemplateAsync(
+        CloudSyncConnection connection,
+        Guid taskTemplateId,
+        CancellationToken cancellationToken);
+
+    Task<CloudSyncTaskTemplateResponse> CreateTaskTemplateAsync(
+        CloudSyncConnection connection,
+        CloudSyncCreateTaskTemplateRequest request,
+        CancellationToken cancellationToken);
+
+    Task<CloudSyncTaskTemplateResponse> UpdateTaskTemplateAsync(
+        CloudSyncConnection connection,
+        Guid taskTemplateId,
+        CloudSyncUpdateTaskTemplateRequest request,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<CloudSyncTaskResponse>> ListTasksAsync(
         CloudSyncConnection connection,
         Guid workspaceId,

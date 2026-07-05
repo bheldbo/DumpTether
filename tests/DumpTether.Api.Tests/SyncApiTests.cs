@@ -4,8 +4,10 @@ using System.Net.Http.Json;
 using DumpTether.App.Auth;
 using DumpTether.App.Sync;
 using DumpTether.App.Tasks;
+using DumpTether.App.Templates;
 using DumpTether.App.Workspaces;
 using DumpTether.Domain;
+using System.Text.Json;
 using Xunit;
 
 namespace DumpTether.Api.Tests;
@@ -250,6 +252,50 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenTaskHasTemplate_PushesTemplateAndHeaderFieldValues()
+    {
+        var cloud = new FakeCloudSyncClient();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        var template = await CreateTemplateAsync(client);
+        var contextField = template.Fields.Single(field => field.Name == "Context");
+        using var valueDocument = JsonDocument.Parse("\"Remember toothbrush\"");
+        var createTaskResponse = await client.PostAsJsonAsync(
+            "/api/tasks",
+            new CreateTaskItemRequest(
+                "Pack bag",
+                template.Id,
+                new Dictionary<Guid, JsonElement>
+                {
+                    [contextField.Id] = valueDocument.RootElement.Clone()
+                }));
+        createTaskResponse.EnsureSuccessStatusCode();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest("https://cloud.example", "cloud-token"));
+
+        response.EnsureSuccessStatusCode();
+        var sync = (await response.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+        var remoteTemplate = Assert.Single(cloud.Templates);
+        var remoteField = Assert.Single(remoteTemplate.Fields);
+        var remoteTask = Assert.Single(cloud.TasksByWorkspace[cloud.Workspaces.Single().Id]);
+        var remoteFieldValue = Assert.Single(remoteTask.FieldValues!);
+
+        Assert.Equal(1, sync.Pushed);
+        Assert.Equal("Travel Note", remoteTemplate.Name);
+        Assert.Equal(remoteTemplate.Id, remoteTask.TaskTemplateId);
+        Assert.Equal(contextField.Key, remoteField.Key);
+        Assert.Equal(remoteField.Id, remoteFieldValue.FieldDefinitionId);
+        Assert.Equal("\"Remember toothbrush\"", remoteFieldValue.ValueJson);
+    }
+
+    [Fact]
     public async Task SyncWorkspaceWithCloud_WhenDesktop_PullsRemoteTask()
     {
         var cloud = new FakeCloudSyncClient();
@@ -362,6 +408,26 @@ public sealed class SyncApiTests
         return (await response.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
     }
 
+    private static async Task<TaskTemplateDetailResponse> CreateTemplateAsync(HttpClient client)
+    {
+        var response = await client.PostAsJsonAsync(
+            "/api/templates",
+            new CreateTaskTemplateRequest(
+                "Travel Note",
+                [
+                    new UpsertFieldDefinitionRequest(
+                        Id: null,
+                        Name: "Context",
+                        Type: "LongText",
+                        Scope: "Header",
+                        Required: false,
+                        SortOrder: 0)
+                ]));
+        response.EnsureSuccessStatusCode();
+
+        return (await response.Content.ReadFromJsonAsync<TaskTemplateDetailResponse>())!;
+    }
+
     private static async Task<TaskItemDetailResponse> PatchTaskItemAsync(
         HttpClient client,
         Guid id,
@@ -385,6 +451,8 @@ public sealed class SyncApiTests
             "Cloud User");
 
         public List<CloudSyncWorkspaceResponse> Workspaces { get; } = [];
+
+        public List<CloudSyncTaskTemplateResponse> Templates { get; } = [];
 
         public Dictionary<Guid, List<CloudSyncTaskResponse>> TasksByWorkspace { get; } = [];
 
@@ -411,6 +479,50 @@ public sealed class SyncApiTests
             return Task.FromResult(AddWorkspace(request.Name, request.Color));
         }
 
+        public Task<IReadOnlyList<CloudSyncTaskTemplateResponse>> ListTaskTemplatesAsync(
+            CloudSyncConnection connection,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<CloudSyncTaskTemplateResponse>>(Templates.ToList());
+        }
+
+        public Task<CloudSyncTaskTemplateResponse?> GetTaskTemplateAsync(
+            CloudSyncConnection connection,
+            Guid taskTemplateId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Templates.FirstOrDefault(template => template.Id == taskTemplateId));
+        }
+
+        public Task<CloudSyncTaskTemplateResponse> CreateTaskTemplateAsync(
+            CloudSyncConnection connection,
+            CloudSyncCreateTaskTemplateRequest request,
+            CancellationToken cancellationToken)
+        {
+            var created = CreateTemplate(Guid.NewGuid(), request.Name, request.Fields, request.Layout);
+            Templates.Add(created);
+
+            return Task.FromResult(created);
+        }
+
+        public Task<CloudSyncTaskTemplateResponse> UpdateTaskTemplateAsync(
+            CloudSyncConnection connection,
+            Guid taskTemplateId,
+            CloudSyncUpdateTaskTemplateRequest request,
+            CancellationToken cancellationToken)
+        {
+            var index = Templates.FindIndex(template => template.Id == taskTemplateId);
+            if (index < 0)
+            {
+                throw new InvalidOperationException("Template was not found.");
+            }
+
+            var updated = CreateTemplate(taskTemplateId, request.Name, request.Fields, request.Layout);
+            Templates[index] = updated;
+
+            return Task.FromResult(updated);
+        }
+
         public Task<IReadOnlyList<CloudSyncTaskResponse>> ListTasksAsync(
             CloudSyncConnection connection,
             Guid workspaceId,
@@ -432,11 +544,13 @@ public sealed class SyncApiTests
             var created = AddTask(
                 workspaceId,
                 request.Title,
+                request.TaskTemplateId,
                 request.Status,
                 request.Category,
                 request.Color,
                 request.FollowUpAt,
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                request.FieldValues);
 
             return Task.FromResult(created);
         }
@@ -452,10 +566,14 @@ public sealed class SyncApiTests
             var updated = task with
             {
                 Title = request.Title ?? task.Title,
+                TaskTemplateId = request.TaskTemplateId ?? task.TaskTemplateId,
                 Status = request.Status,
                 Category = request.Category,
                 Color = request.Color,
                 FollowUpAt = request.FollowUpAt,
+                FieldValues = request.FieldValues is null
+                    ? task.FieldValues
+                    : MapFieldValues(request.FieldValues),
                 LastTouchedAt = DateTimeOffset.UtcNow
             };
 
@@ -476,17 +594,19 @@ public sealed class SyncApiTests
         public CloudSyncTaskResponse AddTask(
             Guid workspaceId,
             string title,
+            Guid? taskTemplateId = null,
             string? status = null,
             string? category = null,
             string? color = null,
             DateTimeOffset? followUpAt = null,
-            DateTimeOffset? lastTouchedAt = null)
+            DateTimeOffset? lastTouchedAt = null,
+            IReadOnlyDictionary<Guid, string>? fieldValues = null)
         {
             var createdAt = lastTouchedAt ?? DateTimeOffset.UtcNow;
             var task = new CloudSyncTaskResponse(
                 Guid.NewGuid(),
                 workspaceId,
-                TaskTemplateId: null,
+                taskTemplateId,
                 title,
                 status,
                 category,
@@ -494,7 +614,8 @@ public sealed class SyncApiTests
                 createdAt,
                 lastTouchedAt ?? createdAt,
                 followUpAt,
-                ArchivedAt: null);
+                ArchivedAt: null,
+                MapFieldValues(fieldValues));
 
             TasksByWorkspace[workspaceId].Add(task);
 
@@ -512,6 +633,78 @@ public sealed class SyncApiTests
             }
 
             tasks[index] = task;
+        }
+
+        private static CloudSyncTaskTemplateResponse CreateTemplate(
+            Guid id,
+            string name,
+            IReadOnlyList<CloudSyncUpsertFieldDefinitionRequest> fields,
+            CloudSyncTaskTemplateLayoutRequest layout)
+        {
+            return new CloudSyncTaskTemplateResponse(
+                id,
+                name,
+                DateTimeOffset.UtcNow,
+                new CloudSyncTaskTemplateLayoutResponse(
+                    layout.Header
+                        .Select(row => new CloudSyncTaskTemplateLayoutRowResponse(
+                            row.Row,
+                            row.ColumnWeights,
+                            row.Height))
+                        .ToList(),
+                    layout.Entry
+                        .Select(row => new CloudSyncTaskTemplateLayoutRowResponse(
+                            row.Row,
+                            row.ColumnWeights,
+                            row.Height))
+                        .ToList()),
+                fields
+                    .Select(field => new CloudSyncFieldDefinitionResponse(
+                        field.Id ?? Guid.NewGuid(),
+                        GenerateKey(field.Name),
+                        field.Name,
+                        field.Type,
+                        field.Scope,
+                        field.Required,
+                        field.SortOrder,
+                        field.Options,
+                        field.LayoutRow,
+                        field.LayoutColumn,
+                        field.LayoutRowSpan,
+                        field.LayoutColumnSpan,
+                        field.LayoutWeight))
+                    .ToList());
+        }
+
+        private static IReadOnlyList<CloudSyncFieldValueResponse> MapFieldValues(
+            IReadOnlyDictionary<Guid, string>? fieldValues)
+        {
+            if (fieldValues is null || fieldValues.Count == 0)
+            {
+                return [];
+            }
+
+            return fieldValues
+                .Select(value => new CloudSyncFieldValueResponse(
+                    value.Key,
+                    value.Value,
+                    DateTimeOffset.UtcNow))
+                .ToList();
+        }
+
+        private static string GenerateKey(string name)
+        {
+            var keyCharacters = name
+                .Trim()
+                .ToLowerInvariant()
+                .Select(character => char.IsLetterOrDigit(character) ? character : '_')
+                .ToArray();
+            var key = string.Join(
+                '_',
+                new string(keyCharacters)
+                    .Split('_', StringSplitOptions.RemoveEmptyEntries));
+
+            return string.IsNullOrWhiteSpace(key) ? "field" : key;
         }
     }
 }

@@ -1,0 +1,184 @@
+using DumpTether.App.Templates;
+using DumpTether.App.Tasks;
+using DumpTether.Domain;
+
+namespace DumpTether.App.Sync;
+
+internal static class CloudSyncTemplatePayloadMapper
+{
+    public static RemoteTaskTemplateProjection CreateProjection(
+        CloudSyncTaskTemplateResponse remoteTemplate,
+        TaskTemplate localTemplate)
+    {
+        var remoteHeaderFieldsByKey = remoteTemplate.Fields
+            .Where(field => string.Equals(field.Scope, FieldDefinitionScope.Header.ToString(), StringComparison.Ordinal))
+            .ToDictionary(
+                field => field.Key,
+                field => field.Id,
+                StringComparer.Ordinal);
+        var localToRemoteHeaderFieldIds = localTemplate.FieldDefinitions
+            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Header)
+            .Where(field => remoteHeaderFieldsByKey.ContainsKey(field.Key))
+            .ToDictionary(
+                field => field.Id,
+                field => remoteHeaderFieldsByKey[field.Key]);
+
+        return new RemoteTaskTemplateProjection(
+            remoteTemplate.Id,
+            localToRemoteHeaderFieldIds);
+    }
+
+    public static CloudSyncCreateTaskTemplateRequest CreateRequest(
+        TaskTemplate localTemplate,
+        CloudSyncTaskTemplateResponse? remoteTemplate = null)
+    {
+        return new CloudSyncCreateTaskTemplateRequest(
+            localTemplate.Name,
+            CreateFieldRequests(localTemplate, remoteTemplate),
+            CreateLayoutRequest(localTemplate));
+    }
+
+    public static CloudSyncUpdateTaskTemplateRequest UpdateRequest(
+        TaskTemplate localTemplate,
+        CloudSyncTaskTemplateResponse remoteTemplate)
+    {
+        return new CloudSyncUpdateTaskTemplateRequest(
+            localTemplate.Name,
+            CreateFieldRequests(localTemplate, remoteTemplate),
+            CreateLayoutRequest(localTemplate));
+    }
+
+    public static bool TemplateDiffers(
+        TaskTemplate localTemplate,
+        CloudSyncTaskTemplateResponse remoteTemplate)
+    {
+        if (!string.Equals(localTemplate.Name, remoteTemplate.Name, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var localFields = CreateFieldRequests(localTemplate, remoteTemplate)
+            .Select(field => new
+            {
+                field.Name,
+                field.Type,
+                field.Scope,
+                field.Required,
+                field.SortOrder,
+                Options = string.Join('\u001f', field.Options),
+                field.LayoutRow,
+                field.LayoutColumn,
+                field.LayoutRowSpan,
+                field.LayoutColumnSpan,
+                field.LayoutWeight
+            });
+        var remoteFields = remoteTemplate.Fields
+            .Select(field => new
+            {
+                field.Name,
+                field.Type,
+                field.Scope,
+                field.Required,
+                field.SortOrder,
+                Options = string.Join('\u001f', field.Options),
+                field.LayoutRow,
+                field.LayoutColumn,
+                field.LayoutRowSpan,
+                field.LayoutColumnSpan,
+                field.LayoutWeight
+            });
+
+        return !localFields.SequenceEqual(remoteFields);
+    }
+
+    public static IReadOnlyDictionary<Guid, string>? BuildRemoteFieldValuePayload(
+        TaskItem localTask,
+        IReadOnlyDictionary<Guid, Guid> localToRemoteHeaderFieldIds)
+    {
+        if (localTask.FieldValues.Count == 0 || localToRemoteHeaderFieldIds.Count == 0)
+        {
+            return null;
+        }
+
+        var values = new Dictionary<Guid, string>();
+        foreach (var fieldValue in localTask.FieldValues)
+        {
+            if (localToRemoteHeaderFieldIds.TryGetValue(
+                    fieldValue.FieldDefinitionId,
+                    out var remoteFieldDefinitionId))
+            {
+                values[remoteFieldDefinitionId] = fieldValue.ValueJson;
+            }
+        }
+
+        return values.Count == 0 ? null : values;
+    }
+
+    private static IReadOnlyList<CloudSyncUpsertFieldDefinitionRequest> CreateFieldRequests(
+        TaskTemplate localTemplate,
+        CloudSyncTaskTemplateResponse? remoteTemplate)
+    {
+        var remoteFieldsByKey = (remoteTemplate?.Fields ?? [])
+            .ToDictionary(
+                field => new TemplateFieldKey(field.Scope, field.Key),
+                field => field.Id);
+
+        return localTemplate.FieldDefinitions
+            .Where(field => field.IsActive)
+            .OrderBy(field => field.Scope)
+            .ThenBy(field => field.SortOrder)
+            .ThenBy(field => field.Label)
+            .Select(field =>
+            {
+                remoteFieldsByKey.TryGetValue(
+                    new TemplateFieldKey(field.Scope.ToString(), field.Key),
+                    out var remoteFieldId);
+
+                return new CloudSyncUpsertFieldDefinitionRequest(
+                    remoteFieldId == Guid.Empty ? null : remoteFieldId,
+                    field.Label,
+                    field.Type.ToString(),
+                    field.Scope.ToString(),
+                    field.IsRequired,
+                    field.SortOrder,
+                    TaskTemplateService.ParseOptions(field.OptionsJson),
+                    field.LayoutRow,
+                    field.LayoutColumn,
+                    field.LayoutRowSpan,
+                    field.LayoutColumnSpan,
+                    field.LayoutWeight);
+            })
+            .ToList();
+    }
+
+    private static CloudSyncTaskTemplateLayoutRequest CreateLayoutRequest(
+        TaskTemplate localTemplate)
+    {
+        var layout = TaskTemplateService.MapLayout(
+            localTemplate,
+            localTemplate.FieldDefinitions.Where(field => field.IsActive));
+
+        return new CloudSyncTaskTemplateLayoutRequest(
+            layout.Header
+                .Select(row => new CloudSyncTaskTemplateLayoutRowRequest(
+                    row.Row,
+                    row.ColumnWeights,
+                    row.Height))
+                .ToList(),
+            layout.Entry
+                .Select(row => new CloudSyncTaskTemplateLayoutRowRequest(
+                    row.Row,
+                    row.ColumnWeights,
+                    row.Height))
+                .ToList());
+    }
+
+    private sealed record TemplateFieldKey(string Scope, string Key);
+}
+
+internal sealed record RemoteTaskTemplateProjection(
+    Guid? RemoteTemplateId,
+    IReadOnlyDictionary<Guid, Guid> LocalToRemoteHeaderFieldIds)
+{
+    public static readonly RemoteTaskTemplateProjection Empty = new(null, new Dictionary<Guid, Guid>());
+}

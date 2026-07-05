@@ -528,15 +528,26 @@ internal sealed class SyncService : ISyncService
         {
             if (!mapping.RemoteId.HasValue)
             {
+                var remoteTemplate = await EnsureRemoteTaskTemplateAsync(
+                    connection,
+                    root,
+                    localTask,
+                    messages,
+                    cancellationToken);
+                var remoteFieldValues = CloudSyncTemplatePayloadMapper.BuildRemoteFieldValuePayload(
+                    localTask,
+                    remoteTemplate.LocalToRemoteHeaderFieldIds);
                 var createdRemoteTask = await _cloudSyncClient.CreateTaskAsync(
                     connection,
                     remoteWorkspaceId,
                     new CloudSyncCreateTaskRequest(
                         localTask.Title,
+                        remoteTemplate.RemoteTemplateId,
                         localTask.Status,
                         localTask.Category,
                         localTask.Color,
-                        localTask.FollowUpAt),
+                        localTask.FollowUpAt,
+                        remoteFieldValues),
                     cancellationToken);
 
                 mapping.LinkRemote(
@@ -558,8 +569,22 @@ internal sealed class SyncService : ISyncService
             var lastSyncedAt = mapping.LastSyncedAt;
             var localChanged = !lastSyncedAt.HasValue || localTask.LastTouchedAt > lastSyncedAt.Value;
             var remoteChanged = !lastSyncedAt.HasValue || remoteTask.LastTouchedAt > lastSyncedAt.Value;
+            var templateProjection = await EnsureRemoteTaskTemplateAsync(
+                connection,
+                root,
+                localTask,
+                messages,
+                cancellationToken);
+            var remoteFieldPayload = CloudSyncTemplatePayloadMapper.BuildRemoteFieldValuePayload(
+                localTask,
+                templateProjection.LocalToRemoteHeaderFieldIds);
+            var payloadDiffers = TaskPayloadDiffers(
+                localTask,
+                remoteTask,
+                templateProjection.RemoteTemplateId,
+                remoteFieldPayload);
 
-            if (localChanged && remoteChanged && HeaderDiffers(localTask, remoteTask))
+            if (localChanged && remoteChanged && payloadDiffers)
             {
                 mapping.MarkConflict(_clock.UtcNow);
                 stats.Conflicts++;
@@ -567,7 +592,7 @@ internal sealed class SyncService : ISyncService
                 return;
             }
 
-            if (localChanged && HeaderDiffers(localTask, remoteTask))
+            if (localChanged && payloadDiffers)
             {
                 var updatedRemoteTask = await _cloudSyncClient.UpdateTaskAsync(
                     connection,
@@ -575,10 +600,12 @@ internal sealed class SyncService : ISyncService
                     remoteTask.Id,
                     new CloudSyncUpdateTaskRequest(
                         localTask.Title,
+                        templateProjection.RemoteTemplateId,
                         localTask.Status,
                         localTask.Category,
                         localTask.Color,
-                        localTask.FollowUpAt),
+                        localTask.FollowUpAt,
+                        remoteFieldPayload),
                     cancellationToken);
 
                 mapping.LinkRemote(
@@ -600,7 +627,7 @@ internal sealed class SyncService : ISyncService
                 CreateRemoteVersion(remoteTask),
                 _clock.UtcNow);
         }
-        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or ValidationException)
         {
             mapping.MarkSyncFailed(exception.Message, _clock.UtcNow);
             stats.Failed++;
@@ -676,6 +703,136 @@ internal sealed class SyncService : ISyncService
             localTask.FollowUpAt != remoteTask.FollowUpAt;
     }
 
+    private async Task<RemoteTaskTemplateProjection> EnsureRemoteTaskTemplateAsync(
+        CloudSyncConnection connection,
+        SyncRoot root,
+        TaskItem localTask,
+        List<string> messages,
+        CancellationToken cancellationToken)
+    {
+        if (!localTask.TaskTemplateId.HasValue)
+        {
+            return RemoteTaskTemplateProjection.Empty;
+        }
+
+        var localTemplate = await _taskItemRepository.GetTaskTemplateByIdAsync(
+                localTask.TaskTemplateId.Value,
+                includeDeleted: true,
+                cancellationToken) ??
+            throw new ValidationException("Local task template was not found.");
+        var mapping = await _syncRepository.GetMappingAsync(
+            root.Id,
+            SyncEntityType.TaskTemplate,
+            localTemplate.Id,
+            trackChanges: true,
+            cancellationToken);
+        CloudSyncTaskTemplateResponse? remoteTemplate = null;
+
+        if (mapping?.RemoteId is Guid remoteTemplateId)
+        {
+            remoteTemplate = await _cloudSyncClient.GetTaskTemplateAsync(
+                connection,
+                remoteTemplateId,
+                cancellationToken);
+        }
+
+        if (remoteTemplate is null)
+        {
+            if (mapping?.RemoteId is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Mapped cloud template \"{localTemplate.Name}\" was not found.");
+            }
+
+            mapping ??= SyncMapping.CreateLocal(
+                root.Id,
+                SyncEntityType.TaskTemplate,
+                localTemplate.Id,
+                _clock.UtcNow);
+
+            await _syncRepository.AddMappingAsync(mapping, cancellationToken);
+
+            remoteTemplate = await _cloudSyncClient.CreateTaskTemplateAsync(
+                connection,
+                CloudSyncTemplatePayloadMapper.CreateRequest(localTemplate),
+                cancellationToken);
+            mapping.LinkRemote(
+                remoteTemplate.Id,
+                CreateRemoteVersion(remoteTemplate),
+                _clock.UtcNow);
+            messages.Add($"Created cloud template \"{localTemplate.Name}\".");
+
+            return CloudSyncTemplatePayloadMapper.CreateProjection(remoteTemplate, localTemplate);
+        }
+
+        var lastSyncedAt = mapping?.LastSyncedAt;
+        var localChanged = !lastSyncedAt.HasValue || localTemplate.UpdatedAt > lastSyncedAt.Value;
+        var remoteChanged = !lastSyncedAt.HasValue || remoteTemplate.UpdatedAt > lastSyncedAt.Value;
+
+        if (localChanged &&
+            remoteChanged &&
+            CloudSyncTemplatePayloadMapper.TemplateDiffers(localTemplate, remoteTemplate))
+        {
+            throw new InvalidOperationException(
+                $"Template \"{localTemplate.Name}\" changed locally and in the cloud. Resolve template differences before syncing this task.");
+        }
+
+        if (localChanged && CloudSyncTemplatePayloadMapper.TemplateDiffers(localTemplate, remoteTemplate))
+        {
+            remoteTemplate = await _cloudSyncClient.UpdateTaskTemplateAsync(
+                connection,
+                remoteTemplate.Id,
+                CloudSyncTemplatePayloadMapper.UpdateRequest(localTemplate, remoteTemplate),
+                cancellationToken);
+            mapping!.LinkRemote(
+                remoteTemplate.Id,
+                CreateRemoteVersion(remoteTemplate),
+                _clock.UtcNow);
+            messages.Add($"Updated cloud template \"{localTemplate.Name}\".");
+        }
+
+        return CloudSyncTemplatePayloadMapper.CreateProjection(remoteTemplate, localTemplate);
+    }
+
+    private static bool TaskPayloadDiffers(
+        TaskItem localTask,
+        CloudSyncTaskResponse remoteTask,
+        Guid? remoteTemplateId,
+        IReadOnlyDictionary<Guid, string>? remoteFieldPayload)
+    {
+        if (HeaderDiffers(localTask, remoteTask) ||
+            remoteTask.TaskTemplateId != remoteTemplateId)
+        {
+            return true;
+        }
+
+        return RemoteFieldValuesDiffer(remoteTask, remoteFieldPayload);
+    }
+
+    private static bool RemoteFieldValuesDiffer(
+        CloudSyncTaskResponse remoteTask,
+        IReadOnlyDictionary<Guid, string>? remoteFieldPayload)
+    {
+        if (remoteFieldPayload is null || remoteFieldPayload.Count == 0)
+        {
+            return false;
+        }
+
+        var remoteValues = (remoteTask.FieldValues ?? [])
+            .ToDictionary(value => value.FieldDefinitionId);
+
+        foreach (var (fieldDefinitionId, valueJson) in remoteFieldPayload)
+        {
+            if (!remoteValues.TryGetValue(fieldDefinitionId, out var remoteValue) ||
+                !string.Equals(remoteValue.ValueJson, valueJson, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool ApplyRemoteHeaderToLocal(
         TaskItem localTask,
         CloudSyncTaskResponse remoteTask,
@@ -695,6 +852,11 @@ internal sealed class SyncService : ISyncService
     private static string CreateRemoteVersion(CloudSyncTaskResponse remoteTask)
     {
         return remoteTask.LastTouchedAt.ToString("O");
+    }
+
+    private static string CreateRemoteVersion(CloudSyncTaskTemplateResponse remoteTemplate)
+    {
+        return remoteTemplate.UpdatedAt.ToString("O");
     }
 
     private async Task<SyncMapping> EnsureLocalTaskMappingForUpdateAsync(

@@ -74,7 +74,8 @@ public sealed record CloudSyncTaskResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset LastTouchedAt,
     DateTimeOffset? FollowUpAt,
-    DateTimeOffset? ArchivedAt);
+    DateTimeOffset? ArchivedAt,
+    IReadOnlyList<CloudSyncFieldValueResponse>? FieldValues = null);
 
 public sealed record CloudSyncCreateWorkspaceRequest(
     string Name,
@@ -82,14 +83,87 @@ public sealed record CloudSyncCreateWorkspaceRequest(
 
 public sealed record CloudSyncCreateTaskRequest(
     string Title,
+    Guid? TaskTemplateId,
     string? Status,
     string? Category,
     string? Color,
-    DateTimeOffset? FollowUpAt);
+    DateTimeOffset? FollowUpAt,
+    IReadOnlyDictionary<Guid, string>? FieldValues = null);
 
 public sealed record CloudSyncUpdateTaskRequest(
     string? Title,
+    Guid? TaskTemplateId,
     string? Status,
     string? Category,
     string? Color,
-    DateTimeOffset? FollowUpAt);
+    DateTimeOffset? FollowUpAt,
+    IReadOnlyDictionary<Guid, string>? FieldValues = null);
+
+public sealed record CloudSyncFieldValueResponse(
+    Guid FieldDefinitionId,
+    string ValueJson,
+    DateTimeOffset UpdatedAt);
+
+public sealed record CloudSyncTaskTemplateResponse(
+    Guid Id,
+    string Name,
+    DateTimeOffset UpdatedAt,
+    CloudSyncTaskTemplateLayoutResponse Layout,
+    IReadOnlyList<CloudSyncFieldDefinitionResponse> Fields);
+
+public sealed record CloudSyncTaskTemplateLayoutResponse(
+    IReadOnlyList<CloudSyncTaskTemplateLayoutRowResponse> Header,
+    IReadOnlyList<CloudSyncTaskTemplateLayoutRowResponse> Entry);
+
+public sealed record CloudSyncTaskTemplateLayoutRowResponse(
+    int Row,
+    IReadOnlyList<double> ColumnWeights,
+    double Height);
+
+public sealed record CloudSyncFieldDefinitionResponse(
+    Guid Id,
+    string Key,
+    string Name,
+    string Type,
+    string Scope,
+    bool Required,
+    int SortOrder,
+    IReadOnlyList<string> Options,
+    int LayoutRow,
+    int LayoutColumn,
+    int LayoutRowSpan,
+    int LayoutColumnSpan,
+    double LayoutWeight);
+
+public sealed record CloudSyncUpsertFieldDefinitionRequest(
+    Guid? Id,
+    string Name,
+    string Type,
+    string Scope,
+    bool Required,
+    int SortOrder,
+    IReadOnlyList<string> Options,
+    int LayoutRow,
+    int LayoutColumn,
+    int LayoutRowSpan,
+    int LayoutColumnSpan,
+    double LayoutWeight);
+
+public sealed record CloudSyncTaskTemplateLayoutRequest(
+    IReadOnlyList<CloudSyncTaskTemplateLayoutRowRequest> Header,
+    IReadOnlyList<CloudSyncTaskTemplateLayoutRowRequest> Entry);
+
+public sealed record CloudSyncTaskTemplateLayoutRowRequest(
+    int Row,
+    IReadOnlyList<double> ColumnWeights,
+    double Height);
+
+public sealed record CloudSyncCreateTaskTemplateRequest(
+    string Name,
+    IReadOnlyList<CloudSyncUpsertFieldDefinitionRequest> Fields,
+    CloudSyncTaskTemplateLayoutRequest Layout);
+
+public sealed record CloudSyncUpdateTaskTemplateRequest(
+    string Name,
+    IReadOnlyList<CloudSyncUpsertFieldDefinitionRequest> Fields,
+    CloudSyncTaskTemplateLayoutRequest Layout);

@@ -1,8 +1,10 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using DumpTether.App.Auth;
 using DumpTether.App.Sync;
 using DumpTether.App.Tasks;
+using DumpTether.App.Templates;
 using DumpTether.App.Workspaces;
 
 namespace DumpTether.Api;
@@ -74,20 +76,120 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
             response.Color);
     }
 
+    public async Task<IReadOnlyList<CloudSyncTaskTemplateResponse>> ListTaskTemplatesAsync(
+        CloudSyncConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var summaries = await SendAsync<IReadOnlyList<TaskTemplateSummaryResponse>>(
+            connection,
+            HttpMethod.Get,
+            "/api/templates",
+            workspaceId: null,
+            body: null,
+            cancellationToken);
+        var templates = new List<CloudSyncTaskTemplateResponse>();
+
+        foreach (var summary in summaries)
+        {
+            var template = await GetTaskTemplateAsync(connection, summary.Id, cancellationToken);
+            if (template is not null)
+            {
+                templates.Add(template);
+            }
+        }
+
+        return templates;
+    }
+
+    public async Task<CloudSyncTaskTemplateResponse?> GetTaskTemplateAsync(
+        CloudSyncConnection connection,
+        Guid taskTemplateId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await SendAsync<TaskTemplateDetailResponse>(
+                connection,
+                HttpMethod.Get,
+                $"/api/templates/{taskTemplateId}",
+                workspaceId: null,
+                body: null,
+                cancellationToken);
+
+            return MapTemplate(response);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    public async Task<CloudSyncTaskTemplateResponse> CreateTaskTemplateAsync(
+        CloudSyncConnection connection,
+        CloudSyncCreateTaskTemplateRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync<TaskTemplateDetailResponse>(
+            connection,
+            HttpMethod.Post,
+            "/api/templates",
+            workspaceId: null,
+            body: new CreateTaskTemplateRequest(
+                request.Name,
+                request.Fields.Select(MapFieldRequest).ToList(),
+                MapLayoutRequest(request.Layout)),
+            cancellationToken);
+
+        return MapTemplate(response);
+    }
+
+    public async Task<CloudSyncTaskTemplateResponse> UpdateTaskTemplateAsync(
+        CloudSyncConnection connection,
+        Guid taskTemplateId,
+        CloudSyncUpdateTaskTemplateRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync<TaskTemplateDetailResponse>(
+            connection,
+            HttpMethod.Patch,
+            $"/api/templates/{taskTemplateId}",
+            workspaceId: null,
+            body: new UpdateTaskTemplateRequest(
+                request.Name,
+                request.Fields.Select(MapFieldRequest).ToList(),
+                MapLayoutRequest(request.Layout)),
+            cancellationToken);
+
+        return MapTemplate(response);
+    }
+
     public async Task<IReadOnlyList<CloudSyncTaskResponse>> ListTasksAsync(
         CloudSyncConnection connection,
         Guid workspaceId,
         CancellationToken cancellationToken)
     {
-        var response = await SendAsync<IReadOnlyList<TaskItemSummaryResponse>>(
+        var summaries = await SendAsync<IReadOnlyList<TaskItemSummaryResponse>>(
             connection,
             HttpMethod.Get,
             "/api/tasks?scope=All",
             workspaceId,
             body: null,
             cancellationToken);
+        var tasks = new List<CloudSyncTaskResponse>();
 
-        return response.Select(MapTask).ToList();
+        foreach (var summary in summaries)
+        {
+            var detail = await SendAsync<TaskItemDetailResponse>(
+                connection,
+                HttpMethod.Get,
+                $"/api/tasks/{summary.Id}",
+                workspaceId,
+                body: null,
+                cancellationToken);
+            tasks.Add(MapTask(detail));
+        }
+
+        return tasks;
     }
 
     public async Task<CloudSyncTaskResponse> CreateTaskAsync(
@@ -103,8 +205,8 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
             workspaceId,
             new CreateTaskItemRequest(
                 request.Title,
-                TaskTemplateId: null,
-                FieldValues: null,
+                request.TaskTemplateId,
+                BuildFieldValuePayload(request.FieldValues),
                 ProjectId: null,
                 request.Category),
             cancellationToken);
@@ -124,7 +226,7 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                     request.Category,
                     request.Color,
                     request.FollowUpAt,
-                    FieldValues: null,
+                    BuildFieldValuePayload(request.FieldValues),
                     ProjectId: null),
                 cancellationToken);
         }
@@ -150,11 +252,96 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                 request.Category,
                 request.Color,
                 request.FollowUpAt,
-                FieldValues: null,
+                BuildFieldValuePayload(request.FieldValues),
                 ProjectId: null),
             cancellationToken);
 
         return MapTask(response);
+    }
+
+    private static Dictionary<Guid, JsonElement>? BuildFieldValuePayload(
+        IReadOnlyDictionary<Guid, string>? fieldValues)
+    {
+        if (fieldValues is null || fieldValues.Count == 0)
+        {
+            return null;
+        }
+
+        var payload = new Dictionary<Guid, JsonElement>();
+        foreach (var (fieldDefinitionId, valueJson) in fieldValues)
+        {
+            using var document = JsonDocument.Parse(valueJson);
+            payload[fieldDefinitionId] = document.RootElement.Clone();
+        }
+
+        return payload;
+    }
+
+    private static UpsertFieldDefinitionRequest MapFieldRequest(
+        CloudSyncUpsertFieldDefinitionRequest field)
+    {
+        return new UpsertFieldDefinitionRequest(
+            field.Id,
+            field.Name,
+            field.Type,
+            field.Scope,
+            field.Required,
+            field.SortOrder,
+            field.Options,
+            field.LayoutRow,
+            field.LayoutColumn,
+            field.LayoutRowSpan,
+            field.LayoutColumnSpan,
+            field.LayoutWeight);
+    }
+
+    private static TaskTemplateLayoutRequest MapLayoutRequest(
+        CloudSyncTaskTemplateLayoutRequest layout)
+    {
+        return new TaskTemplateLayoutRequest(
+            layout.Header
+                .Select(row => new TaskTemplateLayoutRowRequest(row.Row, row.ColumnWeights, row.Height))
+                .ToList(),
+            layout.Entry
+                .Select(row => new TaskTemplateLayoutRowRequest(row.Row, row.ColumnWeights, row.Height))
+                .ToList());
+    }
+
+    private static CloudSyncTaskTemplateResponse MapTemplate(TaskTemplateDetailResponse template)
+    {
+        return new CloudSyncTaskTemplateResponse(
+            template.Id,
+            template.Name,
+            template.UpdatedAt,
+            new CloudSyncTaskTemplateLayoutResponse(
+                template.Layout.Header
+                    .Select(row => new CloudSyncTaskTemplateLayoutRowResponse(
+                        row.Row,
+                        row.ColumnWeights,
+                        row.Height))
+                    .ToList(),
+                template.Layout.Entry
+                    .Select(row => new CloudSyncTaskTemplateLayoutRowResponse(
+                        row.Row,
+                        row.ColumnWeights,
+                        row.Height))
+                    .ToList()),
+            template.Fields
+                .Select(field => new CloudSyncFieldDefinitionResponse(
+                    field.Id,
+                    field.Key,
+                    field.Name,
+                    field.Type,
+                    field.Scope,
+                    field.Required,
+                    field.SortOrder,
+                    field.Options,
+                    field.LayoutRow,
+                    field.LayoutColumn,
+                    field.LayoutRowSpan,
+                    field.LayoutColumnSpan,
+                    field.LayoutWeight))
+                .ToList());
     }
 
     private async Task<TResponse> SendAsync<TResponse>(
@@ -234,7 +421,8 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
             taskItem.CreatedAt,
             taskItem.LastTouchedAt,
             taskItem.FollowUpAt,
-            taskItem.ArchivedAt);
+            taskItem.ArchivedAt,
+            FieldValues: []);
     }
 
     private static CloudSyncTaskResponse MapTask(TaskItemDetailResponse taskItem)
@@ -250,6 +438,12 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
             taskItem.CreatedAt,
             taskItem.LastTouchedAt,
             taskItem.FollowUpAt,
-            taskItem.ArchivedAt);
+            taskItem.ArchivedAt,
+            taskItem.FieldValues
+                .Select(value => new CloudSyncFieldValueResponse(
+                    value.FieldDefinitionId,
+                    value.ValueJson,
+                    value.UpdatedAt))
+                .ToList());
     }
 }
