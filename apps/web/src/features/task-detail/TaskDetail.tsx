@@ -64,6 +64,7 @@ interface TaskDetailProps {
   onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
+  onImportTemplate: () => Promise<void>;
   onUpdateTaskShareRole: (
     taskItemId: string,
     shareId: string,
@@ -78,6 +79,7 @@ interface TaskDetailProps {
   projects: ProjectResponse[];
   statusOptions: string[];
   t: Translate;
+  templateCanBeImported: boolean;
   taskItem: TaskItemDetailResponse;
 }
 
@@ -99,12 +101,14 @@ export function TaskDetail({
   onUndoDeleteTimelineEntry,
   onUpdateFieldValues,
   onUpdateTaskItem,
+  onImportTemplate,
   onUpdateTaskShareRole,
   onUpdateTimelineEntry,
   pendingDeletedNoteIds,
   projects,
   statusOptions,
   t,
+  templateCanBeImported,
   taskItem,
 }: TaskDetailProps) {
   const [reopenNote, setReopenNote] = useState('');
@@ -256,21 +260,34 @@ export function TaskDetail({
         ) : null}
       </div>
 
-      {headerFields.length > 0 ? (
+      {headerFields.length > 0 || templateCanBeImported ? (
         <section className="detail-section fields-details task-header-fields-section">
           <div className="section-heading">
             <span>
               <h3 id="fields-title">{t('taskFields')}</h3>
             </span>
-            {isSavingFields ? (
-              <span
-                aria-label={t('saving')}
-                className="fields-saving saving-copy"
-                data-state="saving"
-                role="status"
-                title={t('saving')}
-              />
-            ) : null}
+            <span className="section-heading-actions">
+              {templateCanBeImported ? (
+                <button
+                  className="secondary-action compact-action"
+                  onClick={() => void onImportTemplate()}
+                  title={t('importTemplateHelp')}
+                  type="button"
+                >
+                  <Icon name="templates" />
+                  <span>{t('importTemplate')}</span>
+                </button>
+              ) : null}
+              {isSavingFields ? (
+                <span
+                  aria-label={t('saving')}
+                  className="fields-saving saving-copy"
+                  data-state="saving"
+                  role="status"
+                  title={t('saving')}
+                />
+              ) : null}
+            </span>
           </div>
 
           {headerFieldsCanBeEdited ? (
@@ -285,13 +302,13 @@ export function TaskDetail({
               }
               values={fieldDraft}
             />
-          ) : (
+          ) : headerFields.length > 0 ? (
             <FieldValueList
               fields={headerFields}
               fieldValues={taskItem.fieldValues}
               layoutRows={taskItem.template?.layout.header ?? []}
             />
-          )}
+          ) : null}
         </section>
       ) : null}
 

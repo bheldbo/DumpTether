@@ -27,6 +27,11 @@ export interface TaskItemDetailResponse extends TaskItemSummaryResponse {
   timelineEntries: TaskTimelineEntryResponse[];
 }
 
+export interface TaskTemplateImportResponse {
+  sourceTemplateId: string;
+  template: TaskTemplateDetailResponse;
+}
+
 export type TaskSyncStatus =
   | 'LocalOnly'
   | 'Synced'

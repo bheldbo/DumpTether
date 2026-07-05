@@ -294,6 +294,56 @@ public sealed class TaskTemplatesApiTests
     }
 
     [Fact]
+    public async Task ImportTemplateFromTask_RestoresDeletedTemplateToLibrary()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var template = await CreateTodoTemplateAsync(client);
+        var doneField = template.Fields.Single(field => field.Name == "Done");
+        var created = await CreateTaskItemAsync(
+            client,
+            "Todo imports deleted template",
+            template.Id,
+            new Dictionary<Guid, object?>());
+        _ = await PostTimelineEntryAsync(
+            client,
+            created.Id,
+            new
+            {
+                fieldValues = new Dictionary<Guid, object?>
+                {
+                    [doneField.Id] = true
+                }
+            });
+
+        var deleteResponse = await client.DeleteAsync($"/api/templates/{template.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var importResponse = await client.PostAsync(
+            $"/api/tasks/{created.Id}/template/import",
+            content: null);
+        var importBody = await importResponse.Content.ReadAsStringAsync();
+        Assert.True(
+            importResponse.IsSuccessStatusCode,
+            $"Expected success, got {importResponse.StatusCode}. Body: {importBody}");
+        var imported = await importResponse.Content.ReadFromJsonAsync<TaskTemplateImportResponse>();
+        Assert.NotNull(imported);
+
+        var importedTemplate = imported.Template;
+        var importedDoneField = importedTemplate.Fields.Single(field => field.Name == "Done");
+        var templates = await client.GetFromJsonAsync<List<TaskTemplateSummaryResponse>>(
+            "/api/templates");
+
+        Assert.Equal(template.Id, imported.SourceTemplateId);
+        Assert.NotEqual(template.Id, importedTemplate.Id);
+        Assert.Contains("Todo Test", importedTemplate.Name);
+        Assert.NotEqual(doneField.Id, importedDoneField.Id);
+        Assert.Equal(doneField.Type, importedDoneField.Type);
+        Assert.Contains(templates!, candidate => candidate.Id == importedTemplate.Id);
+        Assert.DoesNotContain(templates!, candidate => candidate.Id == template.Id);
+    }
+
+    [Fact]
     public async Task PatchTaskItem_UpdatesFieldValues()
     {
         using var factory = new DumpTetherApiFactory();

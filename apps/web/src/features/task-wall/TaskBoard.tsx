@@ -102,6 +102,7 @@ export function TaskBoard({
   onCreateWorkspaceInvitation,
   onDeleteProject,
   onDeleteTimelineEntry,
+  onImportTaskTemplate,
   onOpenArchiveDialog,
   onReopen,
   onReopenTaskItems,
@@ -127,6 +128,7 @@ export function TaskBoard({
   statusOptions,
   taskItems,
   templates,
+  importedTemplateSourceIds,
   t,
   workspaceInvitations,
   workspaceMembers,
@@ -164,6 +166,7 @@ export function TaskBoard({
   ) => Promise<WorkspaceInvitationResponse>;
   onDeleteProject: (projectId: string) => Promise<void>;
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
+  onImportTaskTemplate: (taskItemId: string) => Promise<void>;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
   onReopenTaskItems: (taskItemIds: string[], note?: string) => Promise<void>;
@@ -203,6 +206,7 @@ export function TaskBoard({
   statusOptions: string[];
   taskItems: TaskItemSummaryResponse[];
   templates: TaskTemplateDetailResponse[];
+  importedTemplateSourceIds: string[];
   t: Translate;
   workspaceInvitations: WorkspaceInvitationResponse[];
   workspaceMembers: WorkspaceMemberResponse[];
@@ -718,9 +722,16 @@ export function TaskBoard({
                       onUpdateTaskShareRole={onUpdateTaskShareRole}
                       onUpdateTaskItem={onUpdateTaskItem}
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
+                      onImportTemplate={() => onImportTaskTemplate(selectedTask.id)}
                       onRequestSync={() => openCloudSync(selectedTask.workspaceId)}
                       colorOptions={colorOptions}
                       canManageSharing={canManageSharing}
+                      templateCanBeImported={Boolean(
+                        selectedTask.taskTemplateId &&
+                        selectedTask.template &&
+                        !templates.some((template) => template.id === selectedTask.taskTemplateId) &&
+                        !importedTemplateSourceIds.includes(selectedTask.taskTemplateId),
+                      )}
                       pendingDeletedNoteIds={pendingDeletedNoteIds}
                       projects={projects}
                       statusOptions={statusOptions}

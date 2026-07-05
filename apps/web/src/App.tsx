@@ -63,6 +63,7 @@ import {
   getTaskItem,
   getTaskTemplate,
   getWorkspace,
+  importTaskTemplateFromTask,
   leaveCurrentWorkspace,
   leaveTaskShare,
   leaveWorkspaceTaskShares,
@@ -170,6 +171,7 @@ function App() {
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMemberResponse[]>([]);
   const [workspaceInvitations, setWorkspaceInvitations] = useState<WorkspaceInvitationResponse[]>([]);
   const [templates, setTemplates] = useState<TaskTemplateDetailResponse[]>([]);
+  const [importedTemplateSourceIds, setImportedTemplateSourceIds] = useState<string[]>([]);
   const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(
     () => readStoredStringList(
       statusOptionsStorageKey,
@@ -1717,6 +1719,37 @@ function App() {
     }
   };
 
+  const handleImportTaskTemplate = async (taskItemId: string) => {
+    const taskWorkspaceId = selectedTask?.workspaceId ??
+      taskItems.find((taskItem) => taskItem.id === taskItemId)?.workspaceId ??
+      selectedTaskRequestWorkspaceId;
+
+    try {
+      const imported = await importTaskTemplateFromTask(taskItemId, {
+        workspaceId: taskWorkspaceId,
+      });
+
+      setTemplates((currentTemplates) => {
+        const withoutDuplicate = currentTemplates.filter(
+          (template) => template.id !== imported.template.id,
+        );
+
+        return [...withoutDuplicate, imported.template]
+          .sort((first, second) => first.name.localeCompare(second.name));
+      });
+      setImportedTemplateSourceIds((currentIds) =>
+        currentIds.includes(imported.sourceTemplateId)
+          ? currentIds
+          : [...currentIds, imported.sourceTemplateId]);
+      showToast(t('templateImported'));
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+    }
+  };
+
   const handleCreateArchiveResolution = async (
     requestBody: CreateArchiveResolutionRequest,
   ) => {
@@ -1940,6 +1973,7 @@ function App() {
             onCreateWorkspaceInvitation={handleCreateWorkspaceInvitation}
             onDeleteTimelineEntry={handleDeleteTimelineEntry}
             onDeleteProject={handleDeleteProject}
+            onImportTaskTemplate={handleImportTaskTemplate}
             onOpenArchiveDialog={() => setArchiveDialogIsOpen(true)}
             onReopen={handleReopenTaskItem}
             onReopenTaskItems={handleReopenTaskItems}
@@ -1973,6 +2007,7 @@ function App() {
             statusOptions={statusOptions}
             taskItems={taskItems}
             templates={templates}
+            importedTemplateSourceIds={importedTemplateSourceIds}
             t={t}
             workspaceInvitations={workspaceInvitations}
             workspaceMembers={workspaceMembers}

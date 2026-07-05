@@ -30,6 +30,7 @@ import type {
   RegisterUserResponse,
   SavedViewResponse,
   TaskTemplateDetailResponse,
+  TaskTemplateImportResponse,
   TaskTemplateSummaryResponse,
   TaskItemListQuery,
   TaskItemDetailResponse,
@@ -801,6 +802,15 @@ export function deleteTaskTemplate(id: string): Promise<void> {
   return request<void>(`/api/templates/${id}`, {
     method: 'DELETE',
   });
+}
+
+export function importTaskTemplateFromTask(
+  taskItemId: string,
+  options: ApiRequestOptions = {},
+): Promise<TaskTemplateImportResponse> {
+  return request<TaskTemplateImportResponse>(`/api/tasks/${taskItemId}/template/import`, {
+    method: 'POST',
+  }, options);
 }
 
 export function syncWorkspaceWithCloud(

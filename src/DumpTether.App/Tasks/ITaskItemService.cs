@@ -31,6 +31,10 @@ public interface ITaskItemService
         CopyTaskItemsRequest request,
         CancellationToken cancellationToken);
 
+    Task<TaskTemplateImportResponse?> ImportTemplateAsync(
+        Guid id,
+        CancellationToken cancellationToken);
+
     Task<TaskItemDetailResponse?> AddTimelineEntryAsync(
         Guid id,
         AddTaskTimelineEntryRequest request,
