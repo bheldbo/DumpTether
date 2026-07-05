@@ -2,6 +2,14 @@ namespace DumpTether.App.Sync;
 
 internal sealed class NoOpCloudSyncClient : ICloudSyncClient
 {
+    public Task<CloudSyncLoginResponse> LoginAsync(
+        string cloudApiBaseUrl,
+        CloudSyncLoginRequest request,
+        CancellationToken cancellationToken)
+    {
+        throw CreateMissingClientException();
+    }
+
     public Task<CloudSyncUserResponse> GetCurrentUserAsync(
         CloudSyncConnection connection,
         CancellationToken cancellationToken)

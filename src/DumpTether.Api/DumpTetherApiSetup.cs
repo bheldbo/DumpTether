@@ -42,9 +42,11 @@ internal static class DumpTetherApiSetup
         services.RemoveAll<IEmailSender>();
         services.RemoveAll<ILiveUpdatePublisher>();
         services.RemoveAll<ICloudSyncClient>();
+        services.RemoveAll<ICloudSessionProtector>();
         services.AddHttpClient<IEmailSender, BrevoEmailSender>();
         services.AddHttpClient<ICloudSyncClient, HttpCloudSyncClient>();
         services.AddSingleton<ILiveUpdatePublisher, SignalRLiveUpdatePublisher>();
+        services.AddSingleton<ICloudSessionProtector, DataProtectionCloudSessionProtector>();
         services.AddDumpTetherData(configuration);
         services.AddHttpContextAccessor();
         services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();

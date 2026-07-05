@@ -7,6 +7,16 @@ public interface ISyncService
     Task<IReadOnlyList<SyncRootResponse>> ListWorkspaceRootsAsync(
         CancellationToken cancellationToken);
 
+    Task<CloudSyncAccountResponse?> GetCloudAccountAsync(
+        CancellationToken cancellationToken);
+
+    Task<CloudSyncAccountResponse> ConnectCloudAccountAsync(
+        ConnectCloudAccountRequest request,
+        CancellationToken cancellationToken);
+
+    Task<DisconnectCloudAccountResponse> DisconnectCloudAccountAsync(
+        CancellationToken cancellationToken);
+
     Task<SyncRootResponse> EnsureWorkspaceRootAsync(
         EnsureWorkspaceSyncRootRequest request,
         CancellationToken cancellationToken);

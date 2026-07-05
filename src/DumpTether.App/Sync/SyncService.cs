@@ -12,6 +12,7 @@ internal sealed class SyncService : ISyncService
     private const string DefaultLocalDesktopDeviceId = "local-desktop";
 
     private readonly IAuthRepository _authRepository;
+    private readonly ICloudSessionProtector _cloudSessionProtector;
     private readonly ICloudSyncClient _cloudSyncClient;
     private readonly IClock _clock;
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
@@ -22,6 +23,7 @@ internal sealed class SyncService : ISyncService
 
     public SyncService(
         IAuthRepository authRepository,
+        ICloudSessionProtector cloudSessionProtector,
         ICloudSyncClient cloudSyncClient,
         IClock clock,
         ICurrentUserSessionProvider currentUserSessionProvider,
@@ -31,6 +33,7 @@ internal sealed class SyncService : ISyncService
         IWorkspaceRepository workspaceRepository)
     {
         _authRepository = authRepository;
+        _cloudSessionProtector = cloudSessionProtector;
         _cloudSyncClient = cloudSyncClient;
         _clock = clock;
         _currentUserSessionProvider = currentUserSessionProvider;
@@ -65,6 +68,115 @@ internal sealed class SyncService : ISyncService
             .OrderBy(root => root.CreatedAt)
             .Select(MapRoot)
             .ToList();
+    }
+
+    public async Task<CloudSyncAccountResponse?> GetCloudAccountAsync(
+        CancellationToken cancellationToken)
+    {
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        if (!IsDesktopSession(currentSession))
+        {
+            throw new UnauthorizedAccessException("Desktop sync session is required.");
+        }
+
+        var account = await _syncRepository.GetCloudAccountForUserAsync(
+            currentSession.UserId,
+            trackChanges: false,
+            cancellationToken);
+
+        return account is null ? null : MapCloudAccount(account, _clock.UtcNow);
+    }
+
+    public async Task<CloudSyncAccountResponse> ConnectCloudAccountAsync(
+        ConnectCloudAccountRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        if (!IsDesktopSession(currentSession))
+        {
+            throw new UnauthorizedAccessException("Desktop sync session is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            throw new ValidationException("Cloud email is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password))
+        {
+            throw new ValidationException("Cloud password is required.");
+        }
+
+        var normalizedCloudApiBaseUrl = CloudSyncAccount.NormalizeCloudApiBaseUrl(request.CloudApiBaseUrl);
+        var login = await _cloudSyncClient.LoginAsync(
+            normalizedCloudApiBaseUrl,
+            new CloudSyncLoginRequest(
+                request.Email,
+                request.Password,
+                request.DeviceName),
+            cancellationToken);
+        var now = _clock.UtcNow;
+        var protectedToken = _cloudSessionProtector.Protect(login.SessionToken);
+        var account = await _syncRepository.GetCloudAccountForUserAsync(
+            currentSession.UserId,
+            trackChanges: true,
+            cancellationToken);
+
+        if (account is null)
+        {
+            account = CloudSyncAccount.Create(
+                currentSession.UserId,
+                normalizedCloudApiBaseUrl,
+                login.User.Id,
+                login.User.Email,
+                login.User.DisplayName,
+                protectedToken,
+                login.ExpiresAt,
+                now);
+            await _syncRepository.AddCloudAccountAsync(account, cancellationToken);
+        }
+        else
+        {
+            account.ReplaceConnection(
+                normalizedCloudApiBaseUrl,
+                login.User.Id,
+                login.User.Email,
+                login.User.DisplayName,
+                protectedToken,
+                login.ExpiresAt,
+                now);
+        }
+
+        await _syncRepository.SaveChangesAsync(cancellationToken);
+
+        return MapCloudAccount(account, now);
+    }
+
+    public async Task<DisconnectCloudAccountResponse> DisconnectCloudAccountAsync(
+        CancellationToken cancellationToken)
+    {
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        if (!IsDesktopSession(currentSession))
+        {
+            throw new UnauthorizedAccessException("Desktop sync session is required.");
+        }
+
+        var account = await _syncRepository.GetCloudAccountForUserAsync(
+            currentSession.UserId,
+            trackChanges: true,
+            cancellationToken);
+
+        if (account is null || account.DisconnectedAt.HasValue)
+        {
+            return new DisconnectCloudAccountResponse(false);
+        }
+
+        account.Disconnect(_clock.UtcNow);
+        await _syncRepository.SaveChangesAsync(cancellationToken);
+
+        return new DisconnectCloudAccountResponse(true);
     }
 
     public async Task<SyncRootResponse> EnsureWorkspaceRootAsync(
@@ -323,9 +435,18 @@ internal sealed class SyncService : ISyncService
 
         var localWorkspace = await _workspaceRepository.GetByIdAsync(workspaceId, cancellationToken) ??
             throw new ValidationException("Workspace was not found.");
-        var connection = CreateCloudConnection(request);
+        var preparedConnection = await CreateCloudConnectionAsync(
+            request,
+            currentSession.UserId,
+            cancellationToken);
+        var connection = preparedConnection.Connection;
         var cloudUser = await _cloudSyncClient.GetCurrentUserAsync(connection, cancellationToken);
         var now = _clock.UtcNow;
+        preparedConnection.Account?.MarkVerified(
+            cloudUser.Id,
+            cloudUser.Email,
+            cloudUser.DisplayName,
+            now);
         var root = await EnsureLocalRootAsync(
             workspaceId,
             DefaultLocalDesktopDeviceId,
@@ -458,7 +579,57 @@ internal sealed class SyncService : ISyncService
             messages);
     }
 
-    private static CloudSyncConnection CreateCloudConnection(SyncWorkspaceWithCloudRequest request)
+    private async Task<PreparedCloudConnection> CreateCloudConnectionAsync(
+        SyncWorkspaceWithCloudRequest request,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var hasManualCloudApiBaseUrl = !string.IsNullOrWhiteSpace(request.CloudApiBaseUrl);
+        var hasManualSessionToken = !string.IsNullOrWhiteSpace(request.CloudSessionToken);
+
+        if (hasManualCloudApiBaseUrl || hasManualSessionToken)
+        {
+            return new PreparedCloudConnection(
+                CreateManualCloudConnection(request),
+                Account: null);
+        }
+
+        var account = await _syncRepository.GetCloudAccountForUserAsync(
+            userId,
+            trackChanges: true,
+            cancellationToken);
+        var now = _clock.UtcNow;
+
+        if (account is null || account.DisconnectedAt.HasValue)
+        {
+            throw new ValidationException("Connect a cloud account before syncing this board.");
+        }
+
+        if (!account.HasUsableSession(now))
+        {
+            throw new ValidationException("Cloud account session expired. Reconnect the cloud account before syncing.");
+        }
+
+        string sessionToken;
+        try
+        {
+            sessionToken = _cloudSessionProtector.Unprotect(account.ProtectedSessionToken);
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                "Cloud account session could not be read. Reconnect the cloud account before syncing.",
+                exception);
+        }
+
+        return new PreparedCloudConnection(
+            new CloudSyncConnection(
+                account.CloudApiBaseUrl,
+                sessionToken),
+            account);
+    }
+
+    private static CloudSyncConnection CreateManualCloudConnection(SyncWorkspaceWithCloudRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.CloudApiBaseUrl))
         {
@@ -1279,6 +1450,23 @@ internal sealed class SyncService : ISyncService
             syncRoot.LastSyncedAt);
     }
 
+    private static CloudSyncAccountResponse MapCloudAccount(
+        CloudSyncAccount account,
+        DateTimeOffset now)
+    {
+        return new CloudSyncAccountResponse(
+            account.Id,
+            account.CloudApiBaseUrl,
+            account.CloudUserId,
+            account.CloudEmail,
+            account.CloudDisplayName,
+            account.SessionExpiresAt,
+            account.ConnectedAt,
+            account.UpdatedAt,
+            account.LastVerifiedAt,
+            account.HasUsableSession(now));
+    }
+
     private static bool IsDesktopSession(CurrentUserSession currentSession)
     {
         return currentSession.SessionType is UserSessionType.DesktopLocal or UserSessionType.DesktopCloud;
@@ -1320,4 +1508,8 @@ internal sealed class SyncService : ISyncService
 
         public int Failed { get; set; }
     }
+
+    private sealed record PreparedCloudConnection(
+        CloudSyncConnection Connection,
+        CloudSyncAccount? Account);
 }

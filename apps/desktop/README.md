@@ -95,13 +95,14 @@ ASP.NET configuration, so environment variables can still override
 Endpoint shape:
 
 - Normal desktop use talks to the local sidecar at `http://127.0.0.1:55868`.
-- Cloud sync asks for a hosted DumpTether API URL per sync run.
-- Packaged builds can set `VITE_DEFAULT_CLOUD_API_BASE_URL` so the cloud sync
-  dialog is pre-filled with the default hosted API. For desktop releases, prefer
-  setting `defaultCloudApiBaseUrl` in `desktop.manifest.json`; the Tauri build
-  runner passes that value to the shared React build.
-- The user can override the cloud API URL after install; that saved URL is local
-  user configuration, not installer configuration.
+- Cloud login/sync uses the hosted DumpTether API URL configured before the app
+  starts. The user does not edit the server URL inside the running desktop UI.
+- Packaged builds can set `VITE_DEFAULT_CLOUD_API_BASE_URL` so the Account panel
+  knows which hosted API to log in to. For desktop releases, prefer setting
+  `defaultCloudApiBaseUrl` in `desktop.manifest.json`; the Tauri build runner
+  passes that value to the shared React build.
+- Self-hosted or alternate-server builds should change the manifest/runtime
+  config before packaging or deployment, not through an in-app setting.
 - A future online-only desktop mode could make the API base URL configurable, but
   that is not the offline-first default.
 

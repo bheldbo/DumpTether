@@ -6,8 +6,11 @@ using DumpTether.App.Sync;
 using DumpTether.App.Tasks;
 using DumpTether.App.Templates;
 using DumpTether.App.Workspaces;
+using DumpTether.Data;
 using DumpTether.Domain;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace DumpTether.Api.Tests;
@@ -194,6 +197,92 @@ public sealed class SyncApiTests
             new MarkTaskItemSyncedRequest(Guid.NewGuid(), "v1"));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ConnectCloudAccount_WhenDesktop_StoresProtectedConnection()
+    {
+        var cloud = new FakeCloudSyncClient();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        await LoginDesktopAsync(client);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/sync/cloud-account",
+            new ConnectCloudAccountRequest(
+                "https://cloud.example",
+                "cloud@example.test",
+                "correct horse battery staple",
+                "test desktop"));
+
+        response.EnsureSuccessStatusCode();
+        var account = await response.Content.ReadFromJsonAsync<CloudSyncAccountResponse>();
+        var current = await client.GetFromJsonAsync<CloudSyncAccountResponse?>(
+            "/api/sync/cloud-account");
+
+        Assert.NotNull(account);
+        Assert.Equal("https://cloud.example", account!.CloudApiBaseUrl);
+        Assert.Equal("cloud@example.test", account.CloudEmail);
+        Assert.True(account.IsConnected);
+        Assert.NotNull(current);
+        Assert.Equal(account.Id, current!.Id);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var stored = await dbContext.CloudSyncAccounts.SingleAsync();
+        Assert.NotEqual("fake-cloud-session-token", stored.ProtectedSessionToken);
+        Assert.DoesNotContain("fake-cloud-session-token", stored.ProtectedSessionToken);
+    }
+
+    [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenConnectedCloudAccount_PushesLocalTask()
+    {
+        var cloud = new FakeCloudSyncClient();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        await ConnectCloudAccountAsync(client);
+        var created = await CreateTaskItemAsync(client, "Push from stored cloud login");
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest());
+
+        response.EnsureSuccessStatusCode();
+        var sync = (await response.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+        var remoteTask = Assert.Single(cloud.TasksByWorkspace[cloud.Workspaces.Single().Id]);
+
+        Assert.Equal(1, sync.Pushed);
+        Assert.Equal(created.Title, remoteTask.Title);
+    }
+
+    [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenNoConnectedCloudAccount_ReturnsBadRequest()
+    {
+        var cloud = new FakeCloudSyncClient();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        await CreateTaskItemAsync(client, "No cloud account yet");
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest());
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Connect a cloud account", body);
     }
 
     [Fact]
@@ -604,6 +693,21 @@ public sealed class SyncApiTests
         return (await response.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
     }
 
+    private static async Task<CloudSyncAccountResponse> ConnectCloudAccountAsync(
+        HttpClient client)
+    {
+        var response = await client.PostAsJsonAsync(
+            "/api/sync/cloud-account",
+            new ConnectCloudAccountRequest(
+                "https://cloud.example",
+                "cloud@example.test",
+                "correct horse battery staple",
+                "test desktop"));
+        response.EnsureSuccessStatusCode();
+
+        return (await response.Content.ReadFromJsonAsync<CloudSyncAccountResponse>())!;
+    }
+
     private static async Task<TaskTemplateDetailResponse> CreateTemplateAsync(HttpClient client)
     {
         var response = await client.PostAsJsonAsync(
@@ -651,6 +755,17 @@ public sealed class SyncApiTests
         public List<CloudSyncTaskTemplateResponse> Templates { get; } = [];
 
         public Dictionary<Guid, List<CloudSyncTaskResponse>> TasksByWorkspace { get; } = [];
+
+        public Task<CloudSyncLoginResponse> LoginAsync(
+            string cloudApiBaseUrl,
+            CloudSyncLoginRequest request,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new CloudSyncLoginResponse(
+                _user,
+                "fake-cloud-session-token",
+                DateTimeOffset.UtcNow.AddDays(30)));
+        }
 
         public Task<CloudSyncUserResponse> GetCurrentUserAsync(
             CloudSyncConnection connection,

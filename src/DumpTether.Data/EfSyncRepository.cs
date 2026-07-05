@@ -123,6 +123,22 @@ internal sealed class EfSyncRepository : ISyncRepository
         return await query.ToListAsync(cancellationToken);
     }
 
+    public async Task<CloudSyncAccount?> GetCloudAccountForUserAsync(
+        Guid userId,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.CloudSyncAccounts
+            .Where(account => account.UserId == userId);
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task AddRootAsync(
         SyncRoot syncRoot,
         CancellationToken cancellationToken)
@@ -135,6 +151,13 @@ internal sealed class EfSyncRepository : ISyncRepository
         CancellationToken cancellationToken)
     {
         await _dbContext.SyncMappings.AddAsync(mapping, cancellationToken);
+    }
+
+    public async Task AddCloudAccountAsync(
+        CloudSyncAccount account,
+        CancellationToken cancellationToken)
+    {
+        await _dbContext.CloudSyncAccounts.AddAsync(account, cancellationToken);
     }
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)

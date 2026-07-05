@@ -35,6 +35,82 @@ public sealed class SyncController : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("cloud-account")]
+    public async Task<ActionResult<CloudSyncAccountResponse?>> GetCloudAccount(
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.GetCloudAccountAsync(cancellationToken);
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("cloud-account")]
+    public async Task<ActionResult<CloudSyncAccountResponse>> ConnectCloudAccount(
+        ConnectCloudAccountRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.ConnectCloudAccountAsync(
+                request,
+                cancellationToken);
+
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpDelete("cloud-account")]
+    public async Task<ActionResult<DisconnectCloudAccountResponse>> DisconnectCloudAccount(
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.DisconnectCloudAccountAsync(cancellationToken);
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+    }
+
     [HttpPost("workspace-roots")]
     public async Task<ActionResult<SyncRootResponse>> EnsureWorkspaceRoot(
         EnsureWorkspaceSyncRootRequest request,

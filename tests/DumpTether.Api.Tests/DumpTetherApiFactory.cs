@@ -2,6 +2,7 @@ using DumpTether.App.LiveUpdates;
 using DumpTether.App.Auth;
 using DumpTether.App.Sync;
 using DumpTether.Data;
+using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -120,6 +121,9 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
                 services.AddSingleton(_cloudSyncClient);
             }
 
+            services.RemoveAll<ICloudSessionProtector>();
+            services.AddSingleton<ICloudSessionProtector, TestCloudSessionProtector>();
+
             services.PostConfigure<AuthOptions>(options =>
             {
                 options.RequireAuthentication = _requireAuthentication;
@@ -144,6 +148,24 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
             Environment.SetEnvironmentVariable(
                 ApplyMigrationsOnStartupKey,
                 _previousApplyMigrationsOnStartup);
+        }
+    }
+
+    private sealed class TestCloudSessionProtector : ICloudSessionProtector
+    {
+        private const string Prefix = "protected:";
+
+        public string Protect(string sessionToken)
+        {
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Prefix}{sessionToken}"));
+        }
+
+        public string Unprotect(string protectedSessionToken)
+        {
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(protectedSessionToken));
+            return decoded.StartsWith(Prefix, StringComparison.Ordinal)
+                ? decoded[Prefix.Length..]
+                : throw new InvalidOperationException("Invalid protected test token.");
         }
     }
 }

@@ -19,6 +19,46 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
         _httpClient = httpClient;
     }
 
+    public async Task<CloudSyncLoginResponse> LoginAsync(
+        string cloudApiBaseUrl,
+        CloudSyncLoginRequest request,
+        CancellationToken cancellationToken)
+    {
+        var httpRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            BuildUri(cloudApiBaseUrl, "/api/auth/login"))
+        {
+            Content = JsonContent.Create(new LoginUserRequest(
+                request.Email,
+                request.Password,
+                string.IsNullOrWhiteSpace(request.DeviceName)
+                    ? "DumpTether desktop"
+                    : request.DeviceName.Trim()))
+        };
+
+        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Cloud login failed with HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
+        }
+
+        var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>(
+            cancellationToken: cancellationToken);
+        if (login is null || string.IsNullOrWhiteSpace(login.SessionToken))
+        {
+            throw new InvalidOperationException("Cloud login returned an empty response.");
+        }
+
+        return new CloudSyncLoginResponse(
+            new CloudSyncUserResponse(
+                login.User.Id,
+                login.User.Email,
+                login.User.DisplayName),
+            login.SessionToken,
+            login.ExpiresAt);
+    }
+
     public async Task<CloudSyncUserResponse> GetCurrentUserAsync(
         CloudSyncConnection connection,
         CancellationToken cancellationToken)

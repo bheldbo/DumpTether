@@ -1,6 +1,7 @@
 ﻿import { type FormEvent, useEffect, useState } from 'react';
 import { beginOAuthLogin } from '../../api';
 import type { SettingsSectionKey } from '../../appTypes';
+import { readCloudSyncApiBaseUrl } from '../../appSettings';
 import { Icon, type IconName } from '../../components/Icon';
 import { ModalFrame } from '../../components/ModalFrame';
 import {
@@ -15,6 +16,8 @@ import type {
   ArchiveResolutionResponse,
   AuthSessionListItemResponse,
   AuthClientOptionsResponse,
+  CloudSyncAccountResponse,
+  ConnectCloudAccountRequest,
   CreateArchiveResolutionRequest,
   CurrentUserResponse,
   LoginUserRequest,
@@ -343,14 +346,17 @@ export function AuthPanel({
 export function AccountPanel({
   authSessions,
   authOptions,
+  cloudSyncAccount,
   currentUser,
   incomingTaskShares,
   incomingWorkspaceInvitations,
   isLoadingAuth,
   localDesktopSessionIsActive,
   onAcceptIncomingWorkspaceInvitation,
+  onConnectCloudAccount,
   onClose,
   onDeclineIncomingWorkspaceInvitation,
+  onDisconnectCloudAccount,
   onDevelopmentLogin,
   onGuestLogin,
   onLeaveTaskShare,
@@ -363,14 +369,17 @@ export function AccountPanel({
 }: {
   authSessions: AuthSessionListItemResponse[];
   authOptions: AuthClientOptionsResponse;
+  cloudSyncAccount: CloudSyncAccountResponse | null;
   currentUser: CurrentUserResponse | null;
   incomingTaskShares: TaskShareInboxResponse[];
   incomingWorkspaceInvitations: WorkspaceInvitationInboxResponse[];
   isLoadingAuth: boolean;
   localDesktopSessionIsActive: boolean;
   onAcceptIncomingWorkspaceInvitation: (id: string) => Promise<void>;
+  onConnectCloudAccount: (requestBody: ConnectCloudAccountRequest) => Promise<void>;
   onClose: () => void;
   onDeclineIncomingWorkspaceInvitation: (id: string) => Promise<void>;
+  onDisconnectCloudAccount: () => Promise<void>;
   onDevelopmentLogin: () => Promise<void>;
   onGuestLogin: () => Promise<void>;
   onLeaveTaskShare: (shareId: string) => Promise<void>;
@@ -414,6 +423,15 @@ export function AccountPanel({
           t={t}
           variant="settings"
         />
+
+        {localDesktopSessionIsActive ? (
+          <CloudAccountSection
+            cloudSyncAccount={cloudSyncAccount}
+            onConnectCloudAccount={onConnectCloudAccount}
+            onDisconnectCloudAccount={onDisconnectCloudAccount}
+            t={t}
+          />
+        ) : null}
 
         {currentUser ? (
           <section className="settings-section">
@@ -560,6 +578,125 @@ export function AccountPanel({
         </section>
       </section>
     </ModalFrame>
+  );
+}
+
+function CloudAccountSection({
+  cloudSyncAccount,
+  onConnectCloudAccount,
+  onDisconnectCloudAccount,
+  t,
+}: {
+  cloudSyncAccount: CloudSyncAccountResponse | null;
+  onConnectCloudAccount: (requestBody: ConnectCloudAccountRequest) => Promise<void>;
+  onDisconnectCloudAccount: () => Promise<void>;
+  t: Translate;
+}) {
+  const cloudApiBaseUrl = readCloudSyncApiBaseUrl();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFormError(null);
+    setIsSubmitting(true);
+
+    try {
+      await onConnectCloudAccount({
+        cloudApiBaseUrl,
+        email,
+        password,
+        deviceName: 'DumpTether desktop',
+      });
+      setPassword('');
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setFormError(null);
+    setIsSubmitting(true);
+
+    try {
+      await onDisconnectCloudAccount();
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <h3>{t('cloudAccount')}</h3>
+      <p>{t('cloudAccountHelp')}</p>
+
+      {cloudSyncAccount?.isConnected ? (
+        <div className="account-notification-card">
+          <Icon name="cloud" />
+          <div>
+            <strong>{cloudSyncAccount.cloudDisplayName || cloudSyncAccount.cloudEmail}</strong>
+            <p>{cloudSyncAccount.cloudEmail}</p>
+            <small>{cloudSyncAccount.cloudApiBaseUrl}</small>
+          </div>
+          <button
+            className="secondary-action logout-button"
+            disabled={isSubmitting}
+            onClick={() => void disconnect()}
+            type="button"
+          >
+            <Icon name="logout" />
+            {t('disconnectCloudAccount')}
+          </button>
+        </div>
+      ) : (
+        <form className="auth-form" onSubmit={(event) => void submit(event)}>
+          <div className="auth-method-card" data-state={cloudApiBaseUrl ? 'ready' : undefined}>
+            <Icon name="cloud" />
+            <div>
+              <strong>{t('cloudServerUrl')}</strong>
+              <p>{cloudApiBaseUrl || t('cloudServerUrlNotConfigured')}</p>
+            </div>
+          </div>
+          <label>
+            {t('email')}
+            <input
+              autoComplete="email"
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              type="email"
+              value={email}
+            />
+          </label>
+          <label>
+            {t('password')}
+            <input
+              autoComplete="current-password"
+              minLength={8}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type="password"
+              value={password}
+            />
+          </label>
+          <button
+            className="auth-submit-button"
+            disabled={isSubmitting || !cloudApiBaseUrl || !email.trim() || password.length < 8}
+            type="submit"
+          >
+            <Icon name="login" />
+            {t('connectCloudAccount')}
+          </button>
+        </form>
+      )}
+
+      {formError ? <p className="form-error">{formError}</p> : null}
+    </section>
   );
 }
 

@@ -41,6 +41,8 @@ import {
   acceptShareLink,
   acceptIncomingWorkspaceInvitation,
   archiveTaskItem,
+  checkHealth,
+  connectCloudSyncAccount,
   copyTaskItems,
   createArchiveResolution,
   createProject,
@@ -56,9 +58,10 @@ import {
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
   deleteWorkspace,
+  disconnectCloudSyncAccount,
   declineIncomingWorkspaceInvitation,
   developmentLogin,
-  checkHealth,
+  getCloudSyncAccount,
   guestLogin,
   getTaskItem,
   getTaskTemplate,
@@ -125,6 +128,8 @@ import type {
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   AuthSessionListItemResponse,
+  CloudSyncAccountResponse,
+  ConnectCloudAccountRequest,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CreateTaskShareRequest,
@@ -206,6 +211,7 @@ function App() {
   const [incomingTaskShares, setIncomingTaskShares] = useState<TaskShareInboxResponse[]>([]);
   const processedWorkspaceInviteTokenRef = useRef<string | null>(null);
   const [localDesktopSessionIsActive, setLocalDesktopSessionIsActive] = useState(false);
+  const [cloudSyncAccount, setCloudSyncAccount] = useState<CloudSyncAccountResponse | null>(null);
   const [temporarySessionIsActive, setTemporarySessionIsActive] = useState(isTemporarySession);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
   const [lastPingedAt, setLastPingedAt] = useState<string | null>(null);
@@ -309,10 +315,14 @@ function App() {
       setIncomingWorkspaceInvitations(session.incomingWorkspaceInvitations);
       setIncomingTaskShares(session.incomingTaskShares);
       setLocalDesktopSessionIsActive(session.localDesktopSessionIsActive);
+      setCloudSyncAccount(session.localDesktopSessionIsActive
+        ? await getCloudSyncAccount()
+        : null);
       setTemporarySessionIsActive(session.temporarySessionIsActive);
       setErrorMessage(null);
     } catch (error) {
       setConnectionStatus('offline');
+      setCloudSyncAccount(null);
       setErrorMessage(getErrorMessage(error));
     } finally {
       setIsLoadingAuth(false);
@@ -1313,6 +1323,30 @@ function App() {
     }
   };
 
+  const handleConnectCloudAccount = async (requestBody: ConnectCloudAccountRequest) => {
+    try {
+      const account = await connectCloudSyncAccount(requestBody);
+      setCloudSyncAccount(account);
+      showToast(t('cloudAccountConnected'), 'info');
+    } catch (error) {
+      const message = getErrorMessage(error);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleDisconnectCloudAccount = async () => {
+    try {
+      await disconnectCloudSyncAccount();
+      setCloudSyncAccount(null);
+      showToast(t('cloudAccountDisconnected'), 'info');
+    } catch (error) {
+      const message = getErrorMessage(error);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
   const handleUpdateTaskItem = async (requestBody: UpdateTaskItemRequest) => {
     if (!selectedTask) {
       return;
@@ -1975,6 +2009,7 @@ function App() {
           <TaskBoard
             archiveDialogIsOpen={archiveDialogIsOpen}
             archiveResolutions={archiveResolutions}
+            cloudSyncAccount={cloudSyncAccount}
             currentView={currentView}
             currentUserEmail={currentUser?.user.email ?? null}
             colorOptions={taskColorOptions}
@@ -2056,6 +2091,7 @@ function App() {
         <AccountPanel
           authSessions={authSessions}
           authOptions={authOptions}
+          cloudSyncAccount={cloudSyncAccount}
           currentUser={currentUser}
           incomingTaskShares={incomingTaskShares}
           incomingWorkspaceInvitations={incomingWorkspaceInvitations}
@@ -2063,6 +2099,8 @@ function App() {
           onAcceptIncomingWorkspaceInvitation={handleAcceptIncomingWorkspaceInvitation}
           onClose={() => setAccountIsOpen(false)}
           onDeclineIncomingWorkspaceInvitation={handleDeclineIncomingWorkspaceInvitation}
+          onConnectCloudAccount={handleConnectCloudAccount}
+          onDisconnectCloudAccount={handleDisconnectCloudAccount}
           onDevelopmentLogin={handleDevelopmentLogin}
           onGuestLogin={handleGuestLogin}
           onLeaveTaskShare={handleLeaveTaskShare}

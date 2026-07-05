@@ -31,7 +31,6 @@ export const languageStorageKey = 'dumptether.language';
 export const workspaceStorageKey = 'dumptether.workspace';
 export const statusOptionsStorageKey = 'dumptether.statusOptions';
 export const sidebarWidthStorageKey = 'dumptether.sidebarWidth';
-export const syncCloudBaseUrlStorageKey = 'dumptether.syncCloudBaseUrl';
 
 export const minSidebarWidth = 232;
 export const maxSidebarWidth = 440;

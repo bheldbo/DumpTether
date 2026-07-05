@@ -250,11 +250,11 @@ automatically, and CI checks that the generated files match the manifest.
 API endpoint configuration is intentionally split by runtime:
 
 - Hosted website: set `VITE_API_BASE_URL` at frontend build time if the React app should call a different API origin. Leave it empty when the website and API are served from the same origin.
-- Packaged desktop/cloud sync default: set `defaultCloudApiBaseUrl` in `apps/desktop/desktop.manifest.json` to pre-fill the cloud sync dialog with your hosted API. The Tauri build passes that through as `VITE_DEFAULT_CLOUD_API_BASE_URL`. The user can still override and save another URL later.
-- Direct web build cloud sync default: set `VITE_DEFAULT_CLOUD_API_BASE_URL` at frontend build time.
+- Packaged desktop/cloud sync server: set `defaultCloudApiBaseUrl` in `apps/desktop/desktop.manifest.json` before building the desktop app. The Tauri build passes that value through as `VITE_DEFAULT_CLOUD_API_BASE_URL`.
+- Direct web build cloud sync server: set `VITE_DEFAULT_CLOUD_API_BASE_URL` at frontend build time.
 - Vite dev: `apps/web/vite.config.ts` proxies `/api` and `/health` to `http://127.0.0.1:55868`.
 - Desktop local app: the React UI talks to the local sidecar API at `http://127.0.0.1:55868`.
-- Desktop cloud sync: the sync dialog asks for the hosted API URL and a cloud session token for that sync run. The app stores the URL only, not the token.
+- Desktop cloud login/sync: the Account panel logs in to the configured cloud server URL. The user does not edit the server/backend URL inside the running app.
 
 So the WCF-style mental model is close, but the knob is an HTTP API base URL. The offline desktop runtime should keep using its local sidecar for normal work; sync/login can point at your hosted API. Pointing the whole desktop UI directly at a remote backend would be an online-client mode and is future work.
 

@@ -2,6 +2,11 @@ namespace DumpTether.App.Sync;
 
 public interface ICloudSyncClient
 {
+    Task<CloudSyncLoginResponse> LoginAsync(
+        string cloudApiBaseUrl,
+        CloudSyncLoginRequest request,
+        CancellationToken cancellationToken);
+
     Task<CloudSyncUserResponse> GetCurrentUserAsync(
         CloudSyncConnection connection,
         CancellationToken cancellationToken);

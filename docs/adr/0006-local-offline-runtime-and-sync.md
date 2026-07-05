@@ -98,7 +98,7 @@ Local desktop login must be explicitly enabled with `Auth:EnableLocalDesktopLogi
 
 The packaged desktop app should normally talk to its local sidecar API. A configurable remote API base URL would be an online-client mode, not the default offline runtime.
 
-For sync/login, the desktop UI may use a packaged default hosted API URL via `VITE_DEFAULT_CLOUD_API_BASE_URL`, then allow the user to override that URL locally. This keeps the installer useful out of the box for the default DumpTether server while preserving a future self-hosted endpoint path.
+For sync/login, the desktop UI uses the hosted API URL configured before the client starts. Packaged desktop builds should take that value from `apps/desktop/desktop.manifest.json`, which is propagated into `VITE_DEFAULT_CLOUD_API_BASE_URL`. Direct web builds can set `VITE_DEFAULT_CLOUD_API_BASE_URL` at build time. The server/backend URL is deployment configuration, not an in-app user setting.
 
 Desktop release metadata is centralized in `apps/desktop/desktop.manifest.json`. The manifest owns desktop product/version/identifier/publisher/default cloud API values, and the sync script propagates those values into Tauri, npm and Cargo metadata. It is not a replacement for ASP.NET `appsettings.Desktop.json`; appsettings still owns the local sidecar runtime behavior such as SQLite, local URLs and auth mode.
 
@@ -159,8 +159,8 @@ The first implemented cloud sync pass is intentionally narrow:
 
 - It is available only in the desktop/local runtime.
 - It requires a local owner session for the board being synced.
-- The user supplies the hosted API URL and a cloud session token for the run.
-- The UI stores only the cloud URL, not the cloud token.
+- The user connects a cloud account against the configured hosted API URL.
+- The local API stores only a protected cloud session token, never a raw token.
 - If no remote board is mapped, the sync service can create one.
 - Local task header fields can be pushed: title, status, category, color and follow-up date.
 - Remote task header fields can be pulled into the local SQLite board.

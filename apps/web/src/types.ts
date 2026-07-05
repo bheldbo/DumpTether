@@ -63,9 +63,33 @@ export interface SyncRootResponse {
   lastSyncedAt: string | null;
 }
 
-export interface SyncWorkspaceWithCloudRequest {
+export interface CloudSyncAccountResponse {
+  id: string;
   cloudApiBaseUrl: string;
-  cloudSessionToken: string;
+  cloudUserId: string;
+  cloudEmail: string;
+  cloudDisplayName: string;
+  sessionExpiresAt: string;
+  connectedAt: string;
+  updatedAt: string;
+  lastVerifiedAt: string | null;
+  isConnected: boolean;
+}
+
+export interface ConnectCloudAccountRequest {
+  cloudApiBaseUrl: string;
+  email: string;
+  password: string;
+  deviceName?: string | null;
+}
+
+export interface DisconnectCloudAccountResponse {
+  disconnected: boolean;
+}
+
+export interface SyncWorkspaceWithCloudRequest {
+  cloudApiBaseUrl?: string | null;
+  cloudSessionToken?: string | null;
   remoteWorkspaceId?: string | null;
   pushLocalChanges?: boolean;
   pullRemoteChanges?: boolean;

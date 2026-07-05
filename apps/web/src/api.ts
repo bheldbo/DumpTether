@@ -7,11 +7,14 @@ import type {
   ArchiveTaskItemRequest,
   AuthClientOptionsResponse,
   AuthSessionListItemResponse,
+  CloudSyncAccountResponse,
+  ConnectCloudAccountRequest,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CopyTaskItemsRequest,
   CopyTaskItemsResponse,
   DeleteTaskItemsRequest,
+  DisconnectCloudAccountResponse,
   CreateTaskShareRequest,
   CreateTaskShareLinkRequest,
   CreateWorkspaceInvitationRequest,
@@ -822,6 +825,30 @@ export function syncWorkspaceWithCloud(
     method: 'POST',
     body: JSON.stringify(requestBody),
   }, { workspaceId });
+}
+
+export function getCloudSyncAccount(
+  options: ApiRequestOptions = {},
+): Promise<CloudSyncAccountResponse | null> {
+  return request<CloudSyncAccountResponse | null>('/api/sync/cloud-account', undefined, options);
+}
+
+export function connectCloudSyncAccount(
+  requestBody: ConnectCloudAccountRequest,
+  options: ApiRequestOptions = {},
+): Promise<CloudSyncAccountResponse> {
+  return request<CloudSyncAccountResponse>('/api/sync/cloud-account', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  }, options);
+}
+
+export function disconnectCloudSyncAccount(
+  options: ApiRequestOptions = {},
+): Promise<DisconnectCloudAccountResponse> {
+  return request<DisconnectCloudAccountResponse>('/api/sync/cloud-account', {
+    method: 'DELETE',
+  }, options);
 }
 
 export function listWorkspaceSyncRoots(

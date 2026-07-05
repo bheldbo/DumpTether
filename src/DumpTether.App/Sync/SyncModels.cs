@@ -7,6 +7,37 @@ public sealed record CloudSyncConnection(
     string BaseUrl,
     string SessionToken);
 
+public sealed record CloudSyncLoginRequest(
+    string Email,
+    string Password,
+    string? DeviceName = null);
+
+public sealed record CloudSyncLoginResponse(
+    CloudSyncUserResponse User,
+    string SessionToken,
+    DateTimeOffset ExpiresAt);
+
+public sealed record ConnectCloudAccountRequest(
+    string CloudApiBaseUrl,
+    string Email,
+    string Password,
+    string? DeviceName = null);
+
+public sealed record CloudSyncAccountResponse(
+    Guid Id,
+    string CloudApiBaseUrl,
+    Guid CloudUserId,
+    string CloudEmail,
+    string CloudDisplayName,
+    DateTimeOffset SessionExpiresAt,
+    DateTimeOffset ConnectedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? LastVerifiedAt,
+    bool IsConnected);
+
+public sealed record DisconnectCloudAccountResponse(
+    bool Disconnected);
+
 public sealed record EnsureWorkspaceSyncRootRequest(
     Guid LocalWorkspaceId,
     string DeviceId);
@@ -36,8 +67,8 @@ public sealed record MarkTaskItemSyncFailedRequest(
     string Error);
 
 public sealed record SyncWorkspaceWithCloudRequest(
-    string CloudApiBaseUrl,
-    string CloudSessionToken,
+    string? CloudApiBaseUrl = null,
+    string? CloudSessionToken = null,
     Guid? RemoteWorkspaceId = null,
     bool PushLocalChanges = true,
     bool PullRemoteChanges = true);

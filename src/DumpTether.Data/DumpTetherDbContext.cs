@@ -54,6 +54,8 @@ public sealed class DumpTetherDbContext : DbContext
 
     public DbSet<SyncMapping> SyncMappings => Set<SyncMapping>();
 
+    public DbSet<CloudSyncAccount> CloudSyncAccounts => Set<CloudSyncAccount>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DumpTetherDbContext).Assembly);

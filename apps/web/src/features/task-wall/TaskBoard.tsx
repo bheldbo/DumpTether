@@ -37,6 +37,7 @@ import {
 import type {
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CloudSyncAccountResponse,
   CreateTaskShareLinkRequest,
   CreateTaskShareRequest,
   CreateWorkspaceInvitationRequest,
@@ -88,6 +89,7 @@ export function TaskBoard({
   colorOptions,
   currentView,
   currentUserEmail,
+  cloudSyncAccount,
   isLoading,
   isLoadingDetail,
   isRefreshing,
@@ -143,6 +145,7 @@ export function TaskBoard({
   colorOptions: string[];
   currentView: SavedViewResponse | null;
   currentUserEmail: string | null;
+  cloudSyncAccount: CloudSyncAccountResponse | null;
   isLoading: boolean;
   isLoadingDetail: boolean;
   isRefreshing: boolean;
@@ -837,6 +840,7 @@ export function TaskBoard({
       ) : null}
       {cloudSyncIsOpen && cloudSyncWorkspaceId ? (
         <CloudSyncDialog
+          cloudAccount={cloudSyncAccount}
           onClose={() => {
             setCloudSyncIsOpen(false);
             setCloudSyncWorkspaceId(null);

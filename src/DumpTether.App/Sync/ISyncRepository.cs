@@ -38,9 +38,16 @@ public interface ISyncRepository
         bool trackChanges,
         CancellationToken cancellationToken);
 
+    Task<CloudSyncAccount?> GetCloudAccountForUserAsync(
+        Guid userId,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
     Task AddRootAsync(SyncRoot syncRoot, CancellationToken cancellationToken);
 
     Task AddMappingAsync(SyncMapping mapping, CancellationToken cancellationToken);
+
+    Task AddCloudAccountAsync(CloudSyncAccount account, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

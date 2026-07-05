@@ -1,15 +1,16 @@
 import { type FormEvent, useState } from 'react';
-import { readCloudSyncApiBaseUrl, writeCloudSyncApiBaseUrl } from '../../appSettings';
 import { Icon } from '../../components/Icon';
 import { ModalFrame } from '../../components/ModalFrame';
 import { type Translate } from '../../localization';
 import type {
+  CloudSyncAccountResponse,
   SyncWorkspaceWithCloudRequest,
   SyncWorkspaceWithCloudResponse,
   TaskItemSummaryResponse,
 } from '../../types';
 
 interface CloudSyncDialogProps {
+  cloudAccount: CloudSyncAccountResponse | null;
   onClose: () => void;
   onSync: (requestBody: SyncWorkspaceWithCloudRequest) => Promise<SyncWorkspaceWithCloudResponse>;
   taskItems: TaskItemSummaryResponse[];
@@ -18,16 +19,13 @@ interface CloudSyncDialogProps {
 }
 
 export function CloudSyncDialog({
+  cloudAccount,
   onClose,
   onSync,
   taskItems,
   t,
   workspaceName,
 }: CloudSyncDialogProps) {
-  const [cloudApiBaseUrl, setCloudApiBaseUrl] = useState(
-    () => readCloudSyncApiBaseUrl(),
-  );
-  const [cloudSessionToken, setCloudSessionToken] = useState('');
   const [pushLocalChanges, setPushLocalChanges] = useState(true);
   const [pullRemoteChanges, setPullRemoteChanges] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -45,13 +43,9 @@ export function CloudSyncDialog({
     setIsSyncing(true);
     try {
       const response = await onSync({
-        cloudApiBaseUrl: cloudApiBaseUrl.trim(),
-        cloudSessionToken: cloudSessionToken.trim(),
         pushLocalChanges,
         pullRemoteChanges,
       });
-      writeCloudSyncApiBaseUrl(cloudApiBaseUrl);
-      setCloudSessionToken('');
       setResult(response);
     } finally {
       setIsSyncing(false);
@@ -78,28 +72,17 @@ export function CloudSyncDialog({
         </div>
 
         <form className="cloud-sync-form" onSubmit={(event) => void submitSync(event)}>
-          <label>
-            <span>{t('cloudApiUrl')}</span>
-            <input
-              autoComplete="url"
-              onChange={(event) => setCloudApiBaseUrl(event.target.value)}
-              placeholder="https://dump.example.com"
-              required
-              type="url"
-              value={cloudApiBaseUrl}
-            />
-          </label>
-          <label>
-            <span>{t('cloudSessionToken')}</span>
-            <input
-              autoComplete="off"
-              onChange={(event) => setCloudSessionToken(event.target.value)}
-              required
-              type="password"
-              value={cloudSessionToken}
-            />
-          </label>
-          <p className="context-muted">{t('syncTokenHelp')}</p>
+          {cloudAccount?.isConnected ? (
+            <div className="cloud-account-summary">
+              <Icon name="cloud" />
+              <div>
+                <strong>{cloudAccount.cloudDisplayName || cloudAccount.cloudEmail}</strong>
+                <p>{cloudAccount.cloudEmail} - {cloudAccount.cloudApiBaseUrl}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="context-muted">{t('cloudAccountRequiredForSync')}</p>
+          )}
 
           <div className="cloud-sync-options">
             <label className="checkbox-label">
@@ -126,7 +109,11 @@ export function CloudSyncDialog({
             </button>
             <button
               className="primary-action"
-              disabled={isSyncing || (!pushLocalChanges && !pullRemoteChanges)}
+              disabled={
+                !cloudAccount?.isConnected ||
+                isSyncing ||
+                (!pushLocalChanges && !pullRemoteChanges)
+              }
               type="submit"
             >
               <Icon name="cloud" />
