@@ -1,5 +1,7 @@
+import { deploymentTarget } from './generated/deploymentTarget';
+
 const configuredDefaultCloudApiBaseUrl = normalizeUrl(
-  import.meta.env.VITE_DEFAULT_CLOUD_API_BASE_URL ?? '',
+  deploymentTarget.cloudApiBaseUrl,
 );
 
 export function readCloudSyncApiBaseUrl() {

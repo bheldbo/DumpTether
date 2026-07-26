@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using DumpTether.App.Email;
 
 namespace DumpTether.Api;
 
@@ -9,32 +10,30 @@ public static class RuntimeConfigurationValidator
         var missingKeys = new List<string>();
 
         CorsConfiguration.ValidateAllowedOrigins(configuration);
+        var emailProvider = GetEmailProvider(configuration);
 
         if (GetBoolean(configuration, "EmailConfirmation:Enabled"))
         {
-            AddMissingBrevoApiKeys(configuration, missingKeys);
+            AddMissingEmailProviderKeys(configuration, emailProvider, missingKeys);
             AddIfMissing(configuration, "EmailConfirmation:PublicBaseUrl", missingKeys);
         }
 
         if (GetBoolean(configuration, "Mfa:Email:Enabled"))
         {
+            AddMissingEmailProviderKeys(configuration, emailProvider, missingKeys);
+        }
+
+        if (emailProvider == EmailProvider.Smtp)
+        {
+            AddMissingSmtpKeys(configuration, missingKeys);
+        }
+
+        if (emailProvider == EmailProvider.BrevoApi)
+        {
             AddMissingBrevoApiKeys(configuration, missingKeys);
         }
 
-        if (GetBoolean(configuration, "Email:Smtp:Enabled"))
-        {
-            AddMissingEmailKeys(configuration, missingKeys);
-        }
-
-        if (GetBoolean(configuration, "Email:BrevoApi:Enabled"))
-        {
-            AddIfMissing(configuration, "Email:BrevoApi:ApiKey", missingKeys);
-            AddIfMissing(configuration, "Email:FromEmail", missingKeys);
-        }
-
-        AddMissingOAuthKeys(configuration, "Google", missingKeys);
         AddMissingOAuthKeys(configuration, "Microsoft", missingKeys);
-        AddMissingOAuthKeys(configuration, "Facebook", missingKeys);
 
         if (!isDevelopment &&
             GetBoolean(configuration, "Auth:EnableDevelopmentLogin"))
@@ -49,7 +48,7 @@ public static class RuntimeConfigurationValidator
         {
             throw new InvalidOperationException(
                 "DumpTether configuration is incomplete. Missing required setting(s): " +
-                string.Join(", ", missingKeys.OrderBy(key => key)) +
+                string.Join(", ", missingKeys.Distinct().OrderBy(key => key)) +
                 ". Configure them with environment variables or a local secret file; do not commit real secrets.");
         }
     }
@@ -74,28 +73,50 @@ public static class RuntimeConfigurationValidator
         }
     }
 
-    private static void AddMissingEmailKeys(
+    private static void AddMissingSmtpKeys(
         IConfiguration configuration,
         List<string> missingKeys)
     {
         AddIfMissing(configuration, "Email:FromEmail", missingKeys);
         AddIfMissing(configuration, "Email:Smtp:Host", missingKeys);
         AddIfMissing(configuration, "Email:Smtp:Port", missingKeys);
-        AddIfMissing(configuration, "Email:Smtp:Username", missingKeys);
-        AddIfMissing(configuration, "Email:Smtp:Password", missingKeys);
+
+        if (GetBoolean(configuration, "Email:Smtp:UseAuthentication"))
+        {
+            AddIfMissing(configuration, "Email:Smtp:Username", missingKeys);
+            AddIfMissing(configuration, "Email:Smtp:Password", missingKeys);
+        }
     }
 
     private static void AddMissingBrevoApiKeys(
         IConfiguration configuration,
         List<string> missingKeys)
     {
-        if (!GetBoolean(configuration, "Email:BrevoApi:Enabled"))
-        {
-            missingKeys.Add("Email:BrevoApi:Enabled");
-        }
-
         AddIfMissing(configuration, "Email:BrevoApi:ApiKey", missingKeys);
         AddIfMissing(configuration, "Email:FromEmail", missingKeys);
+    }
+
+    private static void AddMissingEmailProviderKeys(
+        IConfiguration configuration,
+        EmailProvider provider,
+        List<string> missingKeys)
+    {
+        if (provider == EmailProvider.None)
+        {
+            missingKeys.Add("Email:Provider");
+            return;
+        }
+
+        if (provider == EmailProvider.Smtp)
+        {
+            AddMissingSmtpKeys(configuration, missingKeys);
+            return;
+        }
+
+        if (provider == EmailProvider.BrevoApi)
+        {
+            AddMissingBrevoApiKeys(configuration, missingKeys);
+        }
     }
 
     private static void AddMissingOAuthKeys(
@@ -112,7 +133,19 @@ public static class RuntimeConfigurationValidator
 
         AddIfMissing(configuration, $"{section}:ClientId", missingKeys);
         AddIfMissing(configuration, $"{section}:ClientSecret", missingKeys);
-        AddIfMissing(configuration, $"{section}:Authority", missingKeys);
+        AddIfMissing(configuration, $"{section}:TenantId", missingKeys);
+
+        var tenantId = configuration[$"{section}:TenantId"];
+        if (!string.IsNullOrWhiteSpace(tenantId) &&
+            !tenantId.Equals("common", StringComparison.OrdinalIgnoreCase) &&
+            !tenantId.Equals("organizations", StringComparison.OrdinalIgnoreCase) &&
+            !tenantId.Equals("consumers", StringComparison.OrdinalIgnoreCase) &&
+            !Guid.TryParse(tenantId, out _))
+        {
+            throw new InvalidOperationException(
+                $"DumpTether configuration value '{section}:TenantId' must be a tenant GUID, " +
+                "'common', 'organizations', or 'consumers'.");
+        }
     }
 
     private static void AddIfMissing(
@@ -143,6 +176,26 @@ public static class RuntimeConfigurationValidator
         throw new InvalidOperationException(
             $"DumpTether configuration value '{key}' must be 'true' or 'false', but was '{value}'. " +
             "Do not append inline comments after .env values; put comments on their own lines.");
+    }
+
+    private static EmailProvider GetEmailProvider(IConfiguration configuration)
+    {
+        var value = configuration["Email:Provider"];
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return EmailProvider.None;
+        }
+
+        if (Enum.TryParse<EmailProvider>(value, ignoreCase: true, out var provider) &&
+            Enum.IsDefined(provider))
+        {
+            return provider;
+        }
+
+        throw new InvalidOperationException(
+            "DumpTether configuration value 'Email:Provider' must be one of " +
+            "None, Smtp, or BrevoApi.");
     }
 
     private static string GetSignupMode(IConfiguration configuration)

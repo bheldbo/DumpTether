@@ -191,8 +191,10 @@ public sealed class AuthController : ControllerBase
             return BadRequest(new { error = "External login did not complete." });
         }
 
-        var providerUserId = result.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
-        var email = result.Principal.FindFirstValue(ClaimTypes.Email);
+        var providerUserId = GetExternalProviderUserId(scheme, result.Principal);
+        var email = result.Principal.FindFirstValue("email") ??
+                    result.Principal.FindFirstValue("preferred_username") ??
+                    result.Principal.FindFirstValue(ClaimTypes.Email);
 
         if (string.IsNullOrWhiteSpace(providerUserId) || string.IsNullOrWhiteSpace(email))
         {
@@ -208,6 +210,7 @@ public sealed class AuthController : ControllerBase
                     scheme,
                     providerUserId,
                     email,
+                    result.Principal.FindFirstValue("name") ??
                     result.Principal.FindFirstValue(ClaimTypes.Name)),
                 new AuthRequestMetadata(
                     Request.Headers.UserAgent.FirstOrDefault(),
@@ -221,6 +224,26 @@ public sealed class AuthController : ControllerBase
 
         AppendSessionCookie(response);
         return Redirect(NormalizeReturnUrl(returnUrl));
+    }
+
+    private static string? GetExternalProviderUserId(
+        string provider,
+        ClaimsPrincipal principal)
+    {
+        if (provider.Equals("microsoft", StringComparison.OrdinalIgnoreCase))
+        {
+            var objectId = principal.FindFirstValue("oid");
+            var tenantId = principal.FindFirstValue("tid");
+
+            if (!string.IsNullOrWhiteSpace(objectId) &&
+                !string.IsNullOrWhiteSpace(tenantId))
+            {
+                return $"{tenantId}:{objectId}";
+            }
+        }
+
+        return principal.FindFirstValue("sub") ??
+               principal.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 
     [EnableRateLimiting("auth")]

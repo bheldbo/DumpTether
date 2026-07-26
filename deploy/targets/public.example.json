@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "targetId": "public-example",
+  "productName": "DumpTether",
+  "version": "0.1.0",
+  "publisher": "bheldbo",
+  "identifier": "net.heldbo.dumptether",
+  "windowTitle": "DumpTether",
+  "description": "DumpTether desktop shell",
+  "webOrigin": "https://dumptether.example.com",
+  "cloudApiBaseUrl": "https://dumptether.example.com",
+  "updateChannel": "stable"
+}

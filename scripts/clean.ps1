@@ -1,6 +1,6 @@
 param(
-    [ValidateSet("Status", "Generated", "NodeModules", "All")]
-    [string] $Target = "Status",
+    [ValidateSet("Menu", "Status", "DesktopDebug", "DesktopRelease", "DesktopTarget", "Generated", "NodeModules", "All")]
+    [string] $Target = "Menu",
     [switch] $Yes
 )
 
@@ -88,8 +88,14 @@ function Get-NodeModulePaths {
 }
 
 function Get-CleanTargets {
-    switch ($Target) {
+    param([string] $RequestedTarget = $Target)
+
+    switch ($RequestedTarget) {
+        "Menu" { return @() }
         "Status" { return Get-GeneratedArtifactPaths }
+        "DesktopDebug" { return @((Resolve-RepoPath "apps/desktop/src-tauri/target/debug")) | Where-Object { Test-Path -LiteralPath $_ } }
+        "DesktopRelease" { return @((Resolve-RepoPath "apps/desktop/src-tauri/target/release")) | Where-Object { Test-Path -LiteralPath $_ } }
+        "DesktopTarget" { return @((Resolve-RepoPath "apps/desktop/src-tauri/target")) | Where-Object { Test-Path -LiteralPath $_ } }
         "Generated" { return Get-GeneratedArtifactPaths }
         "NodeModules" { return Get-NodeModulePaths }
         "All" { return @((Get-GeneratedArtifactPaths) + (Get-NodeModulePaths)) | ForEach-Object { $_ } | Sort-Object -Unique }
@@ -135,7 +141,10 @@ function Format-Size {
 }
 
 function Confirm-Clean {
-    param([string[]] $Paths)
+    param(
+        [string] $TargetName,
+        [string[]] $Paths
+    )
 
     if ($Yes) {
         return
@@ -143,6 +152,7 @@ function Confirm-Clean {
 
     Write-Host ""
     Write-Host "This will remove generated files only. Source, migrations, appsettings and databases are not targeted." -ForegroundColor Yellow
+    Write-Host "Selected cleanup target: $TargetName"
     Write-Host "Type CLEAN to continue."
     $confirmation = Read-Host "Confirm"
 
@@ -151,42 +161,100 @@ function Confirm-Clean {
     }
 }
 
-$paths = @(Get-CleanTargets)
+function Invoke-CleanTarget {
+    param([string] $TargetName)
 
-if ($paths.Count -eq 0) {
-    Write-Host "No matching cleanup targets found."
-    return
-}
+    $paths = @(Get-CleanTargets -RequestedTarget $TargetName)
 
-$totalBytes = 0L
-Write-Host "Cleanup targets for '$Target':"
-
-foreach ($path in $paths) {
-    $size = Get-ApproximateSize -Path $path
-    $totalBytes += $size
-    Write-Host ("- {0} ({1})" -f $path, (Format-Size $size))
-}
-
-Write-Host ("Approximate total: {0}" -f (Format-Size $totalBytes))
-
-if ($Target -eq "Status") {
-    Write-Host "Status only. Run scripts/clean.ps1 -Target Generated or -Target All to clean."
-    return
-}
-
-Confirm-Clean -Paths $paths
-
-foreach ($path in $paths) {
-    if (-not (Test-Path -LiteralPath $path)) {
-        continue
+    if ($paths.Count -eq 0) {
+        Write-Host "No matching cleanup targets found for '$TargetName'."
+        return
     }
 
-    $resolvedPath = (Resolve-Path -LiteralPath $path).Path
+    $totalBytes = 0L
+    Write-Host ""
+    Write-Host "Cleanup targets for '$TargetName':"
 
-    if (-not $resolvedPath.StartsWith($repoRoot, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to delete outside repository: $resolvedPath"
+    foreach ($path in $paths) {
+        $size = Get-ApproximateSize -Path $path
+        $totalBytes += $size
+        Write-Host ("- {0} ({1})" -f $path, (Format-Size $size))
     }
 
-    Remove-Item -LiteralPath $resolvedPath -Recurse -Force
-    Write-Host "Removed $resolvedPath"
+    Write-Host ("Approximate total: {0}" -f (Format-Size $totalBytes))
+
+    if ($TargetName -eq "Status") {
+        Write-Host ""
+        Write-Host "Status only. Cleanup options:"
+        Write-Host "  .\scripts\clean.ps1                     Show an interactive cleanup menu."
+        Write-Host "  .\scripts\clean.ps1 -Target DesktopDebug    Remove apps/desktop/src-tauri/target/debug."
+        Write-Host "  .\scripts\clean.ps1 -Target DesktopRelease  Remove apps/desktop/src-tauri/target/release."
+        Write-Host "  .\scripts\clean.ps1 -Target DesktopTarget   Remove all Tauri/Rust target output."
+        Write-Host "  .\scripts\clean.ps1 -Target Generated       Remove build output, bin/obj, Vite dist/cache, Tauri target and sidecar publish output."
+        Write-Host "  .\scripts\clean.ps1 -Target NodeModules     Remove frontend and desktop node_modules only."
+        Write-Host "  .\scripts\clean.ps1 -Target All             Remove generated output and node_modules."
+        Write-Host ""
+        Write-Host "Add -Yes to skip the CLEAN confirmation prompt for destructive targets."
+        return
+    }
+
+    Confirm-Clean -TargetName $TargetName -Paths $paths
+
+    foreach ($path in $paths) {
+        if (-not (Test-Path -LiteralPath $path)) {
+            continue
+        }
+
+        $resolvedPath = (Resolve-Path -LiteralPath $path).Path
+
+        if (-not $resolvedPath.StartsWith($repoRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to delete outside repository: $resolvedPath"
+        }
+
+        Remove-Item -LiteralPath $resolvedPath -Recurse -Force
+        Write-Host "Removed $resolvedPath"
+    }
+}
+
+function Show-Menu {
+    while ($true) {
+        Write-Host ""
+        Write-Host "DumpTether cleanup"
+        Write-Host "1. Status only - show generated output and sizes"
+        Write-Host "2. Remove desktop Tauri debug target"
+        Write-Host "3. Remove desktop Tauri release target"
+        Write-Host "4. Remove all desktop Tauri target output"
+        Write-Host "5. Remove all generated output"
+        Write-Host "6. Remove node_modules"
+        Write-Host "7. Remove generated output and node_modules"
+        Write-Host "Q. Quit"
+        $choice = Read-Host "Choose"
+
+        if ($null -eq $choice) {
+            return
+        }
+
+        if ([string]::IsNullOrWhiteSpace($choice)) {
+            continue
+        }
+
+        switch ($choice.ToUpperInvariant()) {
+            "1" { Invoke-CleanTarget -TargetName "Status" }
+            "2" { Invoke-CleanTarget -TargetName "DesktopDebug" }
+            "3" { Invoke-CleanTarget -TargetName "DesktopRelease" }
+            "4" { Invoke-CleanTarget -TargetName "DesktopTarget" }
+            "5" { Invoke-CleanTarget -TargetName "Generated" }
+            "6" { Invoke-CleanTarget -TargetName "NodeModules" }
+            "7" { Invoke-CleanTarget -TargetName "All" }
+            "Q" { return }
+            default { Write-Host "Unknown choice." -ForegroundColor Yellow }
+        }
+    }
+}
+
+if ($Target -eq "Menu") {
+    Show-Menu
+}
+else {
+    Invoke-CleanTarget -TargetName $Target
 }

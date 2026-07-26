@@ -38,26 +38,19 @@ services:
       EmailConfirmation__PublicBaseUrl: ${DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL}
       Email__FromEmail: ${DUMPTETHER_EMAIL_FROM}
       Email__FromName: ${DUMPTETHER_EMAIL_FROM_NAME:-DumpTether}
-      Email__Smtp__Enabled: ${DUMPTETHER_EMAIL_SMTP_ENABLED:-false}
+      Email__Provider: ${DUMPTETHER_EMAIL_PROVIDER:-None}
       Email__Smtp__Host: ${DUMPTETHER_EMAIL_SMTP_HOST}
       Email__Smtp__Port: ${DUMPTETHER_EMAIL_SMTP_PORT:-587}
+      Email__Smtp__UseAuthentication: ${DUMPTETHER_EMAIL_SMTP_USE_AUTHENTICATION:-true}
+      Email__Smtp__EnableSsl: ${DUMPTETHER_EMAIL_SMTP_ENABLE_SSL:-true}
       Email__Smtp__Username: ${DUMPTETHER_EMAIL_SMTP_USERNAME}
       Email__Smtp__Password: ${DUMPTETHER_EMAIL_SMTP_PASSWORD}
-      Email__BrevoApi__Enabled: ${DUMPTETHER_EMAIL_BREVO_API_ENABLED:-false}
       Email__BrevoApi__ApiKey: ${DUMPTETHER_EMAIL_BREVO_API_KEY}
       Mfa__Email__Enabled: ${DUMPTETHER_EMAIL_MFA_ENABLED:-false}
-      OAuth__Google__Enabled: ${DUMPTETHER_OAUTH_GOOGLE_ENABLED:-false}
-      OAuth__Google__ClientId: ${DUMPTETHER_OAUTH_GOOGLE_CLIENT_ID}
-      OAuth__Google__ClientSecret: ${DUMPTETHER_OAUTH_GOOGLE_CLIENT_SECRET}
-      OAuth__Google__Authority: https://accounts.google.com
       OAuth__Microsoft__Enabled: ${DUMPTETHER_OAUTH_MICROSOFT_ENABLED:-false}
       OAuth__Microsoft__ClientId: ${DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID}
       OAuth__Microsoft__ClientSecret: ${DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET}
-      OAuth__Microsoft__Authority: https://login.microsoftonline.com/common/v2.0
-      OAuth__Facebook__Enabled: ${DUMPTETHER_OAUTH_FACEBOOK_ENABLED:-false}
-      OAuth__Facebook__ClientId: ${DUMPTETHER_OAUTH_FACEBOOK_CLIENT_ID}
-      OAuth__Facebook__ClientSecret: ${DUMPTETHER_OAUTH_FACEBOOK_CLIENT_SECRET}
-      OAuth__Facebook__Authority: https://www.facebook.com
+      OAuth__Microsoft__TenantId: ${DUMPTETHER_OAUTH_MICROSOFT_TENANT_ID:-common}
       Usage__MaxActiveTasksPerWorkspace: ${DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE:-1000}
       Usage__MaxTotalTasksPerWorkspace: ${DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE:-5000}
       ConnectionStrings__DumpTether: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}

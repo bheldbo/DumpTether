@@ -62,7 +62,7 @@ import type {
   UpdateWorkspaceMemberRequest,
 } from './types';
 
-const desktopLocalApiBaseUrl = 'http://127.0.0.1:55868';
+const desktopLocalApiBaseUrl = 'http://127.0.0.1:55869';
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
 const apiBaseUrl = configuredBaseUrl ?? getDefaultApiBaseUrl();
 const sessionTokenStorageKey = 'dumptether.sessionToken';

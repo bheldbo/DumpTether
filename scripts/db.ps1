@@ -6,57 +6,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$envFilePath = Join-Path $repoRoot ".env"
+$envFilePaths = @(
+    (Join-Path $repoRoot ".env"),
+    (Join-Path $repoRoot ".env.local")
+)
 $postgresContainerNames = @("dumptether-postgres", "dumptether-postgres-local")
 $localSqlitePath = Join-Path $env:APPDATA "DumpTether\dumptether.db"
 
 Import-Module (Join-Path $PSScriptRoot "DumpTether.DevTools.psm1") -Force
-
-function Read-DotEnvFile {
-    param([string] $Path)
-
-    return Read-DumpTetherDotEnvFile -Path $Path
-}
-
-function Remove-InlineDotEnvComment {
-    param([string] $Value)
-
-    if ([string]::IsNullOrWhiteSpace($Value)) {
-        return $Value
-    }
-
-    $quote = [char]0
-
-    for ($index = 0; $index -lt $Value.Length; $index++) {
-        $character = $Value[$index]
-
-        if ($quote -ne [char]0) {
-            if ($character -eq $quote) {
-                $quote = [char]0
-            }
-
-            continue
-        }
-
-        if ($character -eq '"' -or $character -eq "'") {
-            $quote = $character
-            continue
-        }
-
-        if ($character -eq '#' -and
-            ($index -eq 0 -or [char]::IsWhiteSpace($Value[$index - 1]))) {
-            return $Value.Substring(0, $index).TrimEnd()
-        }
-    }
-
-    return $Value
-}
-
-function Set-ProcessEnvironmentFromDotEnv {
-    param([hashtable] $Values)
-
-    Set-DumpTetherProcessEnvironmentFromDotEnv -Values $Values
-}
 
 function Get-EnvValue {
     param(
@@ -305,8 +262,8 @@ function Show-Menu {
     }
 }
 
-$dotenvValues = Read-DotEnvFile -Path $envFilePath
-Set-ProcessEnvironmentFromDotEnv -Values $dotenvValues
+$dotenvValues = Read-DumpTetherDotEnvFiles -Paths $envFilePaths
+Set-DumpTetherProcessEnvironmentFromDotEnv -Values $dotenvValues
 
 switch ($Action) {
     "Menu" { Show-Menu }

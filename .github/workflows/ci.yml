@@ -61,9 +61,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check desktop manifest
+      - name: Check client deployment target
         working-directory: apps/desktop
-        run: npm run sync:manifest:check
+        run: npm run configure:client:check
 
       - name: Lint
         run: npm run lint

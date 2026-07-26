@@ -27,6 +27,7 @@ permissions:
 env:
   DOTNET_NOLOGO: true
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  DUMPTETHER_DEPLOYMENT_TARGET: ${{ vars.DESKTOP_DEPLOYMENT_TARGET || 'standalone' }}
 
 jobs:
   build-desktop:
@@ -92,9 +93,9 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
-      - name: Check desktop manifest
+      - name: Generate client deployment target
         working-directory: apps/desktop
-        run: npm run sync:manifest:check
+        run: npm run configure:client
 
       - name: Build desktop bundle
         working-directory: apps/desktop

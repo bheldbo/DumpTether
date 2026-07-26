@@ -366,7 +366,9 @@ internal sealed class AuthService : IAuthService
             }
             else
             {
-                user.MarkEmailConfirmed(now);
+                throw new ValidationException(
+                    "This external identity cannot be connected automatically. " +
+                    "Sign in with your existing method; explicit account linking is not available yet.");
             }
 
             externalLogin = ExternalLogin.Create(

@@ -20,12 +20,15 @@ archive behavior, sharing boundaries and future sync rules stay in the C# projec
 - `src/DumpTether.Api/appsettings.Desktop.json` holds desktop sidecar defaults.
 - `scripts/dev.ps1 -Target LocalBoth` starts the local SQLite API plus Vite.
 - This folder contains a Tauri scaffold and a sidecar publish script.
+- `scripts/desktop.ps1` opens an interactive target menu when run without `-Target`.
+- `scripts/desktop.ps1 -Target BuildExe` builds the desktop executable without an installer.
 - `scripts/desktop.ps1 -Target Build` builds the desktop executable and NSIS installer.
 - Linux desktop bundles can be built on a Linux host or Linux CI runner.
 - Installer signing is future release work.
-- A manual first-pass cloud sync exists for board/task headers, templates and
-  task header field values. Notes, archive/delete sync and richer conflict
-  recovery remain future work.
+- A manual first-pass cloud sync exists for board/task headers, templates,
+  header field values and newly-synced note/entry field values. Later note
+  edits/deletes, archive/delete sync and richer conflict recovery remain future
+  work.
 
 ## Desktop Configuration
 
@@ -44,9 +47,10 @@ src/DumpTether.Api/appsettings.Desktop.json
 ```
 
 `appsettings.Desktop.json` contains safe desktop defaults: SQLite, local loopback
-URL, app-owned DataProtection keys, disabled email/OAuth/MFA, and the exact local
-origins needed by the webview and Vite dev server. If `DataProtection:KeysPath`
-is left empty in Desktop, DumpTether uses the app-data folder automatically.
+URL, app-owned DataProtection keys, disabled guest/demo sessions, disabled
+email/OAuth/MFA, and the exact local origins needed by the webview and Vite dev
+server. If `DataProtection:KeysPath` is left empty in Desktop, DumpTether uses
+the app-data folder automatically.
 
 Tauri's `src-tauri/capabilities/default.json` is not DumpTether runtime config. It
 is Tauri's security allow-list saying the shell may start the bundled sidecar with
@@ -57,10 +61,10 @@ The Tauri app identifier is `net.heldbo.dumptether`. This is a reverse-DNS-style
 stable application ID for the operating system, installer, app data identity and
 future signing/update flows. The bundle publisher is `bheldbo`.
 
-Desktop release metadata has one source file:
+Client release metadata has one non-secret source target:
 
 ```text
-apps/desktop/desktop.manifest.json
+deploy/targets/standalone.json
 ```
 
 Edit that file for:
@@ -72,21 +76,21 @@ Edit that file for:
 - window title
 - default hosted/cloud API URL
 
-Then sync the generated config files:
+Then generate the client config:
 
 ```powershell
-.\scripts\desktop.ps1 -Target SyncManifest
+node scripts/configure-client.mjs --target standalone
 ```
 
 or:
 
 ```powershell
-cd apps\desktop
-npm run sync:manifest
+.\scripts\desktop.ps1 -Target ConfigureClient
 ```
 
 That updates `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`
-and `src-tauri/Cargo.toml`. CI checks that those files match the manifest.
+and `src-tauri/Cargo.toml`, plus the public React deployment target. CI checks
+that generated files match the selected target.
 
 There is no second desktop business-config file. The desktop sidecar uses normal
 ASP.NET configuration, so environment variables can still override
@@ -94,14 +98,12 @@ ASP.NET configuration, so environment variables can still override
 
 Endpoint shape:
 
-- Normal desktop use talks to the local sidecar at `http://127.0.0.1:55868`.
+- Normal desktop use talks to the local sidecar at `http://127.0.0.1:55869`.
 - Cloud login/sync uses the hosted DumpTether API URL configured before the app
   starts. The user does not edit the server URL inside the running desktop UI.
-- Packaged builds can set `VITE_DEFAULT_CLOUD_API_BASE_URL` so the Account panel
-  knows which hosted API to log in to. For desktop releases, prefer setting
-  `defaultCloudApiBaseUrl` in `desktop.manifest.json`; the Tauri build runner
-  passes that value to the shared React build.
-- Self-hosted or alternate-server builds should change the manifest/runtime
+- Packaged builds read `cloudApiBaseUrl` from the selected deployment target so
+  the Account panel knows which hosted API to log in to.
+- Self-hosted or alternate-server builds should select a deployment target
   config before packaging or deployment, not through an in-app setting.
 - A future online-only desktop mode could make the API base URL configurable, but
   that is not the offline-first default.
@@ -167,6 +169,25 @@ Those binaries are ignored by Git.
 
 The first sidecar build may download .NET runtime packs from NuGet for the selected runtime, for example `win-x64`.
 
+## Build Executable Only
+
+```powershell
+cd apps\desktop
+npm run build:desktop:exe
+```
+
+Or:
+
+```powershell
+.\scripts\desktop.ps1 -Target BuildExe
+```
+
+This builds the desktop executable without creating an NSIS/MSI installer:
+
+```text
+apps/desktop/src-tauri/target/release/dumptether-desktop.exe
+```
+
 ## Build Installer
 
 ```powershell
@@ -192,6 +213,9 @@ intermediate names, native build objects and installer snapshots. It is safe to
 delete when you want a clean rebuild:
 
 ```powershell
+.\scripts\clean.ps1
+.\scripts\clean.ps1 -Target DesktopDebug
+.\scripts\clean.ps1 -Target DesktopRelease
 .\scripts\clean.ps1 -Target Generated
 ```
 
@@ -277,6 +301,7 @@ Offline data is local SQLite. When the user later logs in and syncs:
 - local-only tasks upload to the server
 - remote changes download into SQLite
 - existing mapped cloud task changes update local task headers and header fields
+- new cloud/local tasks can carry their first note entries and entry field values
 - append-only notes/timeline entries merge by stable IDs
 - independent field changes merge field-by-field
 - conflicting edits on the same scalar field become visible conflicts

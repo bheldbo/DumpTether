@@ -54,13 +54,9 @@ export function isSystemAllTasksWorkspace(workspace: Pick<WorkspaceResponse, 'na
 
 export function formatOAuthProvider(provider: string, t: Translate) {
   const normalizedProvider = provider.toLowerCase();
-  const providerName = normalizedProvider === 'google'
-    ? 'Google'
-    : normalizedProvider === 'microsoft'
-      ? 'Microsoft'
-      : normalizedProvider === 'facebook'
-        ? 'Facebook'
-        : provider;
+  const providerName = normalizedProvider === 'microsoft'
+    ? 'Microsoft'
+    : provider;
 
   return `${t('continueWith')} ${providerName}`;
 }

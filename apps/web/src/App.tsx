@@ -1039,14 +1039,15 @@ function App() {
         isCurrent: true,
       },
     ]);
-    setLocalDesktopSessionIsActive(
+    const isDesktopLocalSession =
       userState.session.sessionType === 'DesktopLocal' ||
-        userState.session.sessionType === 2,
-    );
+        userState.session.sessionType === 2;
+    setLocalDesktopSessionIsActive(isDesktopLocalSession);
     setTemporarySessionIsActive(
-      userState.session.sessionType === 'Guest' ||
-        userState.session.sessionType === 5 ||
-        isTemporarySession(),
+      !isDesktopLocalSession &&
+        (userState.session.sessionType === 'Guest' ||
+          userState.session.sessionType === 5 ||
+          isTemporarySession()),
     );
     const workspaceId = userState.workspaces[0]?.id ?? null;
     setSelectedWorkspaceId(workspaceId);
