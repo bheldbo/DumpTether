@@ -1,6 +1,21 @@
 # DumpTether Roadmap
 
-This roadmap is directional. The MVP should stay plain, fast, and focused on a personal task wall, structured notes, templates, views, and archive reasons.
+This roadmap is directional. The product should stay plain, fast, and focused
+on a personal task wall, structured notes, templates, filters, and archive
+policies.
+
+The repository has moved beyond several original phases. Current product
+terminology and priorities are defined in `product-brief.md`.
+
+## Current Priorities
+
+1. Keep web and desktop functional and safe.
+2. Complete understandable task-level sync with optional whole-board enrollment.
+3. Prepare the future offline-capable mobile client around the same sync contract.
+4. Rehearse the public hosted deployment.
+5. Complete and test Microsoft login.
+6. Complete transactional email confirmation and recovery.
+7. Validate authentication, sharing, deployment, and cross-device behavior.
 
 ## v0.1 Web MVP
 
@@ -9,9 +24,9 @@ This roadmap is directional. The MVP should stay plain, fast, and focused on a p
 - PostgreSQL persistence.
 - Tasks with compact note history.
 - Archive reasons.
-- Basic templates, custom fields, and saved views.
+- Basic templates, custom fields, and board filters.
 
-## v0.2 Templates, Views, and Search Hardening
+## v0.2 Templates, Filters, and Search Hardening
 
 - Simpler task wall interaction.
 - Task cards that can be scanned like a sticker wall.
@@ -19,8 +34,8 @@ This roadmap is directional. The MVP should stay plain, fast, and focused on a p
 - User-selected task colors.
 - Faster note entry on tasks.
 - Cleaner note history with less timeline ceremony.
-- Saved view filters over task text, status, project, archive state, dates, and custom fields.
-- Search examples and inline help for templates and views, including custom field queries.
+- Reusable filters over task text, status, board, archive state, dates, and custom fields.
+- Search examples and inline help for templates and filters, including custom field queries.
 
 ## v0.3 Desktop Online Wrapper
 
@@ -46,7 +61,7 @@ This roadmap is directional. The MVP should stay plain, fast, and focused on a p
 
 ## v0.6 Sharing
 
-- Share selected tasks, projects, or views.
+- Share selected tasks or boards.
 - Add explicit permissions.
 - Keep personal/local-first workflows intact.
 
@@ -75,6 +90,6 @@ This roadmap is directional. The MVP should stay plain, fast, and focused on a p
 - Optional organization/tenant layer.
 - Manager/team-lead task assignment to users.
 - In-app notifications for newly assigned tasks.
-- Microsoft Entra ID/Active Directory and Google Workspace login options.
+- Microsoft Entra ID/Active Directory login and future group/role import.
 - Self-hosted API/PostgreSQL deployment for organizations.
 - See `docs/product/enterprise-teams.md`.

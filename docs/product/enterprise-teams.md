@@ -14,7 +14,7 @@ The core use case is:
 - assigned users see new tasks appear on their board
 - users get an in-app notification and optional live update when a task is assigned
 - the organization can self-host the API and database on its own network
-- identity can integrate with Microsoft Entra ID/Active Directory, Google Workspace or another OIDC provider
+- identity can integrate with Microsoft Entra ID/Active Directory, with other OIDC providers evaluated only when a real deployment needs them
 
 This is different from the personal MVP. It should be an extension around the same domain/application/API rules, not a separate product code path.
 

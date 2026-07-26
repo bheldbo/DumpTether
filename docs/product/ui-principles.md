@@ -5,8 +5,8 @@ DumpTether should feel like a lightweight personal sticker wall backed by a stru
 ## Task Wall
 
 - The task wall is the default working surface.
-- The top header should identify the current workspace, project context, and saved view without feeling like a dashboard.
-- Workspace and project colors are lightweight grouping cues.
+- The top header should identify the current board and active filters without feeling like a dashboard.
+- Board and task colors are lightweight user-defined grouping cues.
 - Task cards should look and behave like plain post-it notes.
 - The task's chosen color belongs to the whole card, not a small label or category strip.
 - The wall card is for scanning, not editing.
@@ -32,13 +32,14 @@ DumpTether should feel like a lightweight personal sticker wall backed by a stru
 ## Filters
 
 - Temporary filters should not require saving a view.
-- The wall should have compact filters for text, status, category, color, project, follow-up, and not-touched age.
+- The wall should have compact filters for text, status, category, color, board, follow-up, and not-touched age.
 - Color filters should operate on the user's chosen task color, whatever that color means to them.
 - Color filters should show both a swatch and the color code.
 - Suggested view colors should come from colors that exist on active or archived tasks.
 - Reset filters should be obvious when filters are active.
-- Saved views still define reusable ways to see tasks.
-- Saved views should start with only `Overview` and `Archive`; users can drag sidebar views into their preferred order.
+- Personal filters may be temporary or reusable.
+- `All Tasks` and `Archive` are system surfaces. All Tasks may be hidden through personal display settings but cannot be deleted.
+- Organization-managed saved views are deferred until enterprise team workflows are deliberately designed.
 - Do not build a full advanced query builder yet.
 
 ## Localization
@@ -52,15 +53,13 @@ DumpTether should feel like a lightweight personal sticker wall backed by a stru
 - Basic task creation should not force template choice.
 - Quick-create should use the configured default template.
 - Custom fields should be available in task detail without dominating the screen.
-- Template help should explain that fields add structure and can later be used by views and filters.
+- Template help should explain that fields add structure and can later be used by filters.
 - Useful examples include `People contains Jan`, `Status = Active and People contains Jan/Lars`, and `Not touched in 14 days`.
 
-## Intentionally Not Included Yet
+## Intentionally Deferred
 
-- Desktop/Tauri.
-- SQLite/offline sync.
-- Login/auth.
-- Sharing.
+- Organization-managed saved views.
+- AD/group task assignment.
 - Calendar or email scanning.
 - AI.
 - MCP.

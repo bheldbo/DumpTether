@@ -1,0 +1,68 @@
+name: Feature slice
+description: Propose one bounded, user-visible DumpTether outcome
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep this as one coherent vertical slice. Use a parent issue when the outcome is larger.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What can the user do when this is complete?
+      placeholder: An owner can revoke a pending task share and the recipient loses access.
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: User workflow
+      description: Describe the shortest normal path through the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Prefer five or fewer observable criteria.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What should this slice deliberately not implement?
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Highest affected boundary
+      options:
+        - UI or localization only
+        - API or application behavior
+        - Persistence or migration
+        - Authentication or sharing
+        - Offline sync or multiple clients
+        - Deployment or release
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and evidence
+      description: Link screenshots, product docs, ADRs, or related issues.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Tests and user workflows that prove the outcome.
+      placeholder: |
+        - [ ] Focused backend test
+        - [ ] Frontend typecheck/build
+        - [ ] Responsive smoke test
+

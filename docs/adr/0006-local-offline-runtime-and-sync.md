@@ -36,7 +36,7 @@ Tauri shell
 
 The first implementation step was making `DumpTether.Api` run against SQLite with `Database:Provider=Sqlite`. The current local runtime also has a Tauri development shell scaffold and a deliberately small first cloud sync pass.
 
-The desktop project should later live in `apps/desktop`. It should package the built React UI and start the local .NET API sidecar on localhost.
+The desktop project should later live in `apps/desktop`. It should package the built React UI and start the local .NET API sidecar on localhost. The desktop sidecar uses a dedicated local development port (`127.0.0.1:55869`) so it cannot be confused with the hosted development API (`127.0.0.1:55868`).
 
 ## Source Code Boundary
 
@@ -98,13 +98,21 @@ Local desktop login must be explicitly enabled with `Auth:EnableLocalDesktopLogi
 
 The packaged desktop app should normally talk to its local sidecar API. A configurable remote API base URL would be an online-client mode, not the default offline runtime.
 
-For sync/login, the desktop UI uses the hosted API URL configured before the client starts. Packaged desktop builds should take that value from `apps/desktop/desktop.manifest.json`, which is propagated into `VITE_DEFAULT_CLOUD_API_BASE_URL`. Direct web builds can set `VITE_DEFAULT_CLOUD_API_BASE_URL` at build time. The server/backend URL is deployment configuration, not an in-app user setting.
+For sync/login, the desktop UI uses the hosted API URL configured before the
+client starts. Packaged desktop and web builds take public metadata from a
+selected `deploy/targets/*.json` file. `scripts/configure-client.mjs` generates
+the React target and synchronizes Tauri, npm and Cargo metadata. The
+server/backend URL is deployment configuration, not an in-app user setting.
 
-Desktop release metadata is centralized in `apps/desktop/desktop.manifest.json`. The manifest owns desktop product/version/identifier/publisher/default cloud API values, and the sync script propagates those values into Tauri, npm and Cargo metadata. It is not a replacement for ASP.NET `appsettings.Desktop.json`; appsettings still owns the local sidecar runtime behavior such as SQLite, local URLs and auth mode.
+Deployment targets are not a replacement for ASP.NET
+`appsettings.Desktop.json`; appsettings still owns local sidecar behavior such
+as SQLite, local URLs and auth mode. Secrets never enter deployment targets.
 
 ## Login and Sync Mapping
 
-Full login-driven sync is future work. A first manual board sync pass exists so the local API can push/pull task header state through the same hosted API contract.
+Login-driven sync is being built incrementally. The first manual board sync pass
+proves that the local API can push and pull task state through the same hosted
+API contract.
 
 A local user can use DumpTether without cloud login. Local boards and tasks are born in SQLite and should show as local-only/not-synced when sync UI exists.
 
@@ -113,10 +121,10 @@ When the user logs in to the hosted DumpTether service, the app should not silen
 1. keep local data available
 2. connect to the hosted API
 3. identify the local device
-4. let the user mark a local board/task set for sync, or keep it local-only
+4. let the user enroll selected tasks or a whole board, or keep them local-only
 5. create or choose the matching hosted board/task container
 6. store a local mapping such as `LocalWorkspaceId -> RemoteWorkspaceId`
-7. sync local-owned boards/tasks using stable IDs and checkpoints
+7. sync enrolled local-owned tasks using stable IDs and checkpoints
 8. fetch shared boards/tasks available to that cloud user
 9. show clear status: local-only, not synced, offline, connected, syncing, sync error
 
@@ -153,6 +161,39 @@ SyncMapping
 
 `SyncRoot` represents a board-level sync relationship. `SyncMapping` represents individual local-to-remote entity links. These records prevent duplicate uploads because retries can resolve "this local thing already became that remote thing" before creating new remote rows.
 
+## Sync Unit And Enrollment
+
+A task is the synchronization unit. A board supplies its owning context and
+remote destination.
+
+`SyncRoot` should support:
+
+- `SelectedTasks`: only explicitly enrolled tasks synchronize.
+- `WholeBoard`: existing and future tasks in the board synchronize.
+
+Individual enrollment records should make task selection explicit without
+duplicating the local/remote ID mappings already owned by `SyncMapping`.
+
+Routine synchronization must not freeze task editing. A sync pass works from a
+versioned snapshot. If the user edits the task during that pass, the task
+remains pending and another pass synchronizes the newer version. Temporary
+locking is reserved for mapping changes and explicit conflict resolution.
+
+Visible states should include:
+
+- local only
+- pending
+- syncing
+- synced
+- offline
+- failed
+- conflict
+- access revoked
+
+Shared data may be cached for offline use, but remains associated with the
+authenticated cloud profile. It must be hidden on logout and re-authorized when
+connectivity returns.
+
 ## First Cloud Sync Pass
 
 The first implemented cloud sync pass is intentionally narrow:
@@ -162,20 +203,24 @@ The first implemented cloud sync pass is intentionally narrow:
 - The user connects a cloud account against the configured hosted API URL.
 - The local API stores only a protected cloud session token, never a raw token.
 - If no remote board is mapped, the sync service can create one.
+- If the cloud account already has exactly the same board name, the first sync
+  maps that existing board instead of attempting to create a duplicate.
 - Local task header fields can be pushed: title, status, category, color and follow-up date.
 - Remote task header fields can be pulled into the local SQLite board.
 - Local task templates used by synced tasks can be created or updated in the cloud for that sync root.
 - Local task header field values can be pushed to the cloud when the task template is synced first. Field IDs are mapped through template field key/scope because local SQLite and hosted PostgreSQL generate different field IDs.
 - Cloud task templates and header field values can be imported into the local SQLite board when pulling new cloud tasks.
+- New local tasks can push their first note/timeline entries and entry-level field values when they are first created in the cloud.
+- New remote tasks can pull their first note/timeline entries and entry-level field values when they are first created locally.
 - `SyncMapping` stores the remote task ID and remote version after successful sync.
 - If both local and remote changed the same task header since the previous sync checkpoint, the mapping is marked `Conflict` and both records are left intact.
 - Failed task sync attempts are marked `SyncFailed` with a short user-visible error.
 
 Not included in the first pass:
 
-- note/timeline entry sync
+- later edits/deletes to already-synced note/timeline entries
 - updating already-mapped local templates from later cloud template edits
-- entry-level field-value sync
+- updating already-synced entry-level field values
 - archive/delete/tombstone sync
 - shared-board/task download
 - automatic cloud login or token storage
@@ -183,7 +228,10 @@ Not included in the first pass:
 
 This keeps the implementation honest while proving the core mapping path.
 
-Future AD, Google, Microsoft and other identity providers should attach to the cloud identity layer. They should not replace the local SQLite identity. A local desktop user can later link to a cloud account from any supported provider, then sync mappings decide what data moves.
+Microsoft Entra ID and any future identity providers attach to the cloud
+identity layer. They do not replace the local SQLite identity. A local desktop
+user can later link to a cloud account, then sync mappings decide what data
+moves.
 
 ## Sync Risks To Design Around
 

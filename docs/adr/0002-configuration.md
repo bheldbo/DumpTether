@@ -22,9 +22,34 @@ At application startup, the API reads deployment/runtime configuration into a sm
 
 ## User and Workspace Configuration
 
-User/workspace configuration includes templates, field definitions, saved views, archive reasons, categories, statuses, colors, default project, and display preferences.
+User/board configuration includes templates, field definitions, reusable
+filters, archive policies and resolutions, categories, statuses, colors, and
+display preferences.
 
 These values belong to the application data model because they are part of how a workspace behaves. They should be persisted through the normal application database schema and migrations.
+
+## Client Deployment Targets
+
+Public client configuration and server secrets are separate concerns.
+
+Web, desktop, and future mobile artifacts should be built from one selected
+non-secret deployment target containing values such as:
+
+- target identifier and display name
+- public web origin
+- cloud API origin
+- client identifiers and optional branding
+- visible identity providers
+- update channel
+
+Hosted web should normally call a same-origin relative `/api`. Native clients
+receive the cloud API origin at build time. Customer-specific target files may
+live in private deployment repositories.
+
+ASP.NET `appsettings` remains server/sidecar runtime configuration. It is not
+the source for native-client deployment targeting. Provider secrets, database
+credentials, and signing material remain environment or secret-store values and
+must never be generated into a client artifact.
 
 ## Integration Configuration
 
