@@ -106,7 +106,8 @@ public sealed record CloudSyncTaskResponse(
     DateTimeOffset LastTouchedAt,
     DateTimeOffset? FollowUpAt,
     DateTimeOffset? ArchivedAt,
-    IReadOnlyList<CloudSyncFieldValueResponse>? FieldValues = null);
+    IReadOnlyList<CloudSyncFieldValueResponse>? FieldValues = null,
+    IReadOnlyList<CloudSyncTimelineEntryResponse>? TimelineEntries = null);
 
 public sealed record CloudSyncCreateWorkspaceRequest(
     string Name,
@@ -119,7 +120,8 @@ public sealed record CloudSyncCreateTaskRequest(
     string? Category,
     string? Color,
     DateTimeOffset? FollowUpAt,
-    IReadOnlyDictionary<Guid, string>? FieldValues = null);
+    IReadOnlyDictionary<Guid, string>? FieldValues = null,
+    IReadOnlyList<CloudSyncTimelineEntryRequest>? TimelineEntries = null);
 
 public sealed record CloudSyncUpdateTaskRequest(
     string? Title,
@@ -134,6 +136,16 @@ public sealed record CloudSyncFieldValueResponse(
     Guid FieldDefinitionId,
     string ValueJson,
     DateTimeOffset UpdatedAt);
+
+public sealed record CloudSyncTimelineEntryResponse(
+    Guid Id,
+    string? Details,
+    DateTimeOffset OccurredAt,
+    IReadOnlyList<CloudSyncFieldValueResponse>? FieldValues = null);
+
+public sealed record CloudSyncTimelineEntryRequest(
+    string? Note,
+    IReadOnlyDictionary<Guid, string>? FieldValues = null);
 
 public sealed record CloudSyncTaskTemplateResponse(
     Guid Id,

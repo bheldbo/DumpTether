@@ -13,22 +13,20 @@ internal static class CloudSyncTemplatePayloadMapper
         CloudSyncTaskTemplateResponse remoteTemplate,
         TaskTemplate localTemplate)
     {
-        var remoteHeaderFieldsByKey = remoteTemplate.Fields
-            .Where(field => string.Equals(field.Scope, FieldDefinitionScope.Header.ToString(), StringComparison.Ordinal))
+        var remoteFieldsByKey = remoteTemplate.Fields
             .ToDictionary(
-                field => field.Key,
-                field => field.Id,
-                StringComparer.Ordinal);
-        var localToRemoteHeaderFieldIds = localTemplate.FieldDefinitions
-            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Header)
-            .Where(field => remoteHeaderFieldsByKey.ContainsKey(field.Key))
+                field => new TemplateFieldKey(field.Scope, field.Key),
+                field => field.Id);
+        var localToRemoteFieldIds = localTemplate.FieldDefinitions
+            .Where(field => field.IsActive)
+            .Where(field => remoteFieldsByKey.ContainsKey(CreateKey(field)))
             .ToDictionary(
                 field => field.Id,
-                field => remoteHeaderFieldsByKey[field.Key]);
+                field => remoteFieldsByKey[CreateKey(field)]);
 
         return new RemoteTaskTemplateProjection(
             remoteTemplate.Id,
-            localToRemoteHeaderFieldIds,
+            localToRemoteFieldIds,
             localTemplate);
     }
 
@@ -97,9 +95,9 @@ internal static class CloudSyncTemplatePayloadMapper
 
     public static IReadOnlyDictionary<Guid, string>? BuildRemoteFieldValuePayload(
         TaskItem localTask,
-        IReadOnlyDictionary<Guid, Guid> localToRemoteHeaderFieldIds)
+        IReadOnlyDictionary<Guid, Guid> localToRemoteFieldIds)
     {
-        if (localTask.FieldValues.Count == 0 || localToRemoteHeaderFieldIds.Count == 0)
+        if (localTask.FieldValues.Count == 0 || localToRemoteFieldIds.Count == 0)
         {
             return null;
         }
@@ -107,7 +105,30 @@ internal static class CloudSyncTemplatePayloadMapper
         var values = new Dictionary<Guid, string>();
         foreach (var fieldValue in localTask.FieldValues)
         {
-            if (localToRemoteHeaderFieldIds.TryGetValue(
+            if (localToRemoteFieldIds.TryGetValue(
+                    fieldValue.FieldDefinitionId,
+                    out var remoteFieldDefinitionId))
+            {
+                values[remoteFieldDefinitionId] = fieldValue.ValueJson;
+            }
+        }
+
+        return values.Count == 0 ? null : values;
+    }
+
+    public static IReadOnlyDictionary<Guid, string>? BuildRemoteFieldValuePayload(
+        TaskTimelineEntry localEntry,
+        IReadOnlyDictionary<Guid, Guid> localToRemoteFieldIds)
+    {
+        if (localEntry.FieldValues.Count == 0 || localToRemoteFieldIds.Count == 0)
+        {
+            return null;
+        }
+
+        var values = new Dictionary<Guid, string>();
+        foreach (var fieldValue in localEntry.FieldValues)
+        {
+            if (localToRemoteFieldIds.TryGetValue(
                     fieldValue.FieldDefinitionId,
                     out var remoteFieldDefinitionId))
             {
@@ -158,32 +179,30 @@ internal static class CloudSyncTemplatePayloadMapper
         CloudSyncTaskTemplateResponse remoteTemplate,
         TaskTemplate localTemplate)
     {
-        var localHeaderFieldsByKey = localTemplate.FieldDefinitions
-            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Header)
+        var localFieldsByKey = localTemplate.FieldDefinitions
+            .Where(field => field.IsActive)
             .ToDictionary(
-                field => field.Key,
-                field => field.Id,
-                StringComparer.Ordinal);
-        var remoteToLocalHeaderFieldIds = remoteTemplate.Fields
-            .Where(field => string.Equals(field.Scope, FieldDefinitionScope.Header.ToString(), StringComparison.Ordinal))
-            .Where(field => localHeaderFieldsByKey.ContainsKey(field.Key))
+                CreateKey,
+                field => field.Id);
+        var remoteToLocalFieldIds = remoteTemplate.Fields
+            .Where(field => localFieldsByKey.ContainsKey(new TemplateFieldKey(field.Scope, field.Key)))
             .ToDictionary(
                 field => field.Id,
-                field => localHeaderFieldsByKey[field.Key]);
+                field => localFieldsByKey[new TemplateFieldKey(field.Scope, field.Key)]);
 
         return new RemoteToLocalTaskTemplateProjection(
             localTemplate.Id,
-            remoteToLocalHeaderFieldIds,
+            remoteToLocalFieldIds,
             localTemplate);
     }
 
     public static IReadOnlyDictionary<Guid, string>? BuildLocalFieldValuePayload(
         CloudSyncTaskResponse remoteTask,
-        IReadOnlyDictionary<Guid, Guid> remoteToLocalHeaderFieldIds)
+        IReadOnlyDictionary<Guid, Guid> remoteToLocalFieldIds)
     {
         if (remoteTask.FieldValues is null ||
             remoteTask.FieldValues.Count == 0 ||
-            remoteToLocalHeaderFieldIds.Count == 0)
+            remoteToLocalFieldIds.Count == 0)
         {
             return null;
         }
@@ -191,7 +210,35 @@ internal static class CloudSyncTemplatePayloadMapper
         var values = new Dictionary<Guid, string>();
         foreach (var fieldValue in remoteTask.FieldValues)
         {
-            if (!remoteToLocalHeaderFieldIds.TryGetValue(
+            if (!remoteToLocalFieldIds.TryGetValue(
+                    fieldValue.FieldDefinitionId,
+                    out var localFieldDefinitionId))
+            {
+                continue;
+            }
+
+            using var document = JsonDocument.Parse(fieldValue.ValueJson);
+            values[localFieldDefinitionId] = document.RootElement.GetRawText();
+        }
+
+        return values.Count == 0 ? null : values;
+    }
+
+    public static IReadOnlyDictionary<Guid, string>? BuildLocalFieldValuePayload(
+        CloudSyncTimelineEntryResponse remoteEntry,
+        IReadOnlyDictionary<Guid, Guid> remoteToLocalFieldIds)
+    {
+        if (remoteEntry.FieldValues is null ||
+            remoteEntry.FieldValues.Count == 0 ||
+            remoteToLocalFieldIds.Count == 0)
+        {
+            return null;
+        }
+
+        var values = new Dictionary<Guid, string>();
+        foreach (var fieldValue in remoteEntry.FieldValues)
+        {
+            if (!remoteToLocalFieldIds.TryGetValue(
                     fieldValue.FieldDefinitionId,
                     out var localFieldDefinitionId))
             {
@@ -286,12 +333,17 @@ internal static class CloudSyncTemplatePayloadMapper
             : throw new InvalidOperationException($"Cloud template field scope '{value}' is not supported.");
     }
 
+    private static TemplateFieldKey CreateKey(FieldDefinition field)
+    {
+        return new TemplateFieldKey(field.Scope.ToString(), field.Key);
+    }
+
     private sealed record TemplateFieldKey(string Scope, string Key);
 }
 
 internal sealed record RemoteTaskTemplateProjection(
     Guid? RemoteTemplateId,
-    IReadOnlyDictionary<Guid, Guid> LocalToRemoteHeaderFieldIds,
+    IReadOnlyDictionary<Guid, Guid> LocalToRemoteFieldIds,
     TaskTemplate? LocalTemplate)
 {
     public static readonly RemoteTaskTemplateProjection Empty = new(null, new Dictionary<Guid, Guid>(), null);
@@ -299,7 +351,7 @@ internal sealed record RemoteTaskTemplateProjection(
 
 internal sealed record RemoteToLocalTaskTemplateProjection(
     Guid? LocalTemplateId,
-    IReadOnlyDictionary<Guid, Guid> RemoteToLocalHeaderFieldIds,
+    IReadOnlyDictionary<Guid, Guid> RemoteToLocalFieldIds,
     TaskTemplate? LocalTemplate)
 {
     public static readonly RemoteToLocalTaskTemplateProjection Empty = new(

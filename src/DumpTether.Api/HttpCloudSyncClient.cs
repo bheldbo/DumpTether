@@ -271,6 +271,19 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                 cancellationToken);
         }
 
+        foreach (var timelineEntry in request.TimelineEntries ?? [])
+        {
+            created = await SendAsync<TaskItemDetailResponse>(
+                connection,
+                HttpMethod.Post,
+                $"/api/tasks/{created.Id}/timeline",
+                workspaceId,
+                new AddTaskTimelineEntryRequest(
+                    timelineEntry.Note,
+                    BuildFieldValuePayload(timelineEntry.FieldValues)),
+                cancellationToken);
+        }
+
         return MapTask(created);
     }
 
@@ -410,12 +423,76 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var errorDetail = ReadErrorDetail(responseBody);
+
             throw new InvalidOperationException(
-                $"Cloud API request failed with HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
+                $"Cloud API request failed with HTTP {(int)response.StatusCode} {response.ReasonPhrase}" +
+                (string.IsNullOrWhiteSpace(errorDetail) ? "." : $": {errorDetail}"));
         }
 
         var value = await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken: cancellationToken);
         return value ?? throw new InvalidOperationException("Cloud API returned an empty response.");
+    }
+
+    private static string? ReadErrorDetail(string responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            var root = document.RootElement;
+
+            if (root.TryGetProperty("error", out var error) &&
+                error.ValueKind == JsonValueKind.String)
+            {
+                return LimitErrorDetail(error.GetString());
+            }
+
+            if (root.TryGetProperty("errors", out var errors) &&
+                errors.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in errors.EnumerateObject())
+                {
+                    if (property.Value.ValueKind != JsonValueKind.Array)
+                    {
+                        continue;
+                    }
+
+                    var first = property.Value.EnumerateArray().FirstOrDefault();
+                    if (first.ValueKind == JsonValueKind.String)
+                    {
+                        return LimitErrorDetail(first.GetString());
+                    }
+                }
+            }
+
+            if (root.TryGetProperty("title", out var title) &&
+                title.ValueKind == JsonValueKind.String)
+            {
+                return LimitErrorDetail(title.GetString());
+            }
+        }
+        catch (JsonException)
+        {
+            // Ignore non-JSON error pages. Status and reason phrase remain useful.
+        }
+
+        return null;
+    }
+
+    private static string? LimitErrorDetail(string? detail)
+    {
+        const int maxLength = 300;
+        var normalized = detail?.Trim();
+
+        return normalized?.Length > maxLength
+            ? normalized[..maxLength]
+            : normalized;
     }
 
     private static Uri BuildUri(string baseUrl, string path)
@@ -462,7 +539,8 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
             taskItem.LastTouchedAt,
             taskItem.FollowUpAt,
             taskItem.ArchivedAt,
-            FieldValues: []);
+            FieldValues: [],
+            TimelineEntries: []);
     }
 
     private static CloudSyncTaskResponse MapTask(TaskItemDetailResponse taskItem)
@@ -484,6 +562,19 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                     value.FieldDefinitionId,
                     value.ValueJson,
                     value.UpdatedAt))
+                .ToList(),
+            taskItem.TimelineEntries
+                .Where(entry => string.Equals(entry.Kind, "NoteAdded", StringComparison.OrdinalIgnoreCase))
+                .Select(entry => new CloudSyncTimelineEntryResponse(
+                    entry.Id,
+                    entry.Details,
+                    entry.OccurredAt,
+                    entry.FieldValues
+                        .Select(value => new CloudSyncFieldValueResponse(
+                            value.FieldDefinitionId,
+                            value.ValueJson,
+                            value.UpdatedAt))
+                        .ToList()))
                 .ToList());
     }
 }

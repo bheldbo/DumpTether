@@ -264,6 +264,80 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenCloudHasSameNamedBoard_ReusesIt()
+    {
+        var cloud = new FakeCloudSyncClient();
+        var existingRemoteWorkspace = cloud.AddWorkspace("All Tasks");
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        await ConnectCloudAccountAsync(client);
+        await CreateTaskItemAsync(client, "Push into existing board");
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest());
+
+        response.EnsureSuccessStatusCode();
+        var sync = (await response.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+
+        Assert.Single(cloud.Workspaces);
+        Assert.Equal(existingRemoteWorkspace.Id, sync.Root.RemoteWorkspaceId);
+        Assert.Single(cloud.TasksByWorkspace[existingRemoteWorkspace.Id]);
+    }
+
+    [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenCloudHasMatchingDefaultTemplate_ReusesIt()
+    {
+        var cloud = new FakeCloudSyncClient();
+        var existingRemoteWorkspace = cloud.AddWorkspace("All Tasks");
+        var existingRemoteTemplate = cloud.AddTemplate(
+            "Basic Task",
+            new CloudSyncUpsertFieldDefinitionRequest(
+                Id: null,
+                Name: "Context",
+                Type: "LongText",
+                Scope: "Header",
+                Required: false,
+                SortOrder: 0,
+                Options: [],
+                LayoutRow: 1,
+                LayoutColumn: 1,
+                LayoutRowSpan: 1,
+                LayoutColumnSpan: 2,
+                LayoutWeight: 1));
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        await ConnectCloudAccountAsync(client);
+        await CreateTaskItemAsync(client, "Push with existing default template");
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest());
+
+        response.EnsureSuccessStatusCode();
+        var sync = (await response.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+        var remoteTask = Assert.Single(cloud.TasksByWorkspace[existingRemoteWorkspace.Id]);
+
+        Assert.Equal(1, sync.Pushed);
+        Assert.Equal(0, sync.Failed);
+        Assert.Single(cloud.Templates);
+        Assert.Equal(existingRemoteTemplate.Id, remoteTask.TaskTemplateId);
+        Assert.Contains(
+            sync.Messages,
+            message => message.Contains("Linked existing cloud template", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task SyncWorkspaceWithCloud_WhenNoConnectedCloudAccount_ReturnsBadRequest()
     {
         var cloud = new FakeCloudSyncClient();

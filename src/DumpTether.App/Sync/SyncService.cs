@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.App.Templates;
@@ -555,7 +556,7 @@ internal sealed class SyncService : ISyncService
         {
             root.MarkConflict(now);
         }
-        else if (root.RemoteWorkspaceId.HasValue)
+        else if (stats.Failed == 0 && root.RemoteWorkspaceId.HasValue)
         {
             root.MarkSynced(now);
         }
@@ -662,16 +663,29 @@ internal sealed class SyncService : ISyncService
         Guid? requestedRemoteWorkspaceId,
         CancellationToken cancellationToken)
     {
+        var remoteWorkspaces = await _cloudSyncClient.ListWorkspacesAsync(
+            connection,
+            cancellationToken);
         var remoteWorkspaceId = requestedRemoteWorkspaceId ?? root.RemoteWorkspaceId;
+
         if (remoteWorkspaceId.HasValue)
         {
-            var existingRemoteWorkspace = (await _cloudSyncClient.ListWorkspacesAsync(
-                    connection,
-                    cancellationToken))
+            var existingRemoteWorkspace = remoteWorkspaces
                 .FirstOrDefault(workspace => workspace.Id == remoteWorkspaceId.Value);
 
             return existingRemoteWorkspace ??
                 throw new ValidationException("Selected cloud board was not found for this cloud user.");
+        }
+
+        var matchingRemoteWorkspace = remoteWorkspaces.FirstOrDefault(workspace =>
+            string.Equals(
+                workspace.Name,
+                localWorkspace.Name,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (matchingRemoteWorkspace is not null)
+        {
+            return matchingRemoteWorkspace;
         }
 
         return await _cloudSyncClient.CreateWorkspaceAsync(
@@ -741,7 +755,7 @@ internal sealed class SyncService : ISyncService
                     cancellationToken);
                 var remoteFieldValues = CloudSyncTemplatePayloadMapper.BuildRemoteFieldValuePayload(
                     localTask,
-                    remoteTemplate.LocalToRemoteHeaderFieldIds);
+                    remoteTemplate.LocalToRemoteFieldIds);
                 var createdRemoteTask = await _cloudSyncClient.CreateTaskAsync(
                     connection,
                     remoteWorkspaceId,
@@ -752,7 +766,8 @@ internal sealed class SyncService : ISyncService
                         localTask.Category,
                         localTask.Color,
                         localTask.FollowUpAt,
-                        remoteFieldValues),
+                        remoteFieldValues,
+                        BuildRemoteTimelineEntryPayload(localTask, remoteTemplate.LocalToRemoteFieldIds)),
                     cancellationToken);
 
                 mapping.LinkRemote(
@@ -782,7 +797,7 @@ internal sealed class SyncService : ISyncService
                 cancellationToken);
             var remoteFieldPayload = CloudSyncTemplatePayloadMapper.BuildRemoteFieldValuePayload(
                 localTask,
-                templateProjection.LocalToRemoteHeaderFieldIds);
+                templateProjection.LocalToRemoteFieldIds);
             var payloadDiffers = TaskPayloadDiffers(
                 localTask,
                 remoteTask,
@@ -951,6 +966,10 @@ internal sealed class SyncService : ISyncService
             localTemplate,
             remoteTask,
             _clock.UtcNow);
+        ApplyRemoteTimelineEntriesToLocal(
+            localTask,
+            localTemplate,
+            remoteTask);
 
         await _taskItemRepository.AddAsync(localTask, cancellationToken);
         var mapping = SyncMapping.CreateLocal(
@@ -965,6 +984,79 @@ internal sealed class SyncService : ISyncService
         await _syncRepository.AddMappingAsync(mapping, cancellationToken);
         mappings[localTask.Id] = mapping;
         stats.Pulled++;
+    }
+
+    private static IReadOnlyList<CloudSyncTimelineEntryRequest>? BuildRemoteTimelineEntryPayload(
+        TaskItem localTask,
+        IReadOnlyDictionary<Guid, Guid> localToRemoteFieldIds)
+    {
+        var entries = localTask.TimelineEntries
+            .Where(entry =>
+                entry.Kind == TaskTimelineEntryKind.NoteAdded &&
+                entry.DeletedAt is null &&
+                (!string.IsNullOrWhiteSpace(entry.Details) || entry.FieldValues.Count > 0))
+            .OrderBy(entry => entry.OccurredAt)
+            .Select(entry => new CloudSyncTimelineEntryRequest(
+                string.IsNullOrWhiteSpace(entry.Details) ? null : entry.Details,
+                CloudSyncTemplatePayloadMapper.BuildRemoteFieldValuePayload(
+                    entry,
+                    localToRemoteFieldIds)))
+            .ToList();
+
+        return entries.Count == 0 ? null : entries;
+    }
+
+    private static bool ApplyRemoteTimelineEntriesToLocal(
+        TaskItem localTask,
+        RemoteToLocalTaskTemplateProjection localTemplate,
+        CloudSyncTaskResponse remoteTask)
+    {
+        if (localTemplate.LocalTemplate is null ||
+            remoteTask.TimelineEntries is null ||
+            remoteTask.TimelineEntries.Count == 0)
+        {
+            return false;
+        }
+
+        var definitions = localTemplate.LocalTemplate.FieldDefinitions
+            .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Entry)
+            .ToDictionary(field => field.Id);
+        var changed = false;
+
+        foreach (var remoteEntry in remoteTask.TimelineEntries
+                     .OrderBy(entry => entry.OccurredAt))
+        {
+            var localEntry = localTask.AddNote(
+                string.IsNullOrWhiteSpace(remoteEntry.Details) ? null : remoteEntry.Details,
+                remoteEntry.OccurredAt);
+            changed = true;
+
+            var fieldValues = CloudSyncTemplatePayloadMapper.BuildLocalFieldValuePayload(
+                remoteEntry,
+                localTemplate.RemoteToLocalFieldIds);
+
+            if (fieldValues is null)
+            {
+                continue;
+            }
+
+            foreach (var (fieldDefinitionId, valueJson) in fieldValues)
+            {
+                if (!definitions.TryGetValue(fieldDefinitionId, out var definition))
+                {
+                    continue;
+                }
+
+                using var document = JsonDocument.Parse(valueJson);
+                localTask.SetTimelineEntryFieldValue(
+                    localEntry.Id,
+                    definition,
+                    document.RootElement.GetRawText(),
+                    remoteEntry.OccurredAt);
+            }
+        }
+
+        return changed;
     }
 
     private async Task<RemoteToLocalTaskTemplateProjection> EnsureLocalTaskTemplateAsync(
@@ -1043,7 +1135,7 @@ internal sealed class SyncService : ISyncService
 
         var fieldValues = CloudSyncTemplatePayloadMapper.BuildLocalFieldValuePayload(
             remoteTask,
-            localTemplate.RemoteToLocalHeaderFieldIds);
+            localTemplate.RemoteToLocalFieldIds);
 
         if (fieldValues is null || fieldValues.Count == 0)
         {
@@ -1079,7 +1171,7 @@ internal sealed class SyncService : ISyncService
             return false;
         }
 
-        var remoteToLocalHeaderFieldIds = templateProjection.LocalToRemoteHeaderFieldIds
+        var remoteToLocalHeaderFieldIds = templateProjection.LocalToRemoteFieldIds
             .ToDictionary(pair => pair.Value, pair => pair.Key);
         var fieldValues = CloudSyncTemplatePayloadMapper.BuildLocalFieldValuePayload(
             remoteTask,
@@ -1193,13 +1285,46 @@ internal sealed class SyncService : ISyncService
                     $"Mapped cloud template \"{localTemplate.Name}\" was not found.");
             }
 
-            mapping ??= SyncMapping.CreateLocal(
-                root.Id,
-                SyncEntityType.TaskTemplate,
-                localTemplate.Id,
-                _clock.UtcNow);
+            if (mapping is null)
+            {
+                mapping = SyncMapping.CreateLocal(
+                    root.Id,
+                    SyncEntityType.TaskTemplate,
+                    localTemplate.Id,
+                    _clock.UtcNow);
 
-            await _syncRepository.AddMappingAsync(mapping, cancellationToken);
+                await _syncRepository.AddMappingAsync(mapping, cancellationToken);
+            }
+
+            var matchingRemoteTemplate = (await _cloudSyncClient.ListTaskTemplatesAsync(
+                    connection,
+                    cancellationToken))
+                .FirstOrDefault(candidate => string.Equals(
+                    candidate.Name,
+                    localTemplate.Name,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (matchingRemoteTemplate is not null)
+            {
+                if (CloudSyncTemplatePayloadMapper.TemplateDiffers(
+                        localTemplate,
+                        matchingRemoteTemplate))
+                {
+                    throw new InvalidOperationException(
+                        $"Cloud template \"{localTemplate.Name}\" has a different structure. " +
+                        "Rename one template before syncing this task.");
+                }
+
+                mapping.LinkRemote(
+                    matchingRemoteTemplate.Id,
+                    CreateRemoteVersion(matchingRemoteTemplate),
+                    _clock.UtcNow);
+                messages.Add($"Linked existing cloud template \"{localTemplate.Name}\".");
+
+                return CloudSyncTemplatePayloadMapper.CreateProjection(
+                    matchingRemoteTemplate,
+                    localTemplate);
+            }
 
             remoteTemplate = await _cloudSyncClient.CreateTaskTemplateAsync(
                 connection,
