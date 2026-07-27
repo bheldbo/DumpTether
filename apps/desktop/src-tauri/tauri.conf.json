@@ -34,6 +34,10 @@
     "externalBin": [
       "binaries/dumptether-api"
     ],
+    "resources": {
+      "../../../src/DumpTether.Api/appsettings.json": "appsettings.json",
+      "../../../src/DumpTether.Api/appsettings.Desktop.json": "appsettings.Desktop.json"
+    },
     "icon": [
       "icons/icon.ico"
     ]

@@ -78,6 +78,13 @@ The expected desktop packaging path is:
 - Linux AppImage/deb/rpm depending on distribution needs
 - code signing after the build pipeline is stable
 
+The packaged desktop sidecar is a self-contained .NET executable. Tauri bundles
+the safe base and desktop appsettings as explicit resources and starts the
+sidecar with that resource directory as its working directory. The desktop
+environment selects SQLite and local desktop identity; PostgreSQL and a
+system-wide .NET runtime are not desktop prerequisites. Closing the Tauri
+application must also terminate the sidecar process.
+
 Do not hand-roll WiX first. Let Tauri own the installer pipeline until there is a concrete deployment need it cannot satisfy. The NSIS `.exe` installer is the MVP path. MSI/WiX is optional and can fail on developer machines if the Windows Installer/WiX validation environment is not healthy.
 
 Linux server deployment and Linux desktop publishing are separate:

@@ -6,6 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $desktopRoot = Join-Path $repoRoot "apps\desktop"
+$desktopTargetRoot = Join-Path $desktopRoot "src-tauri\target\release"
+$releaseRoot = Join-Path $repoRoot "releases\desktop"
 $envFilePaths = @(
     (Join-Path $repoRoot ".env"),
     (Join-Path $repoRoot ".env.local")
@@ -55,19 +57,103 @@ function Invoke-DesktopNpmScript {
 
     $vsDevCommand = Get-WindowsNativeToolsCommand
     $npmCommand = Get-NpmCommand
+    $deploymentTarget = Get-DesktopDeploymentTarget
+    $previousDeploymentTarget = $env:DUMPTETHER_DEPLOYMENT_TARGET
+    $previousGeneratedTarget = Get-GeneratedDeploymentTarget
+    $env:DUMPTETHER_DEPLOYMENT_TARGET = $deploymentTarget
 
-    Invoke-InDesktopRoot {
-        if ($vsDevCommand) {
-            $command = "call `"$vsDevCommand`" -arch=x64 && npm.cmd run $ScriptName"
-            cmd.exe /d /s /c $command
+    try {
+        Invoke-InDesktopRoot {
+            if ($vsDevCommand) {
+                $command = "call `"$vsDevCommand`" -arch=x64 && npm.cmd run $ScriptName"
+                cmd.exe /d /s /c $command
+            }
+            else {
+                & $npmCommand run $ScriptName
+            }
         }
-        else {
-            & $npmCommand run $ScriptName
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Desktop npm script '$ScriptName' failed with exit code $LASTEXITCODE."
         }
     }
+    finally {
+        $env:DUMPTETHER_DEPLOYMENT_TARGET = $previousDeploymentTarget
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Desktop npm script '$ScriptName' failed with exit code $LASTEXITCODE."
+        if (-not [string]::IsNullOrWhiteSpace($previousGeneratedTarget) -and
+            $previousGeneratedTarget -ne $deploymentTarget) {
+            Invoke-ClientConfiguration -Target $previousGeneratedTarget
+        }
+    }
+}
+
+function Get-DesktopDeploymentTarget {
+    if (-not [string]::IsNullOrWhiteSpace($env:DUMPTETHER_DEPLOYMENT_TARGET)) {
+        return $env:DUMPTETHER_DEPLOYMENT_TARGET
+    }
+
+    $dotenvValues = Read-DumpTetherDotEnvFiles -Paths $envFilePaths
+    $deploymentTarget = $dotenvValues["DUMPTETHER_DEPLOYMENT_TARGET"]
+
+    if ([string]::IsNullOrWhiteSpace($deploymentTarget)) {
+        return "standalone"
+    }
+
+    return $deploymentTarget
+}
+
+function Get-GeneratedDeploymentTarget {
+    $generatedTargetPath = Join-Path $repoRoot "apps\web\src\generated\deploymentTarget.ts"
+
+    if (-not (Test-Path $generatedTargetPath)) {
+        return $null
+    }
+
+    $content = Get-Content -Raw -LiteralPath $generatedTargetPath
+    $match = [regex]::Match($content, '"targetId"\s*:\s*"(?<target>[^"]+)"')
+
+    if (-not $match.Success) {
+        return $null
+    }
+
+    return $match.Groups["target"].Value
+}
+
+function Get-DeploymentTargetVersion {
+    param([string] $Target)
+
+    $targetPath = if ([System.IO.Path]::IsPathRooted($Target) -or
+        $Target.EndsWith(".json", [StringComparison]::OrdinalIgnoreCase)) {
+        $Target
+    }
+    else {
+        Join-Path $repoRoot "deploy\targets\$Target.json"
+    }
+
+    if (-not [System.IO.Path]::IsPathRooted($targetPath)) {
+        $targetPath = Join-Path $repoRoot $targetPath
+    }
+
+    if (-not (Test-Path -LiteralPath $targetPath)) {
+        throw "Desktop deployment target was not found: $targetPath"
+    }
+
+    $deploymentConfig = Get-Content -Raw -LiteralPath $targetPath | ConvertFrom-Json
+    return [string] $deploymentConfig.version
+}
+
+function Invoke-ClientConfiguration {
+    param([string] $Target)
+
+    Push-Location $repoRoot
+    try {
+        & node scripts/configure-client.mjs --target $Target
+        if ($LASTEXITCODE -ne 0) {
+            throw "Client configuration failed with exit code $LASTEXITCODE."
+        }
+    }
+    finally {
+        Pop-Location
     }
 }
 
@@ -90,25 +176,8 @@ function Install-DesktopDependencies {
 function Set-ClientConfiguration {
     Assert-Command "node" "Install Node.js 24 LTS or newer."
 
-    $dotenvValues = Read-DumpTetherDotEnvFiles -Paths $envFilePaths
-    $deploymentTarget = $dotenvValues["DUMPTETHER_DEPLOYMENT_TARGET"]
-    $existingDeploymentTarget = $env:DUMPTETHER_DEPLOYMENT_TARGET
-
-    if (-not [string]::IsNullOrWhiteSpace($deploymentTarget)) {
-        $env:DUMPTETHER_DEPLOYMENT_TARGET = $deploymentTarget
-    }
-
-    Push-Location $repoRoot
-    try {
-        & node scripts/configure-client.mjs
-        if ($LASTEXITCODE -ne 0) {
-            throw "Client configuration failed with exit code $LASTEXITCODE."
-        }
-    }
-    finally {
-        Pop-Location
-        $env:DUMPTETHER_DEPLOYMENT_TARGET = $existingDeploymentTarget
-    }
+    $deploymentTarget = Get-DesktopDeploymentTarget
+    Invoke-ClientConfiguration -Target $deploymentTarget
 }
 
 function Build-Sidecar {
@@ -136,6 +205,12 @@ function Build-DesktopExecutable {
     Install-DesktopDependencies
 
     Invoke-DesktopNpmScript "build:desktop:exe"
+    Export-DesktopReleaseArtifacts -Patterns @(
+        "dumptether-desktop.exe",
+        "dumptether-api.exe",
+        "appsettings.json",
+        "appsettings.Desktop.json"
+    )
 }
 
 function Build-DesktopInstaller {
@@ -144,6 +219,13 @@ function Build-DesktopInstaller {
     Clear-DesktopBundleArtifacts
 
     Invoke-DesktopNpmScript "build:desktop"
+    Export-DesktopReleaseArtifacts -Patterns @(
+        "dumptether-desktop.exe",
+        "dumptether-api.exe",
+        "appsettings.json",
+        "appsettings.Desktop.json",
+        "bundle\nsis\*.exe"
+    )
 }
 
 function Build-DesktopMsiInstaller {
@@ -152,6 +234,13 @@ function Build-DesktopMsiInstaller {
     Clear-DesktopBundleArtifacts
 
     Invoke-DesktopNpmScript "build:desktop:msi"
+    Export-DesktopReleaseArtifacts -Patterns @(
+        "dumptether-desktop.exe",
+        "dumptether-api.exe",
+        "appsettings.json",
+        "appsettings.Desktop.json",
+        "bundle\msi\*.msi"
+    )
 }
 
 function Build-DesktopLinuxBundles {
@@ -167,6 +256,80 @@ function Build-DesktopLinuxBundles {
     Clear-DesktopBundleArtifacts
 
     Invoke-DesktopNpmScript "build:desktop:linux"
+    Export-DesktopReleaseArtifacts -Patterns @(
+        "dumptether-desktop",
+        "dumptether-api",
+        "appsettings.json",
+        "appsettings.Desktop.json",
+        "bundle\appimage\*.AppImage",
+        "bundle\deb\*.deb",
+        "bundle\rpm\*.rpm"
+    )
+}
+
+function Export-DesktopReleaseArtifacts {
+    param([string[]] $Patterns)
+
+    $deploymentTarget = Get-DesktopDeploymentTarget
+    $version = Get-DeploymentTargetVersion -Target $deploymentTarget
+    $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+    $platform = if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows)) {
+        "windows-$architecture"
+    }
+    elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Linux)) {
+        "linux-$architecture"
+    }
+    else {
+        throw "Desktop release collection currently supports Windows and Linux."
+    }
+
+    $destination = Join-Path $releaseRoot "v$version\$platform"
+    $releaseRootFullPath = [System.IO.Path]::GetFullPath($releaseRoot)
+    $destinationFullPath = [System.IO.Path]::GetFullPath($destination)
+
+    if (-not $destinationFullPath.StartsWith(
+            "$releaseRootFullPath$([System.IO.Path]::DirectorySeparatorChar)",
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to replace desktop release artifacts outside $releaseRootFullPath."
+    }
+
+    if (Test-Path -LiteralPath $destinationFullPath) {
+        Remove-Item -LiteralPath $destinationFullPath -Recurse -Force
+    }
+
+    New-Item -ItemType Directory -Path $destination -Force | Out-Null
+
+    $copied = @()
+    foreach ($pattern in $Patterns) {
+        $sourcePattern = Join-Path $desktopTargetRoot $pattern
+        $matches = Get-ChildItem -Path $sourcePattern -File -ErrorAction SilentlyContinue
+
+        foreach ($match in $matches) {
+            Copy-Item -LiteralPath $match.FullName -Destination $destination -Force
+            $copied += Join-Path $destination $match.Name
+        }
+    }
+
+    if ($copied.Count -eq 0) {
+        throw "Desktop build completed, but no release artifacts matched the expected output patterns."
+    }
+
+    $uniqueArtifacts = $copied | Sort-Object -Unique
+    $checksumLines = foreach ($artifact in $uniqueArtifacts) {
+        $hash = Get-FileHash -LiteralPath $artifact -Algorithm SHA256
+        "$($hash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($artifact))"
+    }
+    $checksumPath = Join-Path $destination "SHA256SUMS.txt"
+    [System.IO.File]::WriteAllLines($checksumPath, $checksumLines, [System.Text.Encoding]::ASCII)
+
+    Write-Host ""
+    Write-Host "Desktop release artifacts:" -ForegroundColor Green
+    foreach ($artifact in $uniqueArtifacts) {
+        Write-Host "  $artifact"
+    }
+    Write-Host "  $checksumPath"
 }
 
 function Clear-DesktopBundleArtifacts {
@@ -245,6 +408,7 @@ function Show-Help {
     Write-Host "  BuildMsi      Build an MSI installer."
     Write-Host "  BuildLinux    Build Linux bundles. Must run on a Linux host/runner."
     Write-Host ""
+    Write-Host "Release-ready copies are written to releases/desktop/<version>/<platform>."
     Write-Host "Generated Rust/Tauri output lives in apps/desktop/src-tauri/target."
     Write-Host "Clean generated output with:"
     Write-Host "  .\scripts\clean.ps1 -Target Generated"

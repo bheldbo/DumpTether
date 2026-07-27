@@ -256,6 +256,11 @@ Use `standalone` for an offline-first package with no default cloud, or copy
 The generator writes the public React target plus Tauri/npm/Cargo metadata.
 Desktop builds run it automatically, and CI checks generated files.
 
+Local desktop commands resolve `DUMPTETHER_DEPLOYMENT_TARGET` from the process
+environment or root `.env`/`.env.local`. Finished executables and installers are
+copied to `releases/desktop/v<version>/<platform>/`; Tauri's larger intermediate
+tree remains under `apps/desktop/src-tauri/target`.
+
 API endpoint configuration is intentionally split by runtime:
 
 - Hosted website: set `VITE_API_BASE_URL` at frontend build time if the React app should call a different API origin. Leave it empty when the website and API are served from the same origin.
