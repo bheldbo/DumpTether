@@ -39,6 +39,7 @@
       "../../../src/DumpTether.Api/appsettings.Desktop.json": "appsettings.Desktop.json"
     },
     "icon": [
+      "icons/icon.png",
       "icons/icon.ico"
     ]
   }
