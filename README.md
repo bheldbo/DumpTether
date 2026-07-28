@@ -69,6 +69,7 @@ src/DumpTether.Api/       ASP.NET Core HTTP API
 src/DumpTether.App/       Application services and use cases
 src/DumpTether.Domain/    Domain model and business rules
 src/DumpTether.Data/      EF Core persistence with PostgreSQL/SQLite provider selection
+src/DumpTether.Data.Sqlite/ SQLite provider-specific EF Core migrations
 src/DumpTether.Database/  Runnable database maintenance shell for migrations/local data chores
 docs/                     ADRs, security notes, deployment notes
 deploy/docker/            Production Docker Compose examples
@@ -86,7 +87,7 @@ Design principles:
 
 Current shortcomings:
 
-- Desktop/offline mode has the first SQLite/API foundation and Tauri scaffold, but no sync yet.
+- Desktop/offline mode has the SQLite/API foundation, Tauri scaffold, local sync status metadata and a first cloud push/pull pass for task headers, templates, header field values and newly-synced note/entry field values. Later edits/deletes to existing notes, archive/delete sync and full conflict resolution are still future work.
 - Email confirmation/OAuth plumbing exists, but provider setup is still rough.
 - Sharing works as an MVP flow, but permissions and notifications need more polish.
 - Live updates are early and should be hardened before real multi-user use.
@@ -117,18 +118,35 @@ Local SQLite path:
 .\scripts\dev.ps1 -Target LocalBoth -OpenBrowser
 ```
 
-That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation, not full cloud sync yet.
+That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation. Local SQLite mode enables a local desktop-style session automatically, so you can edit local data without creating a hosted account. A first manual cloud sync pass exists for task headers, templates, header field values and newly-synced note/entry field values. Later note edits/deletes, archive/delete sync and richer conflict recovery are still future work.
 
 Quick chooser:
 
 ```text
+Open dev script menu:        .\scripts\dev.ps1
+Open desktop script menu:    .\scripts\desktop.ps1
 Web dev with PostgreSQL:    .\scripts\dev.ps1 -Target Both -OpenBrowser
 Offline-style web dev:      .\scripts\dev.ps1 -Target LocalBoth -OpenBrowser
 Desktop dev shell:          .\scripts\desktop.ps1 -Target Dev
+Windows desktop exe only:    .\scripts\desktop.ps1 -Target BuildExe
+Client target generation:   .\scripts\desktop.ps1 -Target ConfigureClient
 Windows desktop installer:  .\scripts\desktop.ps1 -Target Build
 Linux server deployment:    Docker Compose, see docs/deployment/docker-compose-production.md
 Linux desktop bundles:      build on a Linux host or Linux CI runner, see apps/desktop/README.md
 ```
+
+Generated-output cleanup:
+
+```powershell
+.\scripts\clean.ps1
+.\scripts\clean.ps1 -Target Status
+.\scripts\clean.ps1 -Target DesktopDebug
+.\scripts\clean.ps1 -Target DesktopRelease
+.\scripts\clean.ps1 -Target Generated
+.\scripts\clean.ps1 -Target All
+```
+
+The default action opens an interactive cleanup menu. `DesktopDebug` and `DesktopRelease` remove only the corresponding Tauri/Rust target folder. `Generated` removes repo-local build output such as .NET `bin/obj`, Vite `dist`/cache, all Tauri/Rust `target`, desktop sidecar publish output and `.tmp`. `All` also removes `node_modules`, so the next frontend/desktop run will need `npm ci` or `npm install` again. The script never targets source files, migrations, appsettings or databases.
 
 Manual path:
 
@@ -200,10 +218,12 @@ The frontend lives in `apps/web`. Visual Studio is fine for the solution/backend
 
 ## Configuration
 
-Two files matter most:
+Three file patterns matter most:
 
 - `appsettings*.json`: committed, non-secret defaults and app behavior.
-- `.env`: uncommitted runtime/secrets, especially Docker and production-like runs.
+- `.env`: uncommitted local runtime/secrets used by scripts and Docker Compose.
+- `.env.local`: optional machine-only overrides loaded after `.env` by
+  DumpTether PowerShell scripts.
 
 Do not commit real secrets.
 
@@ -220,6 +240,38 @@ Typed config is bound in C# through `DumpTetherApiSetup` and the option classes 
 
 Tauri config is different: `apps/desktop/src-tauri/tauri.conf.json` and `capabilities/default.json` configure the desktop shell, window, bundler and sidecar permission. They do not replace `appsettings*.json`.
 
+The desktop app identifier is `net.heldbo.dumptether`. That reverse-DNS ID is the stable cross-platform application identity used by Tauri/operating systems for packaging, app data identity and future signing/update flows. The bundle publisher is `bheldbo`.
+
+Public web/desktop build metadata is centralized in `deploy/targets/*.json`.
+The target owns the client version, product identity, publisher, public web
+origin, default cloud API URL, and update channel. It never contains secrets.
+Select and generate a target with:
+
+```powershell
+node scripts/configure-client.mjs --target development
+```
+
+Use `standalone` for an offline-first package with no default cloud, or copy
+`deploy/targets/public.example.json` to a real non-secret deployment target.
+The generator writes the public React target plus Tauri/npm/Cargo metadata.
+Desktop builds run it automatically, and CI checks generated files.
+
+Local desktop commands resolve `DUMPTETHER_DEPLOYMENT_TARGET` from the process
+environment or root `.env`/`.env.local`. Finished executables and installers are
+copied to `releases/desktop/v<version>/<platform>/`; Tauri's larger intermediate
+tree remains under `apps/desktop/src-tauri/target`.
+
+API endpoint configuration is intentionally split by runtime:
+
+- Hosted website: set `VITE_API_BASE_URL` at frontend build time if the React app should call a different API origin. Leave it empty when the website and API are served from the same origin.
+- Packaged desktop/cloud sync server: select a `deploy/targets/*.json` file before building. `cloudApiBaseUrl` becomes the package's default hosted API.
+- Direct web build: use the same generated target; the hosted web app should normally call its own same-origin `/api`.
+- Vite dev: `apps/web/vite.config.ts` proxies `/api` and `/health` to `http://127.0.0.1:55868`.
+- Desktop local app: the React UI talks to the local sidecar API at `http://127.0.0.1:55869`.
+- Desktop cloud login/sync: the Account panel logs in to the configured cloud server URL. The user does not edit the server/backend URL inside the running app.
+
+So the WCF-style mental model is close, but the knob is an HTTP API base URL. The offline desktop runtime should keep using its local sidecar for normal work; sync/login can point at your hosted API. Pointing the whole desktop UI directly at a remote backend would be an online-client mode and is future work.
+
 Common local PostgreSQL defaults:
 
 ```text
@@ -234,6 +286,7 @@ Database__Provider
 Database__Sqlite__Path
 Auth__RequireAuthentication
 Auth__AllowGuestSessions
+Auth__EnableLocalDesktopLogin
 Auth__SignupMode
 Auth__SignupWhitelistEmails__0
 Auth__SignupWhitelistDomains__0
@@ -247,17 +300,32 @@ Cors__AllowedOrigins__1
 Cors__AllowedOrigins__2
 EmailConfirmation__Enabled
 EmailConfirmation__PublicBaseUrl
+Email__Provider
 Email__FromEmail
-Email__BrevoApi__Enabled
+Email__Smtp__Host
+Email__Smtp__Port
+Email__Smtp__UseAuthentication
+Email__Smtp__EnableSsl
 Email__BrevoApi__ApiKey
-OAuth__Google__Enabled
 OAuth__Microsoft__Enabled
-OAuth__Facebook__Enabled
+OAuth__Microsoft__ClientId
+OAuth__Microsoft__ClientSecret
+OAuth__Microsoft__TenantId
 Usage__MaxActiveTasksPerWorkspace
 Usage__MaxTotalTasksPerWorkspace
+VITE_API_BASE_URL
 ```
 
-The `scripts/dev.ps1` helper reads root `.env` values and maps `DUMPTETHER_*` variables to ASP.NET configuration keys. Visual Studio launch profiles do not automatically import `.env`, so use launch settings, user secrets or local environment variables for F5-only runs.
+The `scripts/dev.ps1` and `scripts/db.ps1` helpers read root `.env`, overlay
+`.env.local`, then map `DUMPTETHER_*` variables to ASP.NET configuration keys.
+The desktop helper reads only `DUMPTETHER_DEPLOYMENT_TARGET` from those files;
+the bundled sidecar keeps its SQLite settings from `appsettings.Desktop.json`.
+
+Docker Compose reads root `.env` automatically, but does not automatically read
+`.env.local`. Use `docker compose --env-file .env.local ...` when that override
+file should supply Compose values. Visual Studio launch profiles do not
+automatically import either file, so use launch settings, user secrets or local
+environment variables for F5-only runs.
 
 Signup modes are server-side:
 
@@ -268,9 +336,58 @@ Signup modes are server-side:
 
 For a small hosted instance, start with `Auth__SignupMode=InviteOnly` or `Auth__SignupMode=Whitelist` and `Auth__AllowGuestSessions=false`. Temporary guest sessions are not allowed to write task, template, category, sharing or board data to the hosted API; a true browser-only demo mode is future UI work.
 
+### Local Email With Mailpit
+
+Mailpit is a development inbox, not an internet mail provider. Start it with:
+
+```powershell
+.\scripts\dev.ps1 -Target Mail
+```
+
+Then set these uncommitted `.env` values:
+
+```text
+DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true
+DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL=http://localhost:55868
+DUMPTETHER_EMAIL_PROVIDER=Smtp
+DUMPTETHER_EMAIL_FROM=noreply@dumptether.local
+DUMPTETHER_EMAIL_SMTP_HOST=localhost
+DUMPTETHER_EMAIL_SMTP_PORT=1025
+DUMPTETHER_EMAIL_SMTP_USE_AUTHENTICATION=false
+DUMPTETHER_EMAIL_SMTP_ENABLE_SSL=false
+```
+
+Register a user and open `http://127.0.0.1:8025` to inspect the confirmation
+message. A containerized API uses `mailpit` instead of `localhost` as the SMTP
+host. Production still needs a delivery-capable SMTP relay or `BrevoApi`.
+
+### Microsoft Login
+
+DumpTether currently supports Microsoft as its only external identity provider.
+Put real values in the uncommitted root `.env` for script-based local runs, or
+in the real server `deploy/docker/.env.prod`:
+
+```text
+DUMPTETHER_OAUTH_MICROSOFT_ENABLED=true
+DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID=<Application client ID>
+DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET=<client secret value>
+DUMPTETHER_OAUTH_MICROSOFT_TENANT_ID=common
+```
+
+Use `common` for organizational and personal Microsoft accounts, or the
+customer's tenant GUID for a tenant-specific deployment. Configure this Web
+redirect URI in Entra for local development:
+
+```text
+http://localhost:55868/api/auth/oauth/microsoft/callback
+```
+
+Use the matching HTTPS API origin in production. DumpTether requests sign-in
+identity only; Microsoft Graph group/role import is separate future work.
+
 CORS is configured only in the API. The server does not need CORS to "reach" clients. CORS only matters when browser or webview JavaScript calls an API on another origin.
 
-If the website and API are served from the same origin, CORS can stay empty and same-origin browser policy is enough. Vite dev and the Tauri sidecar shape are cross-origin (`localhost:5173` or `tauri.localhost` calling `127.0.0.1:55868`), so local development uses exact allowed origins such as `Cors__AllowedOrigins__0=http://localhost:5173`, `Cors__AllowedOrigins__1=http://127.0.0.1:5173`, `Cors__AllowedOrigins__2=http://tauri.localhost` or `DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com`. Never use `*` with credentials.
+If the website and API are served from the same origin, CORS can stay empty and same-origin browser policy is enough. Normal Vite dev uses its proxy to reach the hosted dev API at `127.0.0.1:55868`. Tauri/webview calls and any direct `VITE_API_BASE_URL` browser calls are cross-origin, so local development uses exact allowed origins such as `Cors__AllowedOrigins__0=http://localhost:5173`, `Cors__AllowedOrigins__1=http://127.0.0.1:5173`, `Cors__AllowedOrigins__2=http://tauri.localhost` or `DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com`. Never use `*` with credentials.
 
 Set `Database__Provider=Postgres` for hosted/server PostgreSQL. Set `Database__Provider=Sqlite` for local/offline SQLite. `Database__Sqlite__Path` is optional; if omitted, DumpTether uses the OS app-data path.
 
@@ -395,7 +512,7 @@ Windows: %APPDATA%\DumpTether\dumptether.db
 Linux:   ~/.local/share/DumpTether/dumptether.db
 ```
 
-The current SQLite path is for local/offline development. Full login sync, conflict resolution and desktop packaging are tracked in `docs/adr/0006-local-offline-runtime-and-sync.md`.
+The current SQLite path is for local/offline development. SQLite uses provider-specific EF Core migrations in `src/DumpTether.Data.Sqlite`. Manual board sync can push/pull task header state between a local SQLite board and a hosted API board using `SyncRoot`/`SyncMapping`; full notes/template/archive sync and richer conflict resolution are tracked in `docs/adr/0006-local-offline-runtime-and-sync.md`.
 
 ## Desktop App
 
@@ -410,6 +527,8 @@ Tauri window
   -> same React task wall UI
 ```
 
+The desktop shell does not contain business logic. It starts the local API sidecar with `--environment=Desktop`; the API reads `appsettings.Desktop.json`, uses SQLite and creates/reuses a local desktop session. Cloud login/sync is layered on top of that local session instead of replacing it.
+
 Install desktop prerequisites first:
 
 - Rust toolchain with Cargo
@@ -422,6 +541,7 @@ Then:
 ```powershell
 .\scripts\desktop.ps1 -Target Install
 .\scripts\desktop.ps1 -Target Dev
+.\scripts\desktop.ps1 -Target BuildExe
 .\scripts\desktop.ps1 -Target Build
 ```
 
@@ -430,10 +550,22 @@ Or from `apps/desktop`:
 ```powershell
 npm install
 npm run dev
+npm run build:desktop:exe
 npm run build:desktop
 ```
 
-`build:sidecar` publishes `DumpTether.Api` as a generated sidecar binary for Tauri. `build:desktop` runs `tauri build`, which is the path toward `.exe`/`.msi` bundles. Signing certificates, update feeds and sync are still future work.
+`build:sidecar` publishes `DumpTether.Api` as a generated sidecar binary for Tauri. `build:desktop:exe` runs `tauri build --no-bundle`, which produces the desktop executable without an installer. `build:desktop` runs the default Tauri bundle path and creates the NSIS installer. Signing certificates and update feeds are still future work.
+
+The odd-looking names under `apps/desktop/src-tauri/target/release` are generated Rust/Tauri build artifacts and installer snapshots. The large folders to watch are:
+
+- `apps/desktop/src-tauri/target`
+- `apps/desktop/src-tauri/binaries/publish`
+- `apps/web/node_modules` and `apps/desktop/node_modules`
+- `apps/web/dist`, `apps/web/.vite`, `apps/web/.tsbuildinfo`
+- any `bin` or `obj` folder under `src` or `tests`
+- `.tmp`
+
+Use `.\scripts\clean.ps1` for an interactive cleanup menu. Use `.\scripts\clean.ps1 -Target DesktopDebug` or `.\scripts\clean.ps1 -Target DesktopRelease` to clear only one Tauri target folder. Use `.\scripts\clean.ps1 -Target Generated` to clear generated build output without deleting dependencies. Use `.\scripts\clean.ps1 -Target All` when you want a colder reset and are fine reinstalling npm packages.
 
 The first sidecar build may download .NET runtime packs from NuGet for the selected runtime, for example `win-x64`.
 

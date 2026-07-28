@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DumpTether.Data\DumpTether.Data.csproj" />
+    <ProjectReference Include="..\DumpTether.Data.Sqlite\DumpTether.Data.Sqlite.csproj" />
   </ItemGroup>
 
   <ItemGroup>

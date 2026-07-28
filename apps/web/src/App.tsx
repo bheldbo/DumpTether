@@ -30,6 +30,7 @@ import {
   getInitialViewId,
   getInitialWorkspaceId,
   isAbortError,
+  isOwnerRole,
   isSystemAllTasksWorkspace,
   isTaskShareWorkspace,
   pickSavedViewId,
@@ -41,6 +42,8 @@ import {
   acceptShareLink,
   acceptIncomingWorkspaceInvitation,
   archiveTaskItem,
+  checkHealth,
+  connectCloudSyncAccount,
   copyTaskItems,
   createArchiveResolution,
   createProject,
@@ -56,19 +59,22 @@ import {
   deleteTaskTimelineEntry,
   deleteTaskTemplate,
   deleteWorkspace,
+  disconnectCloudSyncAccount,
   declineIncomingWorkspaceInvitation,
   developmentLogin,
-  checkHealth,
+  getCloudSyncAccount,
   guestLogin,
   getTaskItem,
   getTaskTemplate,
   getWorkspace,
+  importTaskTemplateFromTask,
   leaveCurrentWorkspace,
   leaveTaskShare,
   leaveWorkspaceTaskShares,
   listArchiveResolutions,
   listProjects,
   listSavedViews,
+  listWorkspaceSyncRoots,
   listWorkspaceInvitations,
   listWorkspaceMembers,
   listTaskItems,
@@ -86,6 +92,7 @@ import {
   revokeWorkspaceInvitation,
   setCurrentWorkspaceId,
   isTemporarySession,
+  syncWorkspaceWithCloud,
   updateArchiveResolution,
   updateProject,
   updateTaskShareRole,
@@ -122,6 +129,8 @@ import type {
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   AuthSessionListItemResponse,
+  CloudSyncAccountResponse,
+  ConnectCloudAccountRequest,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CreateTaskShareRequest,
@@ -134,6 +143,9 @@ import type {
   SavedViewResponse,
   TaskItemDetailResponse,
   TaskItemSummaryResponse,
+  SyncWorkspaceWithCloudRequest,
+  SyncWorkspaceWithCloudResponse,
+  SyncRootResponse,
   TaskShareInboxResponse,
   TaskTemplateDetailResponse,
   TaskTemplateLayoutResponse,
@@ -166,7 +178,9 @@ function App() {
   const [archiveResolutions, setArchiveResolutions] = useState<ArchiveResolutionResponse[]>([]);
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMemberResponse[]>([]);
   const [workspaceInvitations, setWorkspaceInvitations] = useState<WorkspaceInvitationResponse[]>([]);
+  const [syncRoots, setSyncRoots] = useState<SyncRootResponse[]>([]);
   const [templates, setTemplates] = useState<TaskTemplateDetailResponse[]>([]);
+  const [importedTemplateSourceIds, setImportedTemplateSourceIds] = useState<string[]>([]);
   const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(
     () => readStoredStringList(
       statusOptionsStorageKey,
@@ -198,6 +212,7 @@ function App() {
   const [incomingTaskShares, setIncomingTaskShares] = useState<TaskShareInboxResponse[]>([]);
   const processedWorkspaceInviteTokenRef = useRef<string | null>(null);
   const [localDesktopSessionIsActive, setLocalDesktopSessionIsActive] = useState(false);
+  const [cloudSyncAccount, setCloudSyncAccount] = useState<CloudSyncAccountResponse | null>(null);
   const [temporarySessionIsActive, setTemporarySessionIsActive] = useState(isTemporarySession);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
   const [lastPingedAt, setLastPingedAt] = useState<string | null>(null);
@@ -301,10 +316,14 @@ function App() {
       setIncomingWorkspaceInvitations(session.incomingWorkspaceInvitations);
       setIncomingTaskShares(session.incomingTaskShares);
       setLocalDesktopSessionIsActive(session.localDesktopSessionIsActive);
+      setCloudSyncAccount(session.localDesktopSessionIsActive
+        ? await getCloudSyncAccount()
+        : null);
       setTemporarySessionIsActive(session.temporarySessionIsActive);
       setErrorMessage(null);
     } catch (error) {
       setConnectionStatus('offline');
+      setCloudSyncAccount(null);
       setErrorMessage(getErrorMessage(error));
     } finally {
       setIsLoadingAuth(false);
@@ -323,6 +342,7 @@ function App() {
     setArchiveResolutions(snapshot.archiveResolutions);
     setWorkspaceMembers(snapshot.workspaceMembers ?? []);
     setWorkspaceInvitations(snapshot.workspaceInvitations ?? []);
+    setSyncRoots(snapshot.syncRoots ?? []);
     setTemplates(snapshot.templates);
     setTaskColorOptions(snapshot.taskColorOptions);
     setKnownStatuses(snapshot.knownStatuses);
@@ -407,6 +427,7 @@ function App() {
           templateSummaries,
           members,
           invitations,
+          roots,
         ] = await Promise.all([
           getWorkspace(workspaceRequestOptions),
           listSavedViews(workspaceRequestOptions),
@@ -415,6 +436,18 @@ function App() {
           listTaskTemplates(workspaceRequestOptions),
           listWorkspaceMembers(workspaceRequestOptions).catch(() => []),
           listWorkspaceInvitations(workspaceRequestOptions).catch(() => []),
+          localDesktopSessionIsActive
+            ? listWorkspaceSyncRoots({
+                signal: controller.signal,
+                workspaceId: null,
+              }).catch((error) => {
+                if (isAbortError(error)) {
+                  throw error;
+                }
+
+                return [];
+              })
+            : Promise.resolve([]),
         ]);
         if (!isCurrentLoad()) {
           return;
@@ -507,6 +540,7 @@ function App() {
         setArchiveResolutions(resolutions);
         setWorkspaceMembers(members);
         setWorkspaceInvitations(invitations);
+        setSyncRoots(roots);
         setTemplates(templateDetails);
         setTaskColorOptions(colorOptions);
         setKnownStatuses(statuses);
@@ -519,6 +553,7 @@ function App() {
           knownStatuses: statuses,
           projects: projectList,
           savedViews: views,
+          syncRoots: roots,
           taskColorOptions: colorOptions,
           taskItems: selectedTasks,
           templates: templateDetails,
@@ -556,6 +591,7 @@ function App() {
       applyWorkspaceSnapshot,
       currentUser,
       currentViewId,
+      localDesktopSessionIsActive,
       selectedTaskId,
       selectedWorkspaceId,
     ],
@@ -1004,14 +1040,15 @@ function App() {
         isCurrent: true,
       },
     ]);
-    setLocalDesktopSessionIsActive(
+    const isDesktopLocalSession =
       userState.session.sessionType === 'DesktopLocal' ||
-        userState.session.sessionType === 2,
-    );
+        userState.session.sessionType === 2;
+    setLocalDesktopSessionIsActive(isDesktopLocalSession);
     setTemporarySessionIsActive(
-      userState.session.sessionType === 'Guest' ||
-        userState.session.sessionType === 5 ||
-        isTemporarySession(),
+      !isDesktopLocalSession &&
+        (userState.session.sessionType === 'Guest' ||
+          userState.session.sessionType === 5 ||
+          isTemporarySession()),
     );
     const workspaceId = userState.workspaces[0]?.id ?? null;
     setSelectedWorkspaceId(workspaceId);
@@ -1136,7 +1173,9 @@ function App() {
         return;
       }
 
-      await loadAuth();
+      setAuthSessions((currentSessions) =>
+        currentSessions.filter((session) => session.id !== sessionId),
+      );
       showToast(t('sessionRevoked'), 'info');
       setErrorMessage(null);
     } catch (error) {
@@ -1260,6 +1299,53 @@ function App() {
     } catch (error) {
       const message = getErrorMessage(error);
       setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleSyncWorkspaceWithCloud = async (
+    workspaceId: string,
+    requestBody: SyncWorkspaceWithCloudRequest,
+  ): Promise<SyncWorkspaceWithCloudResponse> => {
+    try {
+      const response = await syncWorkspaceWithCloud(workspaceId, requestBody);
+      await loadWorkspace(currentViewId, workspaceId, { force: true });
+      const hasProblems = response.conflicts > 0 || response.failed > 0;
+      showToast(
+        hasProblems
+          ? `${t('syncComplete')}: ${response.conflicts} ${t('syncConflicts')}, ${response.failed} ${t('syncFailedCount')}.`
+          : t('syncComplete'),
+        hasProblems ? 'warning' : 'info',
+      );
+
+      return response;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleConnectCloudAccount = async (requestBody: ConnectCloudAccountRequest) => {
+    try {
+      const account = await connectCloudSyncAccount(requestBody);
+      setCloudSyncAccount(account);
+      showToast(t('cloudAccountConnected'), 'info');
+    } catch (error) {
+      const message = getErrorMessage(error);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleDisconnectCloudAccount = async () => {
+    try {
+      await disconnectCloudSyncAccount();
+      setCloudSyncAccount(null);
+      showToast(t('cloudAccountDisconnected'), 'info');
+    } catch (error) {
+      const message = getErrorMessage(error);
       showToast(message, 'error');
       throw error;
     }
@@ -1691,6 +1777,37 @@ function App() {
     }
   };
 
+  const handleImportTaskTemplate = async (taskItemId: string) => {
+    const taskWorkspaceId = selectedTask?.workspaceId ??
+      taskItems.find((taskItem) => taskItem.id === taskItemId)?.workspaceId ??
+      selectedTaskRequestWorkspaceId;
+
+    try {
+      const imported = await importTaskTemplateFromTask(taskItemId, {
+        workspaceId: taskWorkspaceId,
+      });
+
+      setTemplates((currentTemplates) => {
+        const withoutDuplicate = currentTemplates.filter(
+          (template) => template.id !== imported.template.id,
+        );
+
+        return [...withoutDuplicate, imported.template]
+          .sort((first, second) => first.name.localeCompare(second.name));
+      });
+      setImportedTemplateSourceIds((currentIds) =>
+        currentIds.includes(imported.sourceTemplateId)
+          ? currentIds
+          : [...currentIds, imported.sourceTemplateId]);
+      showToast(t('templateImported'));
+      setErrorMessage(null);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast(message, 'error');
+    }
+  };
+
   const handleCreateArchiveResolution = async (
     requestBody: CreateArchiveResolutionRequest,
   ) => {
@@ -1896,6 +2013,7 @@ function App() {
           <TaskBoard
             archiveDialogIsOpen={archiveDialogIsOpen}
             archiveResolutions={archiveResolutions}
+            cloudSyncAccount={cloudSyncAccount}
             currentView={currentView}
             currentUserEmail={currentUser?.user.email ?? null}
             colorOptions={taskColorOptions}
@@ -1914,6 +2032,7 @@ function App() {
             onCreateWorkspaceInvitation={handleCreateWorkspaceInvitation}
             onDeleteTimelineEntry={handleDeleteTimelineEntry}
             onDeleteProject={handleDeleteProject}
+            onImportTaskTemplate={handleImportTaskTemplate}
             onOpenArchiveDialog={() => setArchiveDialogIsOpen(true)}
             onReopen={handleReopenTaskItem}
             onReopenTaskItems={handleReopenTaskItems}
@@ -1936,15 +2055,19 @@ function App() {
             onUpdateTaskItem={handleUpdateTaskItem}
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
             onUpdateProject={handleUpdateProject}
+            onSyncWorkspaceWithCloud={handleSyncWorkspaceWithCloud}
             onUpdateWorkspace={handleUpdateWorkspace}
             onUpdateWorkspaceMemberRole={handleUpdateWorkspaceMemberRole}
             onShowToast={showToast}
             projects={projects}
+            localDesktopSessionIsActive={localDesktopSessionIsActive}
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
             statusOptions={statusOptions}
+            syncRoot={syncRoots.find((root) => root.localWorkspaceId === workspace?.id) ?? null}
             taskItems={taskItems}
             templates={templates}
+            importedTemplateSourceIds={importedTemplateSourceIds}
             t={t}
             workspaceInvitations={workspaceInvitations}
             workspaceMembers={workspaceMembers}
@@ -1957,11 +2080,22 @@ function App() {
       {settingsIsOpen ? (
         <SettingsPanel
           archiveResolutions={archiveResolutions}
+          cleanupWorkspace={
+            workspace &&
+            !isSystemAllTasksWorkspace(workspace) &&
+            currentUser?.workspaces.some((candidate) =>
+              candidate.id === workspace.id &&
+              candidate.accessKind !== 'TaskShare' &&
+              isOwnerRole(candidate.role)) === true
+              ? workspace
+              : null
+          }
           configuredStatuses={configuredStatuses}
           language={language}
           onChangeLanguage={setLanguage}
           onCreateArchiveResolution={handleCreateArchiveResolution}
           onDeleteArchiveResolution={handleDeleteArchiveResolution}
+          onDeleteWorkspace={handleDeleteWorkspace}
           onSaveStatusOptions={handleSaveStatusOptions}
           onUpdateArchiveResolution={handleUpdateArchiveResolution}
           onClose={() => setSettingsIsOpen(false)}
@@ -1972,6 +2106,7 @@ function App() {
         <AccountPanel
           authSessions={authSessions}
           authOptions={authOptions}
+          cloudSyncAccount={cloudSyncAccount}
           currentUser={currentUser}
           incomingTaskShares={incomingTaskShares}
           incomingWorkspaceInvitations={incomingWorkspaceInvitations}
@@ -1979,6 +2114,8 @@ function App() {
           onAcceptIncomingWorkspaceInvitation={handleAcceptIncomingWorkspaceInvitation}
           onClose={() => setAccountIsOpen(false)}
           onDeclineIncomingWorkspaceInvitation={handleDeclineIncomingWorkspaceInvitation}
+          onConnectCloudAccount={handleConnectCloudAccount}
+          onDisconnectCloudAccount={handleDisconnectCloudAccount}
           onDevelopmentLogin={handleDevelopmentLogin}
           onGuestLogin={handleGuestLogin}
           onLeaveTaskShare={handleLeaveTaskShare}

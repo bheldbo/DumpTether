@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
+using DumpTether.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +21,7 @@ public sealed class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly IEmailSender _emailSender;
     private readonly IWebHostEnvironment _environment;
+    private readonly IConfiguration _configuration;
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<EmailConfirmationOptions> _emailConfirmationOptions;
     private readonly IOptions<OAuthOptions> _oauthOptions;
@@ -28,6 +30,7 @@ public sealed class AuthController : ControllerBase
         IAuthService authService,
         IEmailSender emailSender,
         IWebHostEnvironment environment,
+        IConfiguration configuration,
         IOptions<AuthOptions> authOptions,
         IOptions<EmailConfirmationOptions> emailConfirmationOptions,
         IOptions<OAuthOptions> oauthOptions)
@@ -35,6 +38,7 @@ public sealed class AuthController : ControllerBase
         _authService = authService;
         _emailSender = emailSender;
         _environment = environment;
+        _configuration = configuration;
         _authOptions = authOptions;
         _emailConfirmationOptions = emailConfirmationOptions;
         _oauthOptions = oauthOptions;
@@ -48,6 +52,7 @@ public sealed class AuthController : ControllerBase
             options.RequireAuthentication,
             options.AllowGuestSessions,
             _environment.IsDevelopment() && options.EnableDevelopmentLogin,
+            LocalDesktopLoginIsEnabled(),
             _emailConfirmationOptions.Value.Enabled,
             options.SignupMode,
             _oauthOptions.Value.EnabledProviders()));
@@ -186,8 +191,10 @@ public sealed class AuthController : ControllerBase
             return BadRequest(new { error = "External login did not complete." });
         }
 
-        var providerUserId = result.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
-        var email = result.Principal.FindFirstValue(ClaimTypes.Email);
+        var providerUserId = GetExternalProviderUserId(scheme, result.Principal);
+        var email = result.Principal.FindFirstValue("email") ??
+                    result.Principal.FindFirstValue("preferred_username") ??
+                    result.Principal.FindFirstValue(ClaimTypes.Email);
 
         if (string.IsNullOrWhiteSpace(providerUserId) || string.IsNullOrWhiteSpace(email))
         {
@@ -203,6 +210,7 @@ public sealed class AuthController : ControllerBase
                     scheme,
                     providerUserId,
                     email,
+                    result.Principal.FindFirstValue("name") ??
                     result.Principal.FindFirstValue(ClaimTypes.Name)),
                 new AuthRequestMetadata(
                     Request.Headers.UserAgent.FirstOrDefault(),
@@ -216,6 +224,26 @@ public sealed class AuthController : ControllerBase
 
         AppendSessionCookie(response);
         return Redirect(NormalizeReturnUrl(returnUrl));
+    }
+
+    private static string? GetExternalProviderUserId(
+        string provider,
+        ClaimsPrincipal principal)
+    {
+        if (provider.Equals("microsoft", StringComparison.OrdinalIgnoreCase))
+        {
+            var objectId = principal.FindFirstValue("oid");
+            var tenantId = principal.FindFirstValue("tid");
+
+            if (!string.IsNullOrWhiteSpace(objectId) &&
+                !string.IsNullOrWhiteSpace(tenantId))
+            {
+                return $"{tenantId}:{objectId}";
+            }
+        }
+
+        return principal.FindFirstValue("sub") ??
+               principal.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 
     [EnableRateLimiting("auth")]
@@ -249,7 +277,7 @@ public sealed class AuthController : ControllerBase
     [HttpPost("local-desktop")]
     public async Task<ActionResult<LoginUserResponse>> LocalDesktopLogin(CancellationToken cancellationToken)
     {
-        if (!string.Equals(_environment.EnvironmentName, "Desktop", StringComparison.OrdinalIgnoreCase))
+        if (!LocalDesktopLoginIsEnabled())
         {
             return NotFound();
         }
@@ -429,6 +457,10 @@ public sealed class AuthController : ControllerBase
             ? normalized
             : null;
     }
+
+    private bool LocalDesktopLoginIsEnabled() =>
+        _authOptions.Value.EnableLocalDesktopLogin &&
+        DumpTetherDatabaseOptions.IsSqlite(DumpTetherDatabaseOptions.GetProvider(_configuration));
 
     private string NormalizeReturnUrl(string? returnUrl)
     {

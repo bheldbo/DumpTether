@@ -95,7 +95,7 @@ if (-not [string]::IsNullOrWhiteSpace($userPackageCache) -and
 
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 
-$restoreArgs = @("restore", $apiProject, "-r", $Runtime)
+$restoreArgs = @("restore", $apiProject, "-r", $Runtime, "--disable-build-servers")
 
 if ($ignoreFailedSourcesValue -eq "true") {
     $restoreArgs += "--ignore-failed-sources"
@@ -111,7 +111,11 @@ dotnet publish $apiProject `
     -c Release `
     -r $Runtime `
     --no-restore `
+    --disable-build-servers `
+    -m:1 `
     --self-contained $selfContainedValue `
+    /p:BuildInParallel=false `
+    /p:UseSharedCompilation=false `
     /p:PublishSingleFile=true `
     /p:IncludeNativeLibrariesForSelfExtract=true `
     /p:PublishTrimmed=false `

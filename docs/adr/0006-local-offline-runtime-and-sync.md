@@ -34,9 +34,9 @@ Tauri shell
   -> same React UI
 ```
 
-The first implementation step is not the Tauri shell. The first step is making `DumpTether.Api` run against SQLite with `Database:Provider=Sqlite`.
+The first implementation step was making `DumpTether.Api` run against SQLite with `Database:Provider=Sqlite`. The current local runtime also has a Tauri development shell scaffold and a deliberately small first cloud sync pass.
 
-The desktop project should later live in `apps/desktop`. It should package the built React UI and start the local .NET API sidecar on localhost.
+The desktop project should later live in `apps/desktop`. It should package the built React UI and start the local .NET API sidecar on localhost. The desktop sidecar uses a dedicated local development port (`127.0.0.1:55869`) so it cannot be confused with the hosted development API (`127.0.0.1:55868`).
 
 ## Source Code Boundary
 
@@ -46,6 +46,7 @@ This is the intended ownership:
 - `DumpTether.App`: use cases and validation
 - `DumpTether.Api`: HTTP API used by web and desktop
 - `DumpTether.Data`: EF Core repositories and provider selection
+- `DumpTether.Data.Sqlite`: SQLite provider-specific EF migrations
 - `apps/web`: shared React UI
 - `apps/desktop`: future Tauri shell only
 - `DumpTether.Sync`: future sync engine
@@ -65,6 +66,8 @@ Linux:   ~/.local/share/DumpTether/dumptether.db
 
 JSON remains appropriate for lightweight app preferences and export/import metadata, not the live task database.
 
+SQLite uses provider-specific EF Core migrations in `DumpTether.Data.Sqlite`. The local API should apply migrations at startup in desktop/local mode, and the database maintenance shell can run the same migrations explicitly. Do not use `EnsureCreated` for real local desktop data upgrades because it bypasses migration history.
+
 ## Packaging
 
 The expected desktop packaging path is:
@@ -74,6 +77,13 @@ The expected desktop packaging path is:
 - Windows `.msi` installer when enterprise/MSI deployment is needed
 - Linux AppImage/deb/rpm depending on distribution needs
 - code signing after the build pipeline is stable
+
+The packaged desktop sidecar is a self-contained .NET executable. Tauri bundles
+the narrow desktop appsettings overlay as an explicit resource and starts the
+sidecar with that resource directory as its working directory. The desktop
+environment selects SQLite and local desktop identity; PostgreSQL and a
+system-wide .NET runtime are not desktop prerequisites. Closing the Tauri
+application must also terminate the sidecar process.
 
 Do not hand-roll WiX first. Let Tauri own the installer pipeline until there is a concrete deployment need it cannot satisfy. The NSIS `.exe` installer is the MVP path. MSI/WiX is optional and can fail on developer machines if the Windows Installer/WiX validation environment is not healthy.
 
@@ -91,9 +101,33 @@ On first desktop launch, the local API creates or reuses a local SQLite `AppUser
 
 The session token can expire or be replaced. The durable local identity is the SQLite `AppUser`, plus future sync metadata such as `DeviceId`.
 
+Local desktop login must be explicitly enabled with `Auth:EnableLocalDesktopLogin` and is only valid when `Database:Provider=Sqlite`. Hosted PostgreSQL deployments must not expose the local desktop login endpoint.
+
+The packaged desktop app should normally talk to its local sidecar API. A configurable remote API base URL would be an online-client mode, not the default offline runtime.
+
+For sync/login, the desktop UI uses the hosted API URL configured before the
+client starts. Packaged desktop and web builds take public metadata from a
+selected `deploy/targets/*.json` file. `scripts/configure-client.mjs` generates
+the React target and synchronizes Tauri, npm and Cargo metadata. The
+server/backend URL is deployment configuration, not an in-app user setting.
+
+Deployment targets are not a replacement for ASP.NET
+`appsettings.Desktop.json`; appsettings still owns local sidecar behavior such
+as SQLite, local URLs and auth mode. Secrets never enter deployment targets.
+
+Hosted authentication remains a remote-server concern. The desktop overlay does
+not expose SMTP, email confirmation, MFA, OAuth, registration, or PostgreSQL
+settings. A selected deployment target provides the non-secret hosted API URL;
+the local sidecar stores a protected cloud session after successful login.
+Desktop startup always restores the local session first. Cloud credentials are
+reused for later sync, and the hosted session is verified during sync so a cloud
+outage never blocks local SQLite access.
+
 ## Login and Sync Mapping
 
-Login/sync is future work.
+Login-driven sync is being built incrementally. The first manual board sync pass
+proves that the local API can push and pull task state through the same hosted
+API contract.
 
 A local user can use DumpTether without cloud login. Local boards and tasks are born in SQLite and should show as local-only/not-synced when sync UI exists.
 
@@ -102,16 +136,18 @@ When the user logs in to the hosted DumpTether service, the app should not silen
 1. keep local data available
 2. connect to the hosted API
 3. identify the local device
-4. let the user mark a local board/task set for sync, or keep it local-only
+4. let the user enroll selected tasks or a whole board, or keep them local-only
 5. create or choose the matching hosted board/task container
 6. store a local mapping such as `LocalWorkspaceId -> RemoteWorkspaceId`
-7. sync local-owned boards/tasks using stable IDs and checkpoints
+7. sync enrolled local-owned tasks using stable IDs and checkpoints
 8. fetch shared boards/tasks available to that cloud user
 9. show clear status: local-only, not synced, offline, connected, syncing, sync error
 
 The local session is not the sync relationship. Cloud login creates the cloud authority; sync maps local SQLite records to hosted PostgreSQL records deliberately.
 
 Shared tasks and shared boards are server-side concepts. They are visible in the local app only after login and successful sync.
+
+Future organization/teams features should follow the same rule. Tasks assigned by a manager or another server-side actor are cloud-owned/shared data. The desktop app should fetch them only after cloud login succeeds, show a clear notification when they arrive, and keep local-only data separate from assigned/shared server data.
 
 If the user loses the SQLite database, any local-only data and local sync mappings are lost. Already-synced cloud data can be downloaded again after login because the cloud keeps remote IDs and membership. Unsynced local-only tasks cannot be recovered without a backup/export. After reinstall, the app should rebuild local mappings from downloaded cloud records or ask the user to link local boards again if local data still exists.
 
@@ -133,12 +169,84 @@ SyncMapping
   RemoteId
   LastRemoteVersion
   Status
+  LastAttemptedAt
   LastSyncedAt
+  LastError
 ```
 
 `SyncRoot` represents a board-level sync relationship. `SyncMapping` represents individual local-to-remote entity links. These records prevent duplicate uploads because retries can resolve "this local thing already became that remote thing" before creating new remote rows.
 
-Future AD, Google, Microsoft and other identity providers should attach to the cloud identity layer. They should not replace the local SQLite identity. A local desktop user can later link to a cloud account from any supported provider, then sync mappings decide what data moves.
+## Sync Unit And Enrollment
+
+A task is the synchronization unit. A board supplies its owning context and
+remote destination.
+
+`SyncRoot` should support:
+
+- `SelectedTasks`: only explicitly enrolled tasks synchronize.
+- `WholeBoard`: existing and future tasks in the board synchronize.
+
+Individual enrollment records should make task selection explicit without
+duplicating the local/remote ID mappings already owned by `SyncMapping`.
+
+Routine synchronization must not freeze task editing. A sync pass works from a
+versioned snapshot. If the user edits the task during that pass, the task
+remains pending and another pass synchronizes the newer version. Temporary
+locking is reserved for mapping changes and explicit conflict resolution.
+
+Visible states should include:
+
+- local only
+- pending
+- syncing
+- synced
+- offline
+- failed
+- conflict
+- access revoked
+
+Shared data may be cached for offline use, but remains associated with the
+authenticated cloud profile. It must be hidden on logout and re-authorized when
+connectivity returns.
+
+## First Cloud Sync Pass
+
+The first implemented cloud sync pass is intentionally narrow:
+
+- It is available only in the desktop/local runtime.
+- It requires a local owner session for the board being synced.
+- The user connects a cloud account against the configured hosted API URL.
+- The local API stores only a protected cloud session token, never a raw token.
+- If no remote board is mapped, the sync service can create one.
+- If the cloud account already has exactly the same board name, the first sync
+  maps that existing board instead of attempting to create a duplicate.
+- Local task header fields can be pushed: title, status, category, color and follow-up date.
+- Remote task header fields can be pulled into the local SQLite board.
+- Local task templates used by synced tasks can be created or updated in the cloud for that sync root.
+- Local task header field values can be pushed to the cloud when the task template is synced first. Field IDs are mapped through template field key/scope because local SQLite and hosted PostgreSQL generate different field IDs.
+- Cloud task templates and header field values can be imported into the local SQLite board when pulling new cloud tasks.
+- New local tasks can push their first note/timeline entries and entry-level field values when they are first created in the cloud.
+- New remote tasks can pull their first note/timeline entries and entry-level field values when they are first created locally.
+- `SyncMapping` stores the remote task ID and remote version after successful sync.
+- If both local and remote changed the same task header since the previous sync checkpoint, the mapping is marked `Conflict` and both records are left intact.
+- Failed task sync attempts are marked `SyncFailed` with a short user-visible error.
+
+Not included in the first pass:
+
+- later edits/deletes to already-synced note/timeline entries
+- updating already-mapped local templates from later cloud template edits
+- updating already-synced entry-level field values
+- archive/delete/tombstone sync
+- shared-board/task download
+- automatic cloud login or token storage
+- field-level merge UI
+
+This keeps the implementation honest while proving the core mapping path.
+
+Microsoft Entra ID and any future identity providers attach to the cloud
+identity layer. They do not replace the local SQLite identity. A local desktop
+user can later link to a cloud account, then sync mappings decide what data
+moves.
 
 ## Sync Risks To Design Around
 
@@ -169,6 +277,17 @@ Permanent deletion should be delayed until tombstones have synced. Archive and s
 ## Conflict Handling
 
 DumpTether should avoid noisy conflicts, but not silently destroy user work.
+
+The MVP sync strategy is best-effort and status-first:
+
+- Local-only tasks stay local until the user deliberately maps/syncs a board.
+- Successful sync stores the remote ID/version in `SyncMapping`.
+- Failed sync stores a short failure reason and the last attempt time.
+- The UI should make failed/conflicted sync obvious with a small cloud/status indicator.
+- If a task cannot be pushed safely, leave the local task intact and show the failure instead of guessing.
+- If a duplicate is created during an early sync implementation, prefer user-visible recovery over destructive automatic merge.
+
+Full field-level conflict UI is future work. The state-of-the-art target remains:
 
 Recommended policy:
 

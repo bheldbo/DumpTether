@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible DumpTether defect
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Give the smallest reliable sequence.
+      placeholder: |
+        1. Sign in as ...
+        2. Open board ...
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Runtime and context
+      description: Include web/desktop, browser/OS, viewport, account role, board type, and connectivity.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Screenshots, logs with secrets removed, failing test, or trace ID.
+  - type: textarea
+    id: regression
+    attributes:
+      label: Regression coverage
+      description: What automated or manual check should prevent this returning?
+

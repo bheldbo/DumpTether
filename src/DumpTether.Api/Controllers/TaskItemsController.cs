@@ -142,6 +142,27 @@ public sealed class TaskItemsController : ControllerBase
     }
 
     [EnableRateLimiting("task-writes")]
+    [HttpPost("{id:guid}/template/import")]
+    public async Task<ActionResult<TaskTemplateImportResponse>> ImportTemplate(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.ImportTemplateAsync(id, cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [EnableRateLimiting("task-writes")]
     [HttpPatch("{id:guid}")]
     public async Task<ActionResult<TaskItemDetailResponse>> Update(
         Guid id,

@@ -1,10 +1,15 @@
 using DumpTether.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace DumpTether.Data;
 
 public sealed class DumpTetherDbContext : DbContext
 {
+    private const string SqliteProviderName = "Microsoft.EntityFrameworkCore.Sqlite";
+    private const string PostgreSqlJsonColumnType = "jsonb";
+    private const string SqliteJsonColumnType = "TEXT";
+
     public DumpTetherDbContext(DbContextOptions<DumpTetherDbContext> options)
         : base(options)
     {
@@ -49,10 +54,29 @@ public sealed class DumpTetherDbContext : DbContext
 
     public DbSet<SyncMapping> SyncMappings => Set<SyncMapping>();
 
+    public DbSet<CloudSyncAccount> CloudSyncAccounts => Set<CloudSyncAccount>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DumpTetherDbContext).Assembly);
+        ApplyProviderSpecificColumnTypes(modelBuilder);
 
         base.OnModelCreating(modelBuilder);
+    }
+
+    private void ApplyProviderSpecificColumnTypes(ModelBuilder modelBuilder)
+    {
+        if (!string.Equals(Database.ProviderName, SqliteProviderName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(entityType => entityType.GetProperties()))
+        {
+            if (string.Equals(property.GetColumnType(), PostgreSqlJsonColumnType, StringComparison.OrdinalIgnoreCase))
+            {
+                property.SetColumnType(SqliteJsonColumnType);
+            }
+        }
     }
 }

@@ -11,6 +11,7 @@ DumpTether is expected to run in three shapes:
 - Hosted web app with a shared PostgreSQL server.
 - Desktop app with the same React frontend and a local .NET sidecar API.
 - Desktop app optionally signed in and syncing with the hosted server.
+- Future mobile app with offline state and the same hosted sync contract.
 
 The product should not duplicate business rules between web, desktop, and server. Authentication and sync therefore need to sit around the existing Domain/App/API layers instead of replacing them with frontend-only logic.
 
@@ -55,6 +56,26 @@ The desktop app should keep local state in SQLite. Sync should use the same API 
 - `DeviceId`.
 - Append-only note/timeline entries where possible.
 
+## External Identity
+
+OAuth remains backend-mediated.
+
+For the hosted web app, ASP.NET Core performs the provider authorization-code
+flow and issues a DumpTether session after validating the provider identity.
+
+Desktop and future mobile clients must not embed provider client secrets. They
+should open the system browser, complete provider login through the hosted API,
+receive a short-lived single-use handoff code through a verified app/universal
+link, and exchange it with PKCE for a DumpTether native session.
+
+Each deployment target should use its own provider registration where
+practical. Client IDs may be public deployment configuration. Client secrets,
+certificates, and provider API keys belong only in local user-secrets or the
+server's environment/secret store.
+
+Provider subject ID is authoritative. An existing account must not be linked
+solely because an unverified provider email matches.
+
 ## Database Direction
 
 PostgreSQL remains the hosted database. The schema should prefer relational ownership boundaries over broad JSON blobs:
@@ -91,6 +112,6 @@ Production auth work should include:
 
 ## Consequences
 
-Authenticated requests are scoped through membership. A test/development-only anonymous workspace escape hatch may remain for test fixtures, but the running app should require login by default. Password reset, MFA, OAuth, and sync remain future milestones.
+Authenticated requests are scoped through membership. A test/development-only anonymous workspace escape hatch may remain for test fixtures, but the running app should require login by default. Password reset, MFA, completed provider configuration/native OAuth handoff, and full sync remain future work.
 
 The same C# Domain/App logic remains reusable by the hosted API and the future desktop sidecar API.

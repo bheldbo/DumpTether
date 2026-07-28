@@ -2,6 +2,7 @@ import type {
   ArchiveResolutionResponse,
   ProjectResponse,
   SavedViewResponse,
+  SyncRootResponse,
   TaskItemSummaryResponse,
   TaskTemplateDetailResponse,
   WorkspaceInvitationResponse,
@@ -18,6 +19,7 @@ export interface CachedWorkspaceSnapshot {
   taskColorOptions: string[];
   taskItems: TaskItemSummaryResponse[];
   templates: TaskTemplateDetailResponse[];
+  syncRoots: SyncRootResponse[];
   viewCounts: Record<string, number>;
   workspace: WorkspaceResponse | null;
   workspaceInvitations: WorkspaceInvitationResponse[];

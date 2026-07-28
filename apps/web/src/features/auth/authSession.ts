@@ -32,7 +32,14 @@ export async function loadAuthSession(): Promise<LoadedAuthSession> {
   const authOptions = await getAuthOptions();
 
   try {
-    return await loadAuthenticatedSession(authOptions, false);
+    const session = await loadAuthenticatedSession(authOptions, false);
+
+    if (shouldReplaceWithDesktopLocalSession(authOptions, session.currentUser)) {
+      await localDesktopLogin();
+      return await loadAuthenticatedSession(authOptions, true);
+    }
+
+    return session;
   } catch (error) {
     if (!shouldStartDesktopLocalSession(authOptions, error)) {
       throw error;
@@ -57,13 +64,14 @@ async function loadAuthenticatedSession(
 
     return {
       authOptions,
-      authSessions,
+      authSessions: authSessions.filter((session) => !session.revokedAt),
       currentUser,
       incomingTaskShares,
       incomingWorkspaceInvitations,
       localDesktopSessionIsActive: isLocalDesktopSession(currentUser),
       localDesktopSessionStarted,
-      temporarySessionIsActive: isGuestSession(currentUser) || isTemporarySession(),
+      temporarySessionIsActive: !isLocalDesktopSession(currentUser) &&
+        (isGuestSession(currentUser) || isTemporarySession()),
     };
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
@@ -85,12 +93,24 @@ async function loadAuthenticatedSession(
 
 function shouldStartDesktopLocalSession(
   authOptions: AuthClientOptionsResponse,
-  error: unknown,
+  error?: unknown,
 ) {
-  return authOptions.requiresAuthentication &&
-    isDesktopRuntime() &&
-    error instanceof ApiError &&
-    error.status === 401;
+  if (!authOptions.requiresAuthentication ||
+    !(authOptions.localDesktopLoginEnabled || isDesktopRuntime())) {
+    return false;
+  }
+
+  return error === undefined ||
+    (error instanceof ApiError && error.status === 401);
+}
+
+function shouldReplaceWithDesktopLocalSession(
+  authOptions: AuthClientOptionsResponse,
+  currentUser: CurrentUserResponse | null,
+) {
+  return shouldStartDesktopLocalSession(authOptions) &&
+    (!currentUser || isGuestSession(currentUser)) &&
+    !isLocalDesktopSession(currentUser);
 }
 
 function isLocalDesktopSession(currentUser: CurrentUserResponse | null) {

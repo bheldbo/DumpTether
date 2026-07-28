@@ -21,6 +21,8 @@ public static class DependencyInjection
         services.AddSingleton<ISessionTokenService, SessionTokenService>();
         services.AddSingleton<IEmailSender, NoOpEmailSender>();
         services.AddSingleton<ILiveUpdatePublisher, NoOpLiveUpdatePublisher>();
+        services.AddSingleton<ICloudSyncClient, NoOpCloudSyncClient>();
+        services.AddSingleton<ICloudSessionProtector, NoOpCloudSessionProtector>();
         services.AddScoped<IArchiveResolutionService, ArchiveResolutionService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserSessionProvider, CurrentUserSessionProvider>();

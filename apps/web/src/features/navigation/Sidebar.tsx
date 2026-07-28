@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react';
 import { Icon } from '../../components/Icon';
-import { ModalFrame } from '../../components/ModalFrame';
+import { DeleteWorkspaceDialog } from '../../components/DeleteWorkspaceDialog';
 import type {
   ConnectionStatus,
   WorkspaceMode,
@@ -159,9 +159,19 @@ export function Sidebar({
     };
   }, [workspaceCreateIsOpen]);
 
-  const connectionTitle = `${connectionStatus === 'online' ? t('backendOnline') : t('backendOffline')}${
-    lastPingedAt ? ` - ${t('lastPinged')}: ${formatDateTime(lastPingedAt)}` : ''
-  }`;
+  const displayedConnectionState = localDesktopSessionIsActive ? 'local' : connectionStatus;
+  const displayedConnectionLabel = localDesktopSessionIsActive
+    ? t('localDesktopModeShort')
+    : connectionStatus === 'online'
+      ? t('online')
+      : t('offline');
+  const connectionTitle = `${
+    localDesktopSessionIsActive
+      ? t('localDesktopModePersistent')
+      : connectionStatus === 'online'
+        ? t('backendOnline')
+        : t('backendOffline')
+  }${lastPingedAt ? ` - ${t('lastPinged')}: ${formatDateTime(lastPingedAt)}` : ''}`;
 
   const handleBrandClick = (event: MouseEvent<HTMLDivElement>) => {
     if (!window.matchMedia('(max-width: 1100px)').matches) {
@@ -242,7 +252,7 @@ export function Sidebar({
           </div>
           <span
             className="mobile-connection-dot"
-            data-state={connectionStatus}
+            data-state={displayedConnectionState}
             title={connectionTitle}
           />
           <button
@@ -520,11 +530,11 @@ export function Sidebar({
           <div className="sidebar-footer">
             <span
               className="connection-indicator"
-              data-state={connectionStatus}
+              data-state={displayedConnectionState}
               title={connectionTitle}
             >
               <span />
-              <strong>{connectionStatus === 'online' ? t('online') : t('offline')}</strong>
+              <strong>{displayedConnectionLabel}</strong>
               {lastPingedAt ? (
                 <small>{formatRelativeDate(lastPingedAt)}</small>
               ) : null}
@@ -548,63 +558,5 @@ export function Sidebar({
         />
       ) : null}
     </>
-  );
-}
-
-function DeleteWorkspaceDialog({
-  onClose,
-  onDelete,
-  t,
-  workspace,
-}: {
-  onClose: () => void;
-  onDelete: () => Promise<void>;
-  t: Translate;
-  workspace: WorkspaceResponse;
-}) {
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  return (
-    <ModalFrame onClose={onClose}>
-      <section
-        aria-labelledby="delete-workspace-title"
-        aria-modal="true"
-        className="delete-workspace-dialog"
-        role="dialog"
-      >
-        <div className="dialog-header">
-          <div>
-            <p className="detail-kicker">{t('deleteBoard')}</p>
-            <h2 id="delete-workspace-title">{workspace.name}</h2>
-          </div>
-          <button className="icon-button" disabled={isDeleting} onClick={onClose} type="button">
-            <Icon name="close" />
-            <span className="sr-only">{t('close')}</span>
-          </button>
-        </div>
-        <p>{t('deleteBoardConfirmBody')}</p>
-        <div className="dialog-actions">
-          <button className="ghost-button" disabled={isDeleting} onClick={onClose} type="button">
-            {t('cancel')}
-          </button>
-          <button
-            className="danger-action"
-            disabled={isDeleting}
-            onClick={async () => {
-              setIsDeleting(true);
-              try {
-                await onDelete();
-              } finally {
-                setIsDeleting(false);
-              }
-            }}
-            type="button"
-          >
-            <Icon name="trash" />
-            {t('deleteBoardNow')}
-          </button>
-        </div>
-      </section>
-    </ModalFrame>
   );
 }

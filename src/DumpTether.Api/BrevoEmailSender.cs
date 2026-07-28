@@ -24,7 +24,7 @@ internal sealed class BrevoEmailSender : IEmailSender
 
         var options = _emailOptions.Value;
 
-        if (!options.BrevoApi.Enabled)
+        if (options.Provider != EmailProvider.BrevoApi)
         {
             throw new EmailDeliveryException("Brevo API email is not enabled.");
         }

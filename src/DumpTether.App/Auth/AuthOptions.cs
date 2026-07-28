@@ -24,6 +24,8 @@ public sealed class AuthOptions
 
     public bool EnableDevelopmentLogin { get; set; }
 
+    public bool EnableLocalDesktopLogin { get; set; }
+
     public string DevelopmentEmail { get; set; } = "dev@dumptether.local";
 
     public string DevelopmentPassword { get; set; } = "dumptether-dev-password";

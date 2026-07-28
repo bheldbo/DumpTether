@@ -1,5 +1,8 @@
 using DumpTether.App.LiveUpdates;
+using DumpTether.App.Auth;
+using DumpTether.App.Sync;
 using DumpTether.Data;
+using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -14,17 +17,20 @@ namespace DumpTether.Api.Tests;
 internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
 {
     private const string ConnectionStringKey = "ConnectionStrings__DumpTether";
+    private const string ApplyMigrationsOnStartupKey = "Database__ApplyMigrationsOnStartup";
     private const string TestConnectionString =
         "Host=localhost;Database=dumptether_tests;Username=dumptether;Password=dumptether";
 
     private SqliteConnection? _connection;
     private readonly string? _previousConnectionString;
+    private readonly string? _previousApplyMigrationsOnStartup;
     private readonly bool _requireAuthentication;
     private readonly bool _enableDevelopmentLogin;
     private readonly int _maxActiveTasksPerWorkspace;
     private readonly int _maxTotalTasksPerWorkspace;
     private readonly string? _environmentName;
     private readonly IReadOnlyDictionary<string, string?> _extraConfiguration;
+    private readonly ICloudSyncClient? _cloudSyncClient;
     private readonly ILiveUpdatePublisher? _liveUpdatePublisher;
 
     public DumpTetherApiFactory(
@@ -34,6 +40,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         int maxActiveTasksPerWorkspace = 1000,
         int maxTotalTasksPerWorkspace = 5000,
         IReadOnlyDictionary<string, string?>? extraConfiguration = null,
+        ICloudSyncClient? cloudSyncClient = null,
         ILiveUpdatePublisher? liveUpdatePublisher = null)
     {
         _requireAuthentication = requireAuthentication;
@@ -42,21 +49,24 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         _maxActiveTasksPerWorkspace = maxActiveTasksPerWorkspace;
         _maxTotalTasksPerWorkspace = maxTotalTasksPerWorkspace;
         _extraConfiguration = extraConfiguration ?? new Dictionary<string, string?>();
+        _cloudSyncClient = cloudSyncClient;
         _liveUpdatePublisher = liveUpdatePublisher;
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
+        _previousApplyMigrationsOnStartup =
+            Environment.GetEnvironmentVariable(ApplyMigrationsOnStartupKey);
         Environment.SetEnvironmentVariable(
             ConnectionStringKey,
             string.Equals(environmentName, "Desktop", StringComparison.OrdinalIgnoreCase)
                 ? "Data Source=:memory:"
                 : TestConnectionString);
+        Environment.SetEnvironmentVariable(ApplyMigrationsOnStartupKey, "false");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        if (!string.IsNullOrWhiteSpace(_environmentName))
-        {
-            builder.UseEnvironment(_environmentName);
-        }
+        builder.UseEnvironment(string.IsNullOrWhiteSpace(_environmentName)
+            ? "Development"
+            : _environmentName);
 
         builder.ConfigureLogging(loggingBuilder =>
         {
@@ -76,6 +86,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
                 ["ConnectionStrings:DumpTether"] = connectionString,
                 ["Auth:RequireAuthentication"] = _requireAuthentication.ToString(),
                 ["Auth:EnableDevelopmentLogin"] = _enableDevelopmentLogin.ToString(),
+                ["Database:ApplyMigrationsOnStartup"] = "false",
                 ["Usage:MaxActiveTasksPerWorkspace"] = _maxActiveTasksPerWorkspace.ToString(),
                 ["Usage:MaxTotalTasksPerWorkspace"] = _maxTotalTasksPerWorkspace.ToString()
             };
@@ -104,6 +115,21 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
                 services.AddSingleton(_liveUpdatePublisher);
             }
 
+            if (_cloudSyncClient is not null)
+            {
+                services.RemoveAll<ICloudSyncClient>();
+                services.AddSingleton(_cloudSyncClient);
+            }
+
+            services.RemoveAll<ICloudSessionProtector>();
+            services.AddSingleton<ICloudSessionProtector, TestCloudSessionProtector>();
+
+            services.PostConfigure<AuthOptions>(options =>
+            {
+                options.RequireAuthentication = _requireAuthentication;
+                options.EnableDevelopmentLogin = _enableDevelopmentLogin;
+            });
+
             using var serviceProvider = services.BuildServiceProvider();
             using var scope = serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
@@ -119,6 +145,27 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         {
             _connection?.Dispose();
             Environment.SetEnvironmentVariable(ConnectionStringKey, _previousConnectionString);
+            Environment.SetEnvironmentVariable(
+                ApplyMigrationsOnStartupKey,
+                _previousApplyMigrationsOnStartup);
+        }
+    }
+
+    private sealed class TestCloudSessionProtector : ICloudSessionProtector
+    {
+        private const string Prefix = "protected:";
+
+        public string Protect(string sessionToken)
+        {
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Prefix}{sessionToken}"));
+        }
+
+        public string Unprotect(string protectedSessionToken)
+        {
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(protectedSessionToken));
+            return decoded.StartsWith(Prefix, StringComparison.Ordinal)
+                ? decoded[Prefix.Length..]
+                : throw new InvalidOperationException("Invalid protected test token.");
         }
     }
 }

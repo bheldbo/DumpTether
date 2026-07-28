@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Sync;
+using DumpTether.App.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -32,6 +33,82 @@ public sealed class SyncController : ControllerBase
 
         var response = await _syncService.ListWorkspaceRootsAsync(cancellationToken);
         return Ok(response);
+    }
+
+    [HttpGet("cloud-account")]
+    public async Task<ActionResult<CloudSyncAccountResponse?>> GetCloudAccount(
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.GetCloudAccountAsync(cancellationToken);
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("cloud-account")]
+    public async Task<ActionResult<CloudSyncAccountResponse>> ConnectCloudAccount(
+        ConnectCloudAccountRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.ConnectCloudAccountAsync(
+                request,
+                cancellationToken);
+
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpDelete("cloud-account")]
+    public async Task<ActionResult<DisconnectCloudAccountResponse>> DisconnectCloudAccount(
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.DisconnectCloudAccountAsync(cancellationToken);
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
     }
 
     [HttpPost("workspace-roots")]
@@ -79,6 +156,124 @@ public sealed class SyncController : ControllerBase
         try
         {
             var response = await _syncService.LinkWorkspaceRootAsync(
+                request,
+                cancellationToken);
+
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("workspaces/{workspaceId:guid}/tasks/{taskItemId:guid}/synced")]
+    public async Task<ActionResult<TaskSyncStateResponse>> MarkTaskItemSynced(
+        Guid workspaceId,
+        Guid taskItemId,
+        MarkTaskItemSyncedRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.MarkTaskItemSyncedAsync(
+                workspaceId,
+                taskItemId,
+                request,
+                cancellationToken);
+
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("workspaces/{workspaceId:guid}/tasks/{taskItemId:guid}/failed")]
+    public async Task<ActionResult<TaskSyncStateResponse>> MarkTaskItemSyncFailed(
+        Guid workspaceId,
+        Guid taskItemId,
+        MarkTaskItemSyncFailedRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.MarkTaskItemSyncFailedAsync(
+                workspaceId,
+                taskItemId,
+                request,
+                cancellationToken);
+
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
+    [HttpPost("workspaces/{workspaceId:guid}/run")]
+    public async Task<ActionResult<SyncWorkspaceWithCloudResponse>> SyncWorkspaceWithCloud(
+        Guid workspaceId,
+        SyncWorkspaceWithCloudRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.SyncWorkspaceWithCloudAsync(
+                workspaceId,
                 request,
                 cancellationToken);
 

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.ComponentModel.DataAnnotations;
 using DumpTether.Api;
 using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
@@ -506,6 +507,45 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task PostLocalDesktopLogin_WhenEnabledForSqliteDevelopment_CreatesPersistentLocalUserSession()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Database:Provider"] = "Sqlite",
+                ["Auth:EnableLocalDesktopLogin"] = "true"
+            });
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        response.EnsureSuccessStatusCode();
+        var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>();
+
+        Assert.NotNull(login);
+        Assert.Equal(UserSessionType.DesktopLocal, login!.Session.SessionType);
+        Assert.Contains(login.Workspaces, workspace => workspace.Name == "All Tasks");
+    }
+
+    [Fact]
+    public async Task PostLocalDesktopLogin_WhenEnabledForPostgres_ReturnsNotFound()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Database:Provider"] = "Postgres",
+                ["Auth:EnableLocalDesktopLogin"] = "true"
+            });
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/api/auth/local-desktop", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task PostLocalDesktopLogin_WhenDesktop_CreatesPersistentLocalUserSession()
     {
         using var factory = new DumpTetherApiFactory(
@@ -684,7 +724,7 @@ public sealed class AuthApiTests
     }
 
     [Fact]
-    public void Startup_WhenEmailConfirmationEnabledWithoutSmtpConfig_ThrowsHelpfulError()
+    public void Startup_WhenEmailConfirmationEnabledWithoutProvider_ThrowsHelpfulError()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -697,9 +737,7 @@ public sealed class AuthApiTests
             () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
 
         Assert.Contains("DumpTether configuration is incomplete", exception.Message);
-        Assert.Contains("Email:BrevoApi:Enabled", exception.Message);
-        Assert.Contains("Email:BrevoApi:ApiKey", exception.Message);
-        Assert.Contains("Email:FromEmail", exception.Message);
+        Assert.Contains("Email:Provider", exception.Message);
     }
 
     [Fact]
@@ -708,14 +746,15 @@ public sealed class AuthApiTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Email:BrevoApi:Enabled"] = "true # Needs EmailConfirmation:Enabled=true"
+                ["Email:Provider"] = "Smtp",
+                ["Email:Smtp:UseAuthentication"] = "true # Credentials are required"
             })
             .Build();
 
         var exception = Assert.Throws<InvalidOperationException>(
             () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
 
-        Assert.Contains("Email:BrevoApi:Enabled", exception.Message);
+        Assert.Contains("Email:Smtp:UseAuthentication", exception.Message);
         Assert.Contains("Do not append inline comments", exception.Message);
     }
 
@@ -725,7 +764,7 @@ public sealed class AuthApiTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["OAuth:Google:Enabled"] = "true"
+                ["OAuth:Microsoft:Enabled"] = "true"
             })
             .Build();
 
@@ -733,8 +772,62 @@ public sealed class AuthApiTests
             () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
 
         Assert.Contains("DumpTether configuration is incomplete", exception.Message);
-        Assert.Contains("OAuth:Google:ClientId", exception.Message);
-        Assert.Contains("OAuth:Google:ClientSecret", exception.Message);
+        Assert.Contains("OAuth:Microsoft:ClientId", exception.Message);
+        Assert.Contains("OAuth:Microsoft:ClientSecret", exception.Message);
+        Assert.Contains("OAuth:Microsoft:TenantId", exception.Message);
+    }
+
+    [Fact]
+    public void Startup_WhenMailpitStyleSmtpIsConfigured_DoesNotRequireCredentials()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:Provider"] = "Smtp",
+                ["Email:FromEmail"] = "noreply@dumptether.local",
+                ["Email:Smtp:Host"] = "localhost",
+                ["Email:Smtp:Port"] = "1025",
+                ["Email:Smtp:UseAuthentication"] = "false",
+                ["Email:Smtp:EnableSsl"] = "false"
+            })
+            .Build();
+
+        RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true);
+    }
+
+    [Theory]
+    [InlineData("google")]
+    [InlineData("facebook")]
+    public async Task GetOAuth_ForUnsupportedProvider_ReturnsNotFound(string provider)
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/api/auth/oauth/{provider}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExternalLogin_DoesNotSilentlyLinkExistingPasswordAccountByEmail()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "existing@example.com", "correct horse battery");
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(
+            () => authService.ExternalLoginAsync(
+                new ExternalLoginRequest(
+                    "microsoft",
+                    "tenant-id:object-id",
+                    "existing@example.com",
+                    "Existing user"),
+                new AuthRequestMetadata("test", "127.0.0.1"),
+                CancellationToken.None));
+
+        Assert.Contains("cannot be connected automatically", exception.Message);
     }
 
     [Fact]

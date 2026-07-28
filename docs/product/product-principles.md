@@ -2,6 +2,12 @@
 
 DumpTether should feel like a plain personal task wall with structured notes inside each task and powerful filtering when needed.
 
+The canonical hierarchy is `User -> Boards -> Tasks`. A task belongs to one
+board and may have multiple categories. Projects are legacy terminology.
+
+`All Tasks` and `Archive` are built-in aggregate surfaces rather than ordinary
+boards.
+
 ## Feel
 
 The first screen should be a task wall, not a project-management dashboard. Tasks should feel like small, movable, color-coded units that can be scanned quickly.
@@ -34,7 +40,7 @@ Avoid noisy default labels such as "Note created" when the note body and date al
 
 Filtering is a power tool, not the default mood of the app. It should become useful when the task wall grows.
 
-Saved views should eventually support filters such as:
+Temporary and reusable personal filters should support criteria such as:
 
 - Status equals a user-defined status.
 - Active or archived.
@@ -45,7 +51,18 @@ Saved views should eventually support filters such as:
 - Follow-up date windows.
 - Not viewed or not touched recently.
 
-Template and view creation should include small help affordances for examples like these.
+Template and filter creation should include small help affordances for examples
+like these.
+
+Organization-managed saved views are a future enterprise feature for team or
+role queues. They are not part of the current personal product.
+
+## Local-First
+
+Desktop and future mobile clients should remain useful without connectivity.
+Users may sign in to the backend configured for that client and synchronize
+selected tasks or whole boards. Sync status and failure must be visible without
+blocking ordinary editing or risking local work.
 
 ## Non-Goals
 

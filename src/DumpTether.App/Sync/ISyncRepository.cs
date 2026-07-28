@@ -19,7 +19,35 @@ public interface ISyncRepository
         bool trackChanges,
         CancellationToken cancellationToken);
 
+    Task<SyncMapping?> GetMappingAsync(
+        Guid syncRootId,
+        SyncEntityType entityType,
+        Guid localId,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<SyncMapping>> ListMappingsAsync(
+        Guid syncRootId,
+        SyncEntityType entityType,
+        IReadOnlyCollection<Guid> localIds,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<SyncMapping>> ListMappingsForRootAsync(
+        Guid syncRootId,
+        SyncEntityType entityType,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
+    Task<CloudSyncAccount?> GetCloudAccountForUserAsync(
+        Guid userId,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
     Task AddRootAsync(SyncRoot syncRoot, CancellationToken cancellationToken);
+
+    Task AddMappingAsync(SyncMapping mapping, CancellationToken cancellationToken);
+
+    Task AddCloudAccountAsync(CloudSyncAccount account, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

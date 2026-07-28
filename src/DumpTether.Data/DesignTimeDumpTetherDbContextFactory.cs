@@ -6,6 +6,8 @@ namespace DumpTether.Data;
 
 public sealed class DesignTimeDumpTetherDbContextFactory : IDesignTimeDbContextFactory<DumpTetherDbContext>
 {
+    private const string SqliteMigrationsAssembly = "DumpTether.Data.Sqlite";
+
     private const string LocalDevelopmentConnectionString =
         "Host=localhost;Port=5432;Database=dumptether;Username=dumptether;Password=dumptether_dev_password";
 
@@ -29,7 +31,8 @@ public sealed class DesignTimeDumpTetherDbContextFactory : IDesignTimeDbContextF
                 .Build();
 
             optionsBuilder.UseSqlite(
-                DumpTetherDatabaseOptions.GetSqliteConnectionString(sqliteConfiguration));
+                DumpTetherDatabaseOptions.GetSqliteConnectionString(sqliteConfiguration),
+                sqliteOptions => sqliteOptions.MigrationsAssembly(SqliteMigrationsAssembly));
         }
         else
         {

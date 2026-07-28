@@ -14,6 +14,8 @@ namespace DumpTether.Data;
 
 public static class DependencyInjection
 {
+    private const string SqliteMigrationsAssembly = "DumpTether.Data.Sqlite";
+
     public static IServiceCollection AddDumpTetherData(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -24,7 +26,9 @@ public static class DependencyInjection
         {
             var sqliteConnectionString = DumpTetherDatabaseOptions.GetSqliteConnectionString(configuration);
             services.AddDbContext<DumpTetherDbContext>(options =>
-                options.UseSqlite(sqliteConnectionString));
+                options.UseSqlite(
+                    sqliteConnectionString,
+                    sqliteOptions => sqliteOptions.MigrationsAssembly(SqliteMigrationsAssembly)));
         }
         else
         {

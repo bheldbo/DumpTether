@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "targetId": "development",
+  "productName": "DumpTether",
+  "version": "0.1.0",
+  "publisher": "bheldbo",
+  "identifier": "net.heldbo.dumptether",
+  "windowTitle": "DumpTether",
+  "description": "DumpTether desktop development shell",
+  "webOrigin": "http://localhost:5173",
+  "cloudApiBaseUrl": "http://localhost:55868",
+  "updateChannel": "development"
+}

@@ -20,6 +20,7 @@ public sealed record TaskItemSummaryResponse(
     Guid? ArchiveResolutionId,
     int NoteCount,
     IReadOnlyList<TaskItemShareResponse> Shares,
+    TaskSyncStateResponse? SyncState,
     TaskTimelineEntryResponse? LatestTimelineEntry);
 
 public sealed record TaskItemDetailResponse(
@@ -39,6 +40,7 @@ public sealed record TaskItemDetailResponse(
     Guid? ArchiveResolutionId,
     int NoteCount,
     IReadOnlyList<TaskItemShareResponse> Shares,
+    TaskSyncStateResponse? SyncState,
     TaskTemplateDetailResponse? Template,
     IReadOnlyList<FieldValueResponse> FieldValues,
     IReadOnlyList<TaskTimelineEntryResponse> TimelineEntries);
@@ -86,6 +88,14 @@ public sealed record CopyTaskItemsResponse(
     IReadOnlyList<TaskItemDetailResponse> Tasks);
 
 public sealed record TaskItemBatchResponse(int Count);
+
+public sealed record TaskSyncStateResponse(
+    string Status,
+    Guid? RemoteId,
+    string? LastRemoteVersion,
+    DateTimeOffset? LastAttemptedAt,
+    DateTimeOffset? LastSyncedAt,
+    string? LastError);
 
 public sealed record TaskShareInboxItem(
     TaskItemShare Share,

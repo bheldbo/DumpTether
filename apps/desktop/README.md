@@ -20,9 +20,15 @@ archive behavior, sharing boundaries and future sync rules stay in the C# projec
 - `src/DumpTether.Api/appsettings.Desktop.json` holds desktop sidecar defaults.
 - `scripts/dev.ps1 -Target LocalBoth` starts the local SQLite API plus Vite.
 - This folder contains a Tauri scaffold and a sidecar publish script.
+- `scripts/desktop.ps1` opens an interactive target menu when run without `-Target`.
+- `scripts/desktop.ps1 -Target BuildExe` builds the desktop executable without an installer.
 - `scripts/desktop.ps1 -Target Build` builds the desktop executable and NSIS installer.
 - Linux desktop bundles can be built on a Linux host or Linux CI runner.
-- Installer signing and sync are not implemented yet.
+- Installer signing is future release work.
+- A manual first-pass cloud sync exists for board/task headers, templates,
+  header field values and newly-synced note/entry field values. Later note
+  edits/deletes, archive/delete sync and richer conflict recovery remain future
+  work.
 
 ## Desktop Configuration
 
@@ -36,23 +42,83 @@ sidecar with:
 That makes the sidecar read:
 
 ```text
-src/DumpTether.Api/appsettings.json
 src/DumpTether.Api/appsettings.Desktop.json
 ```
 
 `appsettings.Desktop.json` contains safe desktop defaults: SQLite, local loopback
-URL, app-owned DataProtection keys, disabled email/OAuth/MFA, and the exact local
-origins needed by the webview and Vite dev server. If `DataProtection:KeysPath`
-is left empty in Desktop, DumpTether uses the app-data folder automatically.
+URL, app-owned DataProtection keys, disabled guest/demo sessions, archive
+retention, and the exact Tauri webview origin. It deliberately does not configure
+SMTP, email confirmation, MFA, OAuth, hosted registration, or PostgreSQL; those
+belong to the hosted cloud API. If `DataProtection:KeysPath` is left empty in
+Desktop, DumpTether uses the app-data folder automatically.
+
+Tauri development mode loads the React UI from Vite. The desktop helper points
+Vite's same-origin proxy at the local sidecar, so packaged CORS does not need to
+trust development browser origins. Ordinary web development keeps proxying to
+the hosted-development API port.
 
 Tauri's `src-tauri/capabilities/default.json` is not DumpTether runtime config. It
 is Tauri's security allow-list saying the shell may start the bundled sidecar with
 that one `--environment=Desktop` argument. In other words: edit ASP.NET config for
 DumpTether behavior; edit Tauri config only for shell/window/bundle permissions.
 
+The Tauri app identifier is `net.heldbo.dumptether`. This is a reverse-DNS-style
+stable application ID for the operating system, installer, app data identity and
+future signing/update flows. The bundle publisher is `bheldbo`.
+
+Client release metadata has one non-secret source target:
+
+```text
+deploy/targets/standalone.json
+```
+
+Edit that file for:
+
+- product name
+- desktop version
+- app identifier
+- publisher
+- window title
+- default hosted/cloud API URL
+
+Then generate the client config:
+
+```powershell
+node scripts/configure-client.mjs --target standalone
+```
+
+or:
+
+```powershell
+.\scripts\desktop.ps1 -Target ConfigureClient
+```
+
+That updates `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`
+and `src-tauri/Cargo.toml`, plus the public React deployment target. CI checks
+that generated files match the selected target.
+
+Local desktop commands resolve `DUMPTETHER_DEPLOYMENT_TARGET` from the process
+environment first, then root `.env`/`.env.local`, and finally fall back to
+`standalone`. Build commands restore the previously generated target afterward
+so a customer/development build does not leave tracked metadata dirty.
+
 There is no second desktop business-config file. The desktop sidecar uses normal
-ASP.NET configuration, so environment variables can still override
-`appsettings.Desktop.json` when needed.
+ASP.NET configuration. The packaged application ships only the narrow desktop
+overlay beside the self-contained sidecar. Internal .NET option defaults cover
+disabled server-only features, while environment variables can still override
+the overlay for development diagnostics.
+
+Endpoint shape:
+
+- Normal desktop use talks to the local sidecar at `http://127.0.0.1:55869`.
+- Cloud login/sync uses the hosted DumpTether API URL configured before the app
+  starts. The user does not edit the server URL inside the running desktop UI.
+- Packaged builds read `cloudApiBaseUrl` from the selected deployment target so
+  the Account panel knows which hosted API to log in to.
+- Self-hosted or alternate-server builds should select a deployment target
+  config before packaging or deployment, not through an in-app setting.
+- A future online-only desktop mode could make the API base URL configurable, but
+  that is not the offline-first default.
 
 ## Prerequisites
 
@@ -115,6 +181,25 @@ Those binaries are ignored by Git.
 
 The first sidecar build may download .NET runtime packs from NuGet for the selected runtime, for example `win-x64`.
 
+## Build Executable Only
+
+```powershell
+cd apps\desktop
+npm run build:desktop:exe
+```
+
+Or:
+
+```powershell
+.\scripts\desktop.ps1 -Target BuildExe
+```
+
+This builds the desktop executable without creating an NSIS/MSI installer:
+
+```text
+apps/desktop/src-tauri/target/release/dumptether-desktop.exe
+```
+
 ## Build Installer
 
 ```powershell
@@ -133,6 +218,35 @@ This builds:
 ```text
 apps/desktop/src-tauri/target/release/dumptether-desktop.exe
 apps/desktop/src-tauri/target/release/bundle/nsis/DumpTether_0.1.0_x64-setup.exe
+```
+
+The PowerShell build helper also copies release-ready files to:
+
+```text
+releases/desktop/v0.1.0/windows-x64/
+```
+
+The ignored `releases` folder is the predictable local handoff location.
+It includes `SHA256SUMS.txt` for verifying copied artifacts. GitHub Releases
+and workflow artifacts remain the durable distribution path.
+
+Use the NSIS setup executable for a normal installation. The uninstalled
+`dumptether-desktop.exe` is useful for local smoke tests, but it must stay next
+to `dumptether-api.exe` and `appsettings.Desktop.json`; the
+sidecar is the local ASP.NET Core API and SQLite runtime bundled into the
+installer. The sidecar is published as a self-contained single file, and Tauri
+bundles the narrow desktop appsettings overlay beside it as an explicit resource. It
+does not need PostgreSQL or a system-wide .NET installation.
+
+The `target` tree is generated by Rust/Tauri. It can contain hashed or GUID-like
+intermediate names, native build objects and installer snapshots. It is safe to
+delete when you want a clean rebuild:
+
+```powershell
+.\scripts\clean.ps1
+.\scripts\clean.ps1 -Target DesktopDebug
+.\scripts\clean.ps1 -Target DesktopRelease
+.\scripts\clean.ps1 -Target Generated
 ```
 
 MSI/WiX is available as an explicit target:
@@ -216,6 +330,8 @@ Offline data is local SQLite. When the user later logs in and syncs:
 
 - local-only tasks upload to the server
 - remote changes download into SQLite
+- existing mapped cloud task changes update local task headers and header fields
+- new cloud/local tasks can carry their first note entries and entry field values
 - append-only notes/timeline entries merge by stable IDs
 - independent field changes merge field-by-field
 - conflicting edits on the same scalar field become visible conflicts

@@ -196,14 +196,21 @@ Integration config:
 
 ## Config Validation
 
-The API validates feature config at startup. If email confirmation, SMTP email, Brevo API email, OAuth, or email MFA is enabled without its required settings, startup fails with `DumpTether configuration is incomplete` and lists the missing keys.
+The API validates feature config at startup. If email confirmation, the selected
+email provider, Microsoft login, or email MFA is enabled without its required
+settings, startup fails with `DumpTether configuration is incomplete` and lists
+the missing keys.
 
 Brevo API values belong in the real server `.env.prod` only:
 
 - `DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true`
-- `DUMPTETHER_EMAIL_BREVO_API_ENABLED=true`
+- `DUMPTETHER_EMAIL_PROVIDER=BrevoApi`
 - `DUMPTETHER_EMAIL_BREVO_API_KEY=...`
 - `DUMPTETHER_EMAIL_FROM=noreply@your-domain.example`
 - `DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL=https://your-domain.example`
 
-SMTP settings are kept as placeholders for future fallback/support, but email confirmation currently uses the Brevo transactional email API. Never commit the real SMTP username, SMTP password, Brevo API key, or OAuth client secrets.
+SMTP is also implemented. Select `DUMPTETHER_EMAIL_PROVIDER=Smtp`, configure
+the SMTP host/TLS/authentication values, and keep credentials only in the real
+server environment. Mailpit is a local development inbox, not a production
+delivery service. Never commit SMTP passwords, Brevo API keys, or the Microsoft
+client secret.

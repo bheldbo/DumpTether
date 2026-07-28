@@ -1,8 +1,20 @@
+using DumpTether.App.Tasks;
+
 namespace DumpTether.App.Sync;
 
 public interface ISyncService
 {
     Task<IReadOnlyList<SyncRootResponse>> ListWorkspaceRootsAsync(
+        CancellationToken cancellationToken);
+
+    Task<CloudSyncAccountResponse?> GetCloudAccountAsync(
+        CancellationToken cancellationToken);
+
+    Task<CloudSyncAccountResponse> ConnectCloudAccountAsync(
+        ConnectCloudAccountRequest request,
+        CancellationToken cancellationToken);
+
+    Task<DisconnectCloudAccountResponse> DisconnectCloudAccountAsync(
         CancellationToken cancellationToken);
 
     Task<SyncRootResponse> EnsureWorkspaceRootAsync(
@@ -11,5 +23,32 @@ public interface ISyncService
 
     Task<SyncRootResponse> LinkWorkspaceRootAsync(
         LinkWorkspaceSyncRootRequest request,
+        CancellationToken cancellationToken);
+
+    Task EnsureLocalTaskMappingAsync(
+        Guid workspaceId,
+        Guid taskItemId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyDictionary<Guid, TaskSyncStateResponse>> ListTaskSyncStatesAsync(
+        Guid workspaceId,
+        IReadOnlyCollection<Guid> taskItemIds,
+        CancellationToken cancellationToken);
+
+    Task<TaskSyncStateResponse> MarkTaskItemSyncedAsync(
+        Guid workspaceId,
+        Guid taskItemId,
+        MarkTaskItemSyncedRequest request,
+        CancellationToken cancellationToken);
+
+    Task<TaskSyncStateResponse> MarkTaskItemSyncFailedAsync(
+        Guid workspaceId,
+        Guid taskItemId,
+        MarkTaskItemSyncFailedRequest request,
+        CancellationToken cancellationToken);
+
+    Task<SyncWorkspaceWithCloudResponse> SyncWorkspaceWithCloudAsync(
+        Guid workspaceId,
+        SyncWorkspaceWithCloudRequest request,
         CancellationToken cancellationToken);
 }

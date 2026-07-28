@@ -9,12 +9,14 @@ import {
 import { Icon } from '../../components/Icon';
 import { TaskFilterBar } from '../../components/TaskFilterBar';
 import { TaskBadges, TaskMetaChip } from '../../components/TaskMetadata';
+import { TaskSyncIndicator } from '../../components/TaskSyncIndicator';
 import { type ToastTone } from '../../appTypes';
 import {
   formatFullDate,
   formatRelativeDate,
   isOwnerRole,
   isReadOnlyRole,
+  isSystemAllTasksWorkspace,
   isTaskShareWorkspace,
   isTextEditingTarget,
 } from '../../appUtils';
@@ -35,17 +37,22 @@ import {
 import type {
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  CloudSyncAccountResponse,
   CreateTaskShareLinkRequest,
   CreateTaskShareRequest,
   CreateWorkspaceInvitationRequest,
   FieldValueMap,
   ProjectResponse,
   SavedViewResponse,
+  SavedViewSort,
   TaskItemDetailResponse,
   TaskItemShareRole,
   TaskItemSummaryResponse,
   TaskShareLinkResponse,
   TaskTemplateDetailResponse,
+  SyncRootResponse,
+  SyncWorkspaceWithCloudRequest,
+  SyncWorkspaceWithCloudResponse,
   WorkspaceInvitationResponse,
   WorkspaceMemberResponse,
   UpdateProjectRequest,
@@ -67,6 +74,8 @@ import { BoardLoadingState } from './BoardLoadingState';
 import { DraftTaskCard } from './DraftTaskCard';
 import { FloatingBoardActions } from './FloatingBoardActions';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { BoardSyncStatus } from '../sync/BoardSyncStatus';
+import { CloudSyncDialog } from '../sync/CloudSyncDialog';
 
 interface DraftTaskTarget {
   workspaceId: string;
@@ -81,9 +90,11 @@ export function TaskBoard({
   colorOptions,
   currentView,
   currentUserEmail,
+  cloudSyncAccount,
   isLoading,
   isLoadingDetail,
   isRefreshing,
+  localDesktopSessionIsActive,
   onAddTimelineEntry,
   onArchive,
   onArchiveTaskItems,
@@ -96,6 +107,7 @@ export function TaskBoard({
   onCreateWorkspaceInvitation,
   onDeleteProject,
   onDeleteTimelineEntry,
+  onImportTaskTemplate,
   onOpenArchiveDialog,
   onReopen,
   onReopenTaskItems,
@@ -107,6 +119,7 @@ export function TaskBoard({
   onSelectTaskItem,
   onUpdateFieldValues,
   onUpdateProject,
+  onSyncWorkspaceWithCloud,
   onUpdateTaskShareRole,
   onUpdateTaskItems,
   onUpdateTaskItem,
@@ -118,8 +131,10 @@ export function TaskBoard({
   selectedTask,
   selectedTaskId,
   statusOptions,
+  syncRoot,
   taskItems,
   templates,
+  importedTemplateSourceIds,
   t,
   workspaceInvitations,
   workspaceMembers,
@@ -131,9 +146,11 @@ export function TaskBoard({
   colorOptions: string[];
   currentView: SavedViewResponse | null;
   currentUserEmail: string | null;
+  cloudSyncAccount: CloudSyncAccountResponse | null;
   isLoading: boolean;
   isLoadingDetail: boolean;
   isRefreshing: boolean;
+  localDesktopSessionIsActive: boolean;
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onArchiveTaskItems: (taskItemIds: string[], requestBody: ArchiveTaskItemRequest) => Promise<void>;
@@ -156,6 +173,7 @@ export function TaskBoard({
   ) => Promise<WorkspaceInvitationResponse>;
   onDeleteProject: (projectId: string) => Promise<void>;
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
+  onImportTaskTemplate: (taskItemId: string) => Promise<void>;
   onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
   onReopenTaskItems: (taskItemIds: string[], note?: string) => Promise<void>;
@@ -167,6 +185,10 @@ export function TaskBoard({
   onSelectTaskItem: (id: string, workspaceId: string) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
+  onSyncWorkspaceWithCloud: (
+    workspaceId: string,
+    requestBody: SyncWorkspaceWithCloudRequest,
+  ) => Promise<SyncWorkspaceWithCloudResponse>;
   onUpdateTaskShareRole: (
     taskItemId: string,
     shareId: string,
@@ -189,8 +211,10 @@ export function TaskBoard({
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
   statusOptions: string[];
+  syncRoot: SyncRootResponse | null;
   taskItems: TaskItemSummaryResponse[];
   templates: TaskTemplateDetailResponse[];
+  importedTemplateSourceIds: string[];
   t: Translate;
   workspaceInvitations: WorkspaceInvitationResponse[];
   workspaceMembers: WorkspaceMemberResponse[];
@@ -209,8 +233,13 @@ export function TaskBoard({
     ? isReadOnlyRole(currentWorkspaceMember.role)
     : false;
   const hasWorkspace = Boolean(workspace?.id);
-  const canManageSharing = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
-  const canManageWorkspaceMetadata = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
+  const workspaceIsSystemAllTasks = workspace ? isSystemAllTasksWorkspace(workspace) : false;
+  const canManageSharing = currentUserOwnsWorkspace &&
+    !workspaceIsTaskShareOnly &&
+    !workspaceIsSystemAllTasks;
+  const canManageWorkspaceMetadata = currentUserOwnsWorkspace &&
+    !workspaceIsTaskShareOnly &&
+    !workspaceIsSystemAllTasks;
   const archiveViewIsActive = currentView?.filter.archive === 'Archived';
   const canCreateTask = hasWorkspace &&
     !archiveViewIsActive &&
@@ -227,11 +256,20 @@ export function TaskBoard({
   const [batchReopenIsOpen, setBatchReopenIsOpen] = useState(false);
   const [batchPermanentDeleteIsOpen, setBatchPermanentDeleteIsOpen] = useState(false);
   const [batchShareIsOpen, setBatchShareIsOpen] = useState(false);
+  const [cloudSyncIsOpen, setCloudSyncIsOpen] = useState(false);
+  const [cloudSyncWorkspaceId, setCloudSyncWorkspaceId] = useState<string | null>(null);
+  const [wallSort, setWallSort] = useState<SavedViewSort>(() => ({
+    field: currentView?.sort.field ?? 'lastTouchedAt',
+    direction: currentView?.sort.direction ?? 'desc',
+  }));
   const longPressTimerRef = useRef<number | null>(null);
   const longPressHandledRef = useRef(false);
   const visibleTaskItems = useMemo(
-    () => applyTaskWallFilters(taskItems, filters, currentUserEmail, projects),
-    [currentUserEmail, filters, projects, taskItems],
+    () => sortTaskItems(
+      applyTaskWallFilters(taskItems, filters, currentUserEmail, projects),
+      wallSort,
+    ),
+    [currentUserEmail, filters, projects, taskItems, wallSort],
   );
   const [draftTaskIsOpen, setDraftTaskIsOpen] = useState(false);
   const focusedTaskItem = selectedTaskId
@@ -276,6 +314,13 @@ export function TaskBoard({
   useEffect(() => {
     setPendingDeletedNoteIds([]);
   }, [selectedTaskId]);
+
+  useEffect(() => {
+    setWallSort({
+      field: currentView?.sort.field ?? 'lastTouchedAt',
+      direction: currentView?.sort.direction ?? 'desc',
+    });
+  }, [currentView?.id, currentView?.sort.direction, currentView?.sort.field]);
 
   useEffect(() => {
     setSelectedTaskIds((currentIds) =>
@@ -377,6 +422,16 @@ export function TaskBoard({
     workspace,
   ]);
 
+  const openCloudSync = useCallback((workspaceId: string | null | undefined) => {
+    if (!workspaceId) {
+      onShowToast(t('noBoardSelected'), 'error');
+      return;
+    }
+
+    setCloudSyncWorkspaceId(workspaceId);
+    setCloudSyncIsOpen(true);
+  }, [onShowToast, t]);
+
   useEffect(() => {
     if (!selectedTaskId || archiveDialogIsOpen) {
       return undefined;
@@ -445,7 +500,8 @@ export function TaskBoard({
     >
       {!focusModeIsEnabled ? (
         <WorkspaceHeader
-          currentView={currentView}
+          sort={wallSort}
+          onChangeSort={setWallSort}
           onCreateProject={onCreateProject}
           onDeleteProject={onDeleteProject}
           onSelectProjectFilter={toggleProjectFilter}
@@ -465,6 +521,25 @@ export function TaskBoard({
           canManageWorkspaceMetadata={canManageWorkspaceMetadata}
           canManageSharing={canManageSharing}
         />
+      ) : null}
+
+      {!focusModeIsEnabled &&
+      localDesktopSessionIsActive &&
+      hasWorkspace &&
+      !workspaceIsSystemAllTasks &&
+      currentUserOwnsWorkspace ? (
+        <div className="board-sync-strip">
+          <BoardSyncStatus syncRoot={syncRoot} t={t} />
+          <button
+            className="sync-board-button"
+            onClick={() => openCloudSync(workspace?.id)}
+            title={t('syncBoard')}
+            type="button"
+          >
+            <Icon name="cloud" />
+            <span>{t('syncBoard')}</span>
+          </button>
+        </div>
       ) : null}
 
       {!focusModeIsEnabled ? (
@@ -584,6 +659,7 @@ export function TaskBoard({
                       {taskItem.shares.length}
                     </span>
                   ) : null}
+                  <TaskSyncIndicator syncState={taskItem.syncState} t={t} />
                 </span>
                 <span className="task-card-main">
                   <span className="task-card-latest">
@@ -674,8 +750,16 @@ export function TaskBoard({
                       onUpdateTaskShareRole={onUpdateTaskShareRole}
                       onUpdateTaskItem={onUpdateTaskItem}
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
+                      onImportTemplate={() => onImportTaskTemplate(selectedTask.id)}
+                      onRequestSync={() => openCloudSync(selectedTask.workspaceId)}
                       colorOptions={colorOptions}
                       canManageSharing={canManageSharing}
+                      templateCanBeImported={Boolean(
+                        selectedTask.taskTemplateId &&
+                        selectedTask.template &&
+                        !templates.some((template) => template.id === selectedTask.taskTemplateId) &&
+                        !importedTemplateSourceIds.includes(selectedTask.taskTemplateId),
+                      )}
                       pendingDeletedNoteIds={pendingDeletedNoteIds}
                       projects={projects}
                       statusOptions={statusOptions}
@@ -774,6 +858,72 @@ export function TaskBoard({
           t={t}
         />
       ) : null}
+      {cloudSyncIsOpen && cloudSyncWorkspaceId ? (
+        <CloudSyncDialog
+          cloudAccount={cloudSyncAccount}
+          onClose={() => {
+            setCloudSyncIsOpen(false);
+            setCloudSyncWorkspaceId(null);
+          }}
+          onSync={(requestBody) => onSyncWorkspaceWithCloud(cloudSyncWorkspaceId, requestBody)}
+          taskItems={taskItems}
+          t={t}
+          workspaceName={
+            workspaces.find((candidate) => candidate.id === cloudSyncWorkspaceId)?.name ??
+            workspace?.name ??
+            t('board')
+          }
+        />
+      ) : null}
     </section>
   );
+}
+
+function sortTaskItems(
+  taskItems: TaskItemSummaryResponse[],
+  sort: SavedViewSort,
+) {
+  const field = sort.field ?? 'lastTouchedAt';
+  const direction = sort.direction === 'asc' ? 1 : -1;
+
+  return [...taskItems].sort((left, right) => {
+    const leftValue = getTaskSortValue(left, field);
+    const rightValue = getTaskSortValue(right, field);
+
+    if (leftValue === null || rightValue === null) {
+      if (leftValue === rightValue) {
+        return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' });
+      }
+
+      return leftValue === null ? 1 : -1;
+    }
+
+    const comparison = leftValue.localeCompare(rightValue, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+
+    return comparison === 0
+      ? left.title.localeCompare(right.title, undefined, { sensitivity: 'base' })
+      : comparison * direction;
+  });
+}
+
+function getTaskSortValue(
+  taskItem: TaskItemSummaryResponse,
+  field: NonNullable<SavedViewSort['field']>,
+) {
+  switch (field) {
+    case 'createdAt':
+      return taskItem.createdAt;
+    case 'followUpAt':
+      return taskItem.followUpAt;
+    case 'title':
+      return taskItem.title;
+    case 'status':
+      return taskItem.status ?? '';
+    case 'lastTouchedAt':
+    default:
+      return taskItem.lastTouchedAt;
+  }
 }

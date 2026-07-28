@@ -17,6 +17,16 @@ services:
       retries: 5
     extra_hosts:
       - "localhost:127.0.0.1"
+
+  mailpit:
+    image: axllent/mailpit:v1.30.0
+    container_name: dumptether-mailpit-local
+    profiles:
+      - mail
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
   api:
     build:
       context: .
@@ -34,6 +44,7 @@ services:
       Auth__SignupWhitelistDomains__0: ${DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0:-}
       Auth__SignupInviteCodes__0: ${DUMPTETHER_SIGNUP_INVITE_CODE_0:-}
       Auth__EnableDevelopmentLogin: ${DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN:-true}
+      Auth__EnableLocalDesktopLogin: ${DUMPTETHER_ENABLE_LOCAL_DESKTOP_LOGIN:-false}
       Auth__DevelopmentEmail: ${DUMPTETHER_DEVELOPMENT_EMAIL:-dev@dumptether.local}
       Auth__DevelopmentPassword: ${DUMPTETHER_DEVELOPMENT_PASSWORD:-dumptether-dev-password}
       Auth__DevelopmentDisplayName: ${DUMPTETHER_DEVELOPMENT_DISPLAY_NAME:-Dev User}
@@ -48,26 +59,19 @@ services:
       EmailConfirmation__PublicBaseUrl: ${DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL:-http://localhost:55868}
       Email__FromEmail: ${DUMPTETHER_EMAIL_FROM:-noreply@localhost}
       Email__FromName: ${DUMPTETHER_EMAIL_FROM_NAME:-DumpTether}
-      Email__Smtp__Enabled: ${DUMPTETHER_EMAIL_SMTP_ENABLED:-false}
-      Email__Smtp__Host: ${DUMPTETHER_EMAIL_SMTP_HOST:-smtp-relay.brevo.com}
-      Email__Smtp__Port: ${DUMPTETHER_EMAIL_SMTP_PORT:-587}
+      Email__Provider: ${DUMPTETHER_EMAIL_PROVIDER:-None}
+      Email__Smtp__Host: ${DUMPTETHER_EMAIL_SMTP_HOST:-mailpit}
+      Email__Smtp__Port: ${DUMPTETHER_EMAIL_SMTP_PORT:-1025}
+      Email__Smtp__UseAuthentication: ${DUMPTETHER_EMAIL_SMTP_USE_AUTHENTICATION:-false}
+      Email__Smtp__EnableSsl: ${DUMPTETHER_EMAIL_SMTP_ENABLE_SSL:-false}
       Email__Smtp__Username: ${DUMPTETHER_EMAIL_SMTP_USERNAME:-}
       Email__Smtp__Password: ${DUMPTETHER_EMAIL_SMTP_PASSWORD:-}
-      Email__BrevoApi__Enabled: ${DUMPTETHER_EMAIL_BREVO_API_ENABLED:-false}
       Email__BrevoApi__ApiKey: ${DUMPTETHER_EMAIL_BREVO_API_KEY:-}
       Mfa__Email__Enabled: ${DUMPTETHER_EMAIL_MFA_ENABLED:-false}
-      OAuth__Google__Enabled: ${DUMPTETHER_OAUTH_GOOGLE_ENABLED:-false}
-      OAuth__Google__ClientId: ${DUMPTETHER_OAUTH_GOOGLE_CLIENT_ID:-}
-      OAuth__Google__ClientSecret: ${DUMPTETHER_OAUTH_GOOGLE_CLIENT_SECRET:-}
-      OAuth__Google__Authority: https://accounts.google.com
       OAuth__Microsoft__Enabled: ${DUMPTETHER_OAUTH_MICROSOFT_ENABLED:-false}
       OAuth__Microsoft__ClientId: ${DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID:-}
       OAuth__Microsoft__ClientSecret: ${DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET:-}
-      OAuth__Microsoft__Authority: https://login.microsoftonline.com/common/v2.0
-      OAuth__Facebook__Enabled: ${DUMPTETHER_OAUTH_FACEBOOK_ENABLED:-false}
-      OAuth__Facebook__ClientId: ${DUMPTETHER_OAUTH_FACEBOOK_CLIENT_ID:-}
-      OAuth__Facebook__ClientSecret: ${DUMPTETHER_OAUTH_FACEBOOK_CLIENT_SECRET:-}
-      OAuth__Facebook__Authority: https://www.facebook.com
+      OAuth__Microsoft__TenantId: ${DUMPTETHER_OAUTH_MICROSOFT_TENANT_ID:-common}
       Usage__MaxActiveTasksPerWorkspace: ${DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE:-1000}
       Usage__MaxTotalTasksPerWorkspace: ${DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE:-5000}
       ConnectionStrings__DumpTether: Host=postgres;Port=5432;Database=${POSTGRES_DB:-dumptether};Username=${POSTGRES_USER:-dumptether};Password=${POSTGRES_PASSWORD:-dumptether_dev_password}

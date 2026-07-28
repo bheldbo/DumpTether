@@ -63,11 +63,101 @@ internal sealed class EfSyncRepository : ISyncRepository
         return await query.SingleOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<SyncMapping?> GetMappingAsync(
+        Guid syncRootId,
+        SyncEntityType entityType,
+        Guid localId,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.SyncMappings
+            .Where(mapping =>
+                mapping.SyncRootId == syncRootId &&
+                mapping.EntityType == entityType &&
+                mapping.LocalId == localId);
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SyncMapping>> ListMappingsAsync(
+        Guid syncRootId,
+        SyncEntityType entityType,
+        IReadOnlyCollection<Guid> localIds,
+        CancellationToken cancellationToken)
+    {
+        if (localIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await _dbContext.SyncMappings
+            .AsNoTracking()
+            .Where(mapping =>
+                mapping.SyncRootId == syncRootId &&
+                mapping.EntityType == entityType &&
+                localIds.Contains(mapping.LocalId))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SyncMapping>> ListMappingsForRootAsync(
+        Guid syncRootId,
+        SyncEntityType entityType,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.SyncMappings
+            .Where(mapping =>
+                mapping.SyncRootId == syncRootId &&
+                mapping.EntityType == entityType);
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
+    public async Task<CloudSyncAccount?> GetCloudAccountForUserAsync(
+        Guid userId,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.CloudSyncAccounts
+            .Where(account => account.UserId == userId);
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task AddRootAsync(
         SyncRoot syncRoot,
         CancellationToken cancellationToken)
     {
         await _dbContext.SyncRoots.AddAsync(syncRoot, cancellationToken);
+    }
+
+    public async Task AddMappingAsync(
+        SyncMapping mapping,
+        CancellationToken cancellationToken)
+    {
+        await _dbContext.SyncMappings.AddAsync(mapping, cancellationToken);
+    }
+
+    public async Task AddCloudAccountAsync(
+        CloudSyncAccount account,
+        CancellationToken cancellationToken)
+    {
+        await _dbContext.CloudSyncAccounts.AddAsync(account, cancellationToken);
     }
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)

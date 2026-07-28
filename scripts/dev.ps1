@@ -1,6 +1,6 @@
 param(
-    [ValidateSet("Db", "DbDown", "Migrate", "Api", "Backend", "Web", "Frontend", "All", "Both", "LocalApi", "LocalBackend", "LocalAll", "LocalBoth")]
-    [string] $Target = "All",
+    [ValidateSet("Menu", "Help", "Db", "DbDown", "Mail", "Migrate", "Api", "Backend", "Web", "Frontend", "All", "Both", "LocalApi", "LocalBackend", "LocalAll", "LocalBoth")]
+    [string] $Target = "Menu",
     [switch] $OpenBrowser,
     [string] $WindowTitle = ""
 )
@@ -10,55 +10,12 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $webRoot = Join-Path $repoRoot "apps\web"
 $apiProject = Join-Path $repoRoot "src\DumpTether.Api\DumpTether.Api.csproj"
 $webUrl = "http://127.0.0.1:5173"
-$envFilePath = Join-Path $repoRoot ".env"
+$envFilePaths = @(
+    (Join-Path $repoRoot ".env"),
+    (Join-Path $repoRoot ".env.local")
+)
 
 Import-Module (Join-Path $PSScriptRoot "DumpTether.DevTools.psm1") -Force
-
-function Read-DotEnvFile {
-    param([string] $Path)
-
-    return Read-DumpTetherDotEnvFile -Path $Path
-}
-
-function Remove-InlineDotEnvComment {
-    param([string] $Value)
-
-    if ([string]::IsNullOrWhiteSpace($Value)) {
-        return $Value
-    }
-
-    $quote = [char]0
-
-    for ($index = 0; $index -lt $Value.Length; $index++) {
-        $character = $Value[$index]
-
-        if ($quote -ne [char]0) {
-            if ($character -eq $quote) {
-                $quote = [char]0
-            }
-
-            continue
-        }
-
-        if ($character -eq '"' -or $character -eq "'") {
-            $quote = $character
-            continue
-        }
-
-        if ($character -eq '#' -and
-            ($index -eq 0 -or [char]::IsWhiteSpace($Value[$index - 1]))) {
-            return $Value.Substring(0, $index).TrimEnd()
-        }
-    }
-
-    return $Value
-}
-
-function Set-ProcessEnvironmentFromDotEnv {
-    param([hashtable] $Values)
-
-    Set-DumpTetherProcessEnvironmentFromDotEnv -Values $Values
-}
 
 function Get-EnvValue {
     param(
@@ -67,62 +24,6 @@ function Get-EnvValue {
     )
 
     return Get-DumpTetherEnvValue -Name $Name -DefaultValue $DefaultValue
-}
-
-function Set-DumpTetherConfigAliases {
-    $aliases = @{
-        "DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP" = "Database__ApplyMigrationsOnStartup"
-        "DUMPTETHER_DATABASE_PROVIDER" = "Database__Provider"
-        "DUMPTETHER_SQLITE_PATH" = "Database__Sqlite__Path"
-        "DUMPTETHER_REQUIRE_AUTHENTICATION" = "Auth__RequireAuthentication"
-        "DUMPTETHER_ALLOW_GUEST_SESSIONS" = "Auth__AllowGuestSessions"
-        "DUMPTETHER_SIGNUP_MODE" = "Auth__SignupMode"
-        "DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0" = "Auth__SignupWhitelistEmails__0"
-        "DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0" = "Auth__SignupWhitelistDomains__0"
-        "DUMPTETHER_SIGNUP_INVITE_CODE_0" = "Auth__SignupInviteCodes__0"
-        "DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN" = "Auth__EnableDevelopmentLogin"
-        "DUMPTETHER_DEVELOPMENT_EMAIL" = "Auth__DevelopmentEmail"
-        "DUMPTETHER_DEVELOPMENT_PASSWORD" = "Auth__DevelopmentPassword"
-        "DUMPTETHER_DEVELOPMENT_DISPLAY_NAME" = "Auth__DevelopmentDisplayName"
-        "DUMPTETHER_AUTH_SESSION_DAYS" = "Auth__SessionDays"
-        "DUMPTETHER_AUTH_SESSION_CLEANUP_DAYS" = "Auth__SessionCleanupDays"
-        "DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS" = "Auth__SessionCleanupIntervalHours"
-        "DUMPTETHER_ARCHIVE_RETENTION_DAYS" = "Archive__RetentionDays"
-        "DUMPTETHER_CORS_ALLOWED_ORIGIN_0" = "Cors__AllowedOrigins__0"
-        "DUMPTETHER_CORS_ALLOWED_ORIGIN_1" = "Cors__AllowedOrigins__1"
-        "DUMPTETHER_CORS_ALLOWED_ORIGIN_2" = "Cors__AllowedOrigins__2"
-        "DUMPTETHER_EMAIL_CONFIRMATION_ENABLED" = "EmailConfirmation__Enabled"
-        "DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL" = "EmailConfirmation__PublicBaseUrl"
-        "DUMPTETHER_EMAIL_FROM" = "Email__FromEmail"
-        "DUMPTETHER_EMAIL_FROM_NAME" = "Email__FromName"
-        "DUMPTETHER_EMAIL_SMTP_ENABLED" = "Email__Smtp__Enabled"
-        "DUMPTETHER_EMAIL_SMTP_HOST" = "Email__Smtp__Host"
-        "DUMPTETHER_EMAIL_SMTP_PORT" = "Email__Smtp__Port"
-        "DUMPTETHER_EMAIL_SMTP_USERNAME" = "Email__Smtp__Username"
-        "DUMPTETHER_EMAIL_SMTP_PASSWORD" = "Email__Smtp__Password"
-        "DUMPTETHER_EMAIL_BREVO_API_ENABLED" = "Email__BrevoApi__Enabled"
-        "DUMPTETHER_EMAIL_BREVO_API_KEY" = "Email__BrevoApi__ApiKey"
-        "DUMPTETHER_EMAIL_MFA_ENABLED" = "Mfa__Email__Enabled"
-        "DUMPTETHER_OAUTH_GOOGLE_ENABLED" = "OAuth__Google__Enabled"
-        "DUMPTETHER_OAUTH_GOOGLE_CLIENT_ID" = "OAuth__Google__ClientId"
-        "DUMPTETHER_OAUTH_GOOGLE_CLIENT_SECRET" = "OAuth__Google__ClientSecret"
-        "DUMPTETHER_OAUTH_MICROSOFT_ENABLED" = "OAuth__Microsoft__Enabled"
-        "DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID" = "OAuth__Microsoft__ClientId"
-        "DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET" = "OAuth__Microsoft__ClientSecret"
-        "DUMPTETHER_OAUTH_FACEBOOK_ENABLED" = "OAuth__Facebook__Enabled"
-        "DUMPTETHER_OAUTH_FACEBOOK_CLIENT_ID" = "OAuth__Facebook__ClientId"
-        "DUMPTETHER_OAUTH_FACEBOOK_CLIENT_SECRET" = "OAuth__Facebook__ClientSecret"
-        "DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE" = "Usage__MaxActiveTasksPerWorkspace"
-        "DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE" = "Usage__MaxTotalTasksPerWorkspace"
-    }
-
-    foreach ($alias in $aliases.GetEnumerator()) {
-        $value = [Environment]::GetEnvironmentVariable($alias.Key, "Process")
-
-        if (-not [string]::IsNullOrWhiteSpace($value)) {
-            [Environment]::SetEnvironmentVariable($alias.Value, $value, "Process")
-        }
-    }
 }
 
 function New-LocalConnectionString {
@@ -144,7 +45,7 @@ function New-LocalConnectionString {
 }
 
 function Set-DumpTetherRuntimeEnvironment {
-    Set-DumpTetherConfigAliases
+    Set-DumpTetherAspNetConfigurationAliases
 
     $databaseProvider = Get-EnvValue "Database__Provider" "Postgres"
 
@@ -166,8 +67,8 @@ function Set-DumpTetherRuntimeEnvironment {
     }
 }
 
-$dotenvValues = Read-DotEnvFile -Path $envFilePath
-Set-ProcessEnvironmentFromDotEnv -Values $dotenvValues
+$dotenvValues = Read-DumpTetherDotEnvFiles -Paths $envFilePaths
+Set-DumpTetherProcessEnvironmentFromDotEnv -Values $dotenvValues
 $apiPort = Get-EnvValue "DUMPTETHER_API_PORT" "55868"
 $apiHealthUrl = "http://127.0.0.1:$apiPort/health"
 
@@ -216,11 +117,18 @@ function Stop-Database {
 }
 
 function Set-DumpTetherLocalRuntimeEnvironment {
-    Set-DumpTetherConfigAliases
+    $env:ASPNETCORE_ENVIRONMENT = "Desktop"
     $env:Database__Provider = "Sqlite"
     $env:Database__ApplyMigrationsOnStartup = "true"
+    $env:Auth__RequireAuthentication = "true"
+    $env:Auth__AllowGuestSessions = "false"
+    $env:Auth__SignupMode = "Closed"
+    $env:Auth__EnableDevelopmentLogin = "false"
+    $env:Auth__EnableLocalDesktopLogin = "true"
+    $env:EmailConfirmation__Enabled = "false"
+    $env:Email__Provider = "None"
+    $env:OAuth__Microsoft__Enabled = "false"
     $env:ConnectionStrings__DumpTether = $null
-    $env:ASPNETCORE_ENVIRONMENT = Get-EnvValue "ASPNETCORE_ENVIRONMENT" "Development"
 
     if ([string]::IsNullOrWhiteSpace($env:ASPNETCORE_URLS)) {
         $apiPort = Get-EnvValue "DUMPTETHER_API_PORT" "55868"
@@ -256,15 +164,34 @@ function Start-Api {
     Stop-ExistingApiProcesses
     Set-DumpTetherRuntimeEnvironment
     dotnet run --project $apiProject --no-launch-profile
+    if ($LASTEXITCODE -ne 0) {
+        throw "DumpTether API exited with code $LASTEXITCODE."
+    }
 }
 
 function Start-LocalApi {
     Stop-ExistingApiProcesses
     Set-DumpTetherLocalRuntimeEnvironment
     dotnet run --project $apiProject --no-launch-profile
+    if ($LASTEXITCODE -ne 0) {
+        throw "DumpTether local API exited with code $LASTEXITCODE."
+    }
 }
 
 function Start-Web {
+    $deploymentTarget = Get-EnvValue "DUMPTETHER_DEPLOYMENT_TARGET" "development"
+
+    Push-Location $repoRoot
+    try {
+        & node scripts/configure-client.mjs --target $deploymentTarget
+        if ($LASTEXITCODE -ne 0) {
+            throw "Client configuration failed with exit code $LASTEXITCODE."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
     Push-Location $webRoot
     try {
         if (-not (Test-Path "node_modules")) {
@@ -275,6 +202,9 @@ function Start-Web {
         }
 
         npm.cmd run dev
+        if ($LASTEXITCODE -ne 0) {
+            throw "Vite exited with code $LASTEXITCODE."
+        }
     }
     finally {
         Pop-Location
@@ -370,12 +300,103 @@ function Start-BrowserWatcher {
     } -ArgumentList $Url, $Name | Out-Null
 }
 
+function Start-Mailpit {
+    Invoke-AtRepoRoot {
+        $docker = Get-DockerCommand
+        & $docker compose --profile mail up -d mailpit
+        if ($LASTEXITCODE -ne 0) {
+            throw "Mailpit startup failed with exit code $LASTEXITCODE."
+        }
+
+        Write-Host "Mailpit inbox: http://127.0.0.1:8025"
+        Write-Host "Mailpit SMTP: 127.0.0.1:1025"
+    }
+}
+
+function Show-Help {
+    Write-Host ""
+    Write-Host "DumpTether development runner"
+    Write-Host ""
+    Write-Host "Usage:"
+    Write-Host "  .\scripts\dev.ps1 -Target <target> [-OpenBrowser]"
+    Write-Host ""
+    Write-Host "Common targets:"
+    Write-Host "  All / Both       Start PostgreSQL, apply migrations, run API and Vite in separate windows."
+    Write-Host "  Backend          Start PostgreSQL, apply migrations and run only the hosted API."
+    Write-Host "  Api              Run only the hosted API. Assumes PostgreSQL is already available."
+    Write-Host "  Web / Frontend   Run only the Vite web client."
+    Write-Host "  LocalAll         Run local SQLite API and Vite. No Docker/PostgreSQL."
+    Write-Host "  LocalApi         Run only the local SQLite API."
+    Write-Host "  Migrate          Start PostgreSQL and apply EF migrations."
+    Write-Host "  Db               Start PostgreSQL with docker compose."
+    Write-Host "  Mail             Start the local Mailpit SMTP capture inbox."
+    Write-Host "  DbDown           Stop PostgreSQL docker compose services."
+    Write-Host ""
+    Write-Host "Examples:"
+    Write-Host "  .\scripts\dev.ps1 -Target All -OpenBrowser"
+    Write-Host "  .\scripts\dev.ps1 -Target LocalAll"
+    Write-Host "  .\scripts\dev.ps1 -Target Backend"
+}
+
+function Show-Menu {
+    while ($true) {
+        Write-Host ""
+        Write-Host "DumpTether development runner"
+        Write-Host "1. Web dev with PostgreSQL - DB, migrations, API and Vite"
+        Write-Host "2. Offline-style web dev - local SQLite API and Vite"
+        Write-Host "3. Hosted backend only - DB, migrations and API"
+        Write-Host "4. Hosted API only"
+        Write-Host "5. Web/Vite only"
+        Write-Host "6. Local SQLite API only"
+        Write-Host "7. Start PostgreSQL"
+        Write-Host "8. Start Mailpit email capture"
+        Write-Host "9. Stop PostgreSQL/Mailpit"
+        Write-Host "10. Apply migrations"
+        Write-Host "H. Help"
+        Write-Host "Q. Quit"
+        $choice = Read-Host "Choose"
+
+        if ($null -eq $choice) {
+            return
+        }
+
+        if ([string]::IsNullOrWhiteSpace($choice)) {
+            continue
+        }
+
+        switch ($choice.ToUpperInvariant()) {
+            "1" { Start-Database; Invoke-Migrations; Start-DevWindow "DumpTether API" "Api"; Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether API" -TimeoutSeconds 90 | Out-Null; Start-DevWindow "DumpTether Web" "Web"; Write-Host "DumpTether API: $apiHealthUrl"; Write-Host "DumpTether Web: $webUrl" }
+            "2" { Start-DevWindow "DumpTether Local API" "LocalApi"; Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether Local API" -TimeoutSeconds 90 | Out-Null; Start-DevWindow "DumpTether Web" "Web"; Write-Host "DumpTether Local API: $apiHealthUrl"; Write-Host "DumpTether Web: $webUrl" }
+            "3" { Start-Database; Invoke-Migrations; Start-Api; return }
+            "4" { Start-Api; return }
+            "5" { Start-Web; return }
+            "6" { Start-LocalApi; return }
+            "7" { Start-Database }
+            "8" { Start-Mailpit }
+            "9" { Stop-Database }
+            "10" { Start-Database; Invoke-Migrations }
+            "H" { Show-Help }
+            "Q" { return }
+            default { Write-Host "Unknown choice." -ForegroundColor Yellow }
+        }
+    }
+}
+
 switch ($Target) {
+    "Menu" {
+        Show-Menu
+    }
+    "Help" {
+        Show-Help
+    }
     "Db" {
         Start-Database
     }
     "DbDown" {
         Stop-Database
+    }
+    "Mail" {
+        Start-Mailpit
     }
     "Migrate" {
         Start-Database

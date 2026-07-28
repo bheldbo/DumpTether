@@ -21,17 +21,19 @@ It is not a complex import or parser tool.
 - Every task has structured notes.
 - Task history should be useful evidence, not timeline ceremony.
 - Templates define structure.
-- Views define how the user sees tasks.
-- Projects group work.
-- Global views cut across projects.
-- Archive requires a resolution.
+- Boards group tasks into areas of work or life.
+- A task belongs to one board and can have multiple categories.
+- Projects are legacy terminology, not a separate product concept.
+- Temporary and reusable filters define how users narrow a board or All Tasks.
+- Organization-managed saved views are deferred enterprise behavior.
+- Archive requirements come from the task's effective board/user policy.
 - Sharing, calendar, email and AI are extensions.
 
 ## Architecture
 
 Use a modular monolith.
 
-Projects:
+Code projects:
 
 - apps/web: React + TypeScript + Vite frontend
 - src/DumpTether.Api: ASP.NET Core API
@@ -56,16 +58,34 @@ Do not introduce calendar/email integrations into the MVP.
 
 Use these docs as the repo grows instead of rediscovering the same decisions from code alone:
 
-- Product direction: `docs/product/product-principles.md`, `docs/product/ui-principles.md`, `docs/product/roadmap.md`
+- Product direction: `docs/product/product-brief.md`, `docs/product/product-principles.md`, `docs/product/ui-principles.md`, `docs/product/roadmap.md`
+- Future teams/enterprise direction: `docs/product/enterprise-teams.md`
 - Frontend structure: `docs/product/web-frontend-architecture.md`
 - Core architecture/config: `docs/adr/0001-architecture.md`, `docs/adr/0002-configuration.md`
 - Desktop/offline/sync: `docs/adr/0003-desktop-offline-architecture.md`, `docs/adr/0006-local-offline-runtime-and-sync.md`
 - Auth/security: `docs/adr/0004-auth-server-sync-readiness.md`, `docs/security/auth-hardening.md`, `docs/security/security-principles.md`
+- Archive policy: `docs/adr/0007-effective-archive-policy.md`
+- Transactional email: `docs/adr/0008-transactional-email-boundary.md`
 - Live collaboration: `docs/adr/0005-live-collaboration-signalr.md`
-- Deployment: `docs/deployment/docker-compose-production.md`
+- Deployment: `docs/deployment/docker-compose-production.md`, `docs/deployment/microsoft-identity-and-mailpit.md`, `docs/deployment/postgresql-resilience.md`
 - Deferred cleanup: `docs/engineering/refactor-backlog.md`
 
 When a feature touches one of these areas, skim the matching docs first and update them when the decision changes.
+
+## Agent operating model
+
+Use `.agents/README.md` to select roles, reasoning effort and workflow.
+
+- The main thread is the Coordinator and owns integration.
+- The human owner is the final product authority.
+- Product ambiguity requires a Product Owner readback before implementation.
+- Persistence, authorization, sync, public API, configuration, deployment,
+  module-boundary, or multi-client changes require an architecture screen.
+- Implementation uses bounded vertical work packets with one owner.
+- Significant changes receive independent review and appropriate verification.
+- Use Security and UX reviewers only when their documented triggers apply.
+- Concurrent agents must have disjoint deliverables and write scopes.
+- Skip roles that do not own a distinct decision or artifact.
 
 ## Backend rules
 
@@ -76,7 +96,7 @@ When a feature touches one of these areas, skim the matching docs first and upda
 - Application services enforce use cases.
 - Domain entities enforce core invariants.
 - Every meaningful task change should create a TaskTimelineEntry.
-- Archiving a task must require an archive resolution reason.
+- Archiving must enforce the task's effective archive policy.
 - Do not delete timeline history.
 - Do not store deployment secrets in source control.
 
@@ -94,9 +114,9 @@ Separate configuration into three categories:
 2. User/workspace configuration
    - templates
    - fields
-   - saved views
-   - archive reasons
-   - default project
+   - temporary and reusable filters
+   - user-default and board archive policies
+   - categories
    - display preferences
 
 3. Integration configuration

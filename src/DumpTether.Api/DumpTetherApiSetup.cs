@@ -3,15 +3,19 @@ using DumpTether.App;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using DumpTether.App.LiveUpdates;
+using DumpTether.App.Sync;
 using DumpTether.App.Usage;
 using DumpTether.App.Workspaces;
 using DumpTether.Data;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.IdentityModel.Tokens;
 
 namespace DumpTether.Api;
 
@@ -38,10 +42,13 @@ internal static class DumpTetherApiSetup
         });
 
         services.AddDumpTetherApplication();
-        services.RemoveAll<IEmailSender>();
+        services.AddDumpTetherEmail(configuration);
         services.RemoveAll<ILiveUpdatePublisher>();
-        services.AddHttpClient<IEmailSender, BrevoEmailSender>();
+        services.RemoveAll<ICloudSyncClient>();
+        services.RemoveAll<ICloudSessionProtector>();
+        services.AddHttpClient<ICloudSyncClient, HttpCloudSyncClient>();
         services.AddSingleton<ILiveUpdatePublisher, SignalRLiveUpdatePublisher>();
+        services.AddSingleton<ICloudSessionProtector, DataProtectionCloudSessionProtector>();
         services.AddDumpTetherData(configuration);
         services.AddHttpContextAccessor();
         services.AddScoped<IAuthTokenAccessor, CurrentAuthTokenAccessor>();
@@ -79,13 +86,14 @@ internal static class DumpTetherApiSetup
         {
             try
             {
-                await dbContext.Database.EnsureCreatedAsync();
+                await dbContext.Database.MigrateAsync();
             }
             catch (Exception exception)
             {
                 throw new InvalidOperationException(
-                    "DumpTether could not create the local SQLite database on startup. " +
-                    "Check Database:Sqlite:Path permissions or remove the local database file and retry.",
+                    "DumpTether could not apply SQLite migrations for the local database on startup. " +
+                    "Check Database:Sqlite:Path permissions, run the DumpTether.Database maintenance tool, " +
+                    "or remove the local database file and retry if this is disposable development data.",
                     exception);
             }
         }
@@ -180,6 +188,35 @@ internal static class DumpTetherApiSetup
         return services;
     }
 
+    private static IServiceCollection AddDumpTetherEmail(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var emailOptions = configuration.GetSection("Email").Get<EmailOptions>() ?? new();
+
+        if (emailOptions.Provider == EmailProvider.None)
+        {
+            return services;
+        }
+
+        services.RemoveAll<IEmailSender>();
+
+        if (emailOptions.Provider == EmailProvider.Smtp)
+        {
+            services.AddTransient<IEmailSender, SmtpEmailSender>();
+            return services;
+        }
+
+        if (emailOptions.Provider == EmailProvider.BrevoApi)
+        {
+            services.AddHttpClient<IEmailSender, BrevoEmailSender>();
+            return services;
+        }
+
+        throw new InvalidOperationException(
+            $"Unsupported email provider '{emailOptions.Provider}'.");
+    }
+
     private static string GetDefaultDesktopDataProtectionKeysPath()
     {
         var appDataRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -223,41 +260,29 @@ internal static class DumpTetherApiSetup
                 options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
             });
 
-        if (oauthOptions.Google.Enabled)
-        {
-            authenticationBuilder.AddGoogle("google", options =>
-            {
-                options.SignInScheme = AuthSchemes.ExternalCookie;
-                options.ClientId = oauthOptions.Google.ClientId;
-                options.ClientSecret = oauthOptions.Google.ClientSecret;
-                options.CallbackPath = "/api/auth/oauth/google/callback";
-                options.Scope.Add("email");
-            });
-        }
-
         if (oauthOptions.Microsoft.Enabled)
         {
-            authenticationBuilder.AddMicrosoftAccount("microsoft", options =>
+            authenticationBuilder.AddOpenIdConnect("microsoft", options =>
             {
                 options.SignInScheme = AuthSchemes.ExternalCookie;
+                options.Authority =
+                    $"https://login.microsoftonline.com/{oauthOptions.Microsoft.TenantId}/v2.0";
                 options.ClientId = oauthOptions.Microsoft.ClientId;
                 options.ClientSecret = oauthOptions.Microsoft.ClientSecret;
                 options.CallbackPath = "/api/auth/oauth/microsoft/callback";
+                options.ResponseType = OpenIdConnectResponseType.Code;
+                options.UsePkce = true;
+                options.SaveTokens = false;
+                options.MapInboundClaims = false;
+                options.RequireHttpsMetadata = !environment.IsDevelopment();
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    NameClaimType = "name"
+                };
+                options.Scope.Clear();
+                options.Scope.Add("openid");
+                options.Scope.Add("profile");
                 options.Scope.Add("email");
-            });
-        }
-
-        if (oauthOptions.Facebook.Enabled)
-        {
-            authenticationBuilder.AddFacebook("facebook", options =>
-            {
-                options.SignInScheme = AuthSchemes.ExternalCookie;
-                options.AppId = oauthOptions.Facebook.ClientId;
-                options.AppSecret = oauthOptions.Facebook.ClientSecret;
-                options.CallbackPath = "/api/auth/oauth/facebook/callback";
-                options.Scope.Add("email");
-                options.Fields.Add("email");
-                options.Fields.Add("name");
             });
         }
 

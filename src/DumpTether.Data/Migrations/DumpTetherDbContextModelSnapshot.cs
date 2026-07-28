@@ -123,6 +123,72 @@ namespace DumpTether.Data.Migrations
                     b.ToTable("archive_resolutions", (string)null);
                 });
 
+            modelBuilder.Entity("DumpTether.Domain.CloudSyncAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CloudApiBaseUrl")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("cloud_api_base_url");
+
+                    b.Property<string>("CloudDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("cloud_display_name");
+
+                    b.Property<string>("CloudEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("cloud_email");
+
+                    b.Property<Guid>("CloudUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cloud_user_id");
+
+                    b.Property<DateTimeOffset>("ConnectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("connected_at");
+
+                    b.Property<DateTimeOffset?>("DisconnectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("disconnected_at");
+
+                    b.Property<DateTimeOffset?>("LastVerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_verified_at");
+
+                    b.Property<string>("ProtectedSessionToken")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)")
+                        .HasColumnName("protected_session_token");
+
+                    b.Property<DateTimeOffset>("SessionExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("session_expires_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("cloud_sync_accounts", (string)null);
+                });
+
             modelBuilder.Entity("DumpTether.Domain.EmailConfirmationToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -455,6 +521,15 @@ namespace DumpTether.Data.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)")
                         .HasColumnName("entity_type");
+
+                    b.Property<DateTimeOffset?>("LastAttemptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_attempted_at");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("last_error");
 
                     b.Property<string>("LastRemoteVersion")
                         .HasMaxLength(200)
@@ -1041,6 +1116,15 @@ namespace DumpTether.Data.Migrations
                         .WithMany("_archiveResolutions")
                         .HasForeignKey("WorkspaceId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DumpTether.Domain.CloudSyncAccount", b =>
+                {
+                    b.HasOne("DumpTether.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

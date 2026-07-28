@@ -7,11 +7,14 @@ import type {
   ArchiveTaskItemRequest,
   AuthClientOptionsResponse,
   AuthSessionListItemResponse,
+  CloudSyncAccountResponse,
+  ConnectCloudAccountRequest,
   CurrentUserResponse,
   CreateArchiveResolutionRequest,
   CopyTaskItemsRequest,
   CopyTaskItemsResponse,
   DeleteTaskItemsRequest,
+  DisconnectCloudAccountResponse,
   CreateTaskShareRequest,
   CreateTaskShareLinkRequest,
   CreateWorkspaceInvitationRequest,
@@ -30,6 +33,7 @@ import type {
   RegisterUserResponse,
   SavedViewResponse,
   TaskTemplateDetailResponse,
+  TaskTemplateImportResponse,
   TaskTemplateSummaryResponse,
   TaskItemListQuery,
   TaskItemDetailResponse,
@@ -51,11 +55,14 @@ import type {
   TaskItemShareResponse,
   TaskShareLinkResponse,
   ShareLinkAcceptResponse,
+  SyncWorkspaceWithCloudRequest,
+  SyncWorkspaceWithCloudResponse,
+  SyncRootResponse,
   UpdateTaskShareRequest,
   UpdateWorkspaceMemberRequest,
 } from './types';
 
-const desktopLocalApiBaseUrl = 'http://127.0.0.1:55868';
+const desktopLocalApiBaseUrl = 'http://127.0.0.1:55869';
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
 const apiBaseUrl = configuredBaseUrl ?? getDefaultApiBaseUrl();
 const sessionTokenStorageKey = 'dumptether.sessionToken';
@@ -799,4 +806,53 @@ export function deleteTaskTemplate(id: string): Promise<void> {
   return request<void>(`/api/templates/${id}`, {
     method: 'DELETE',
   });
+}
+
+export function importTaskTemplateFromTask(
+  taskItemId: string,
+  options: ApiRequestOptions = {},
+): Promise<TaskTemplateImportResponse> {
+  return request<TaskTemplateImportResponse>(`/api/tasks/${taskItemId}/template/import`, {
+    method: 'POST',
+  }, options);
+}
+
+export function syncWorkspaceWithCloud(
+  workspaceId: string,
+  requestBody: SyncWorkspaceWithCloudRequest,
+): Promise<SyncWorkspaceWithCloudResponse> {
+  return request<SyncWorkspaceWithCloudResponse>(`/api/sync/workspaces/${workspaceId}/run`, {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  }, { workspaceId });
+}
+
+export function getCloudSyncAccount(
+  options: ApiRequestOptions = {},
+): Promise<CloudSyncAccountResponse | null> {
+  return request<CloudSyncAccountResponse | null>('/api/sync/cloud-account', undefined, options);
+}
+
+export function connectCloudSyncAccount(
+  requestBody: ConnectCloudAccountRequest,
+  options: ApiRequestOptions = {},
+): Promise<CloudSyncAccountResponse> {
+  return request<CloudSyncAccountResponse>('/api/sync/cloud-account', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  }, options);
+}
+
+export function disconnectCloudSyncAccount(
+  options: ApiRequestOptions = {},
+): Promise<DisconnectCloudAccountResponse> {
+  return request<DisconnectCloudAccountResponse>('/api/sync/cloud-account', {
+    method: 'DELETE',
+  }, options);
+}
+
+export function listWorkspaceSyncRoots(
+  options: ApiRequestOptions = {},
+): Promise<SyncRootResponse[]> {
+  return request<SyncRootResponse[]>('/api/sync/workspace-roots', undefined, options);
 }

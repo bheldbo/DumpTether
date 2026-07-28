@@ -36,6 +36,10 @@ public sealed class SyncMapping
 
     public SyncMappingStatus Status { get; private set; } = SyncMappingStatus.LocalOnly;
 
+    public string? LastError { get; private set; }
+
+    public DateTimeOffset? LastAttemptedAt { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -75,6 +79,8 @@ public sealed class SyncMapping
         RemoteId = remoteId;
         LastRemoteVersion = NormalizeRemoteVersion(remoteVersion);
         Status = SyncMappingStatus.Synced;
+        LastError = null;
+        LastAttemptedAt = syncedAt;
         LastSyncedAt = syncedAt;
         UpdatedAt = syncedAt;
     }
@@ -82,13 +88,28 @@ public sealed class SyncMapping
     public void MarkConflict(DateTimeOffset occurredAt)
     {
         Status = SyncMappingStatus.Conflict;
+        LastAttemptedAt = occurredAt;
         UpdatedAt = occurredAt;
     }
 
     public void MarkDeleted(DateTimeOffset occurredAt)
     {
         Status = SyncMappingStatus.Deleted;
+        LastAttemptedAt = occurredAt;
+        LastError = null;
         UpdatedAt = occurredAt;
+    }
+
+    public void MarkSyncFailed(string error, DateTimeOffset attemptedAt)
+    {
+        var normalizedError = DomainGuards.NotBlank(error, nameof(error));
+
+        Status = SyncMappingStatus.SyncFailed;
+        LastAttemptedAt = attemptedAt;
+        LastError = normalizedError.Length <= 1000
+            ? normalizedError
+            : normalizedError[..1000];
+        UpdatedAt = attemptedAt;
     }
 
     private static string? NormalizeRemoteVersion(string? remoteVersion)

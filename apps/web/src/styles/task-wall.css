@@ -386,6 +386,152 @@ button.member-chip:hover {
   box-shadow: 0 24px 70px rgba(32, 45, 58, 0.2);
 }
 
+.cloud-sync-dialog {
+  width: min(620px, calc(100vw - 36px));
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #cad6df;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 24px 70px rgba(32, 45, 58, 0.24);
+}
+
+.cloud-sync-form,
+.cloud-sync-result,
+.cloud-sync-recovery {
+  display: grid;
+  gap: 10px;
+}
+
+.cloud-sync-form label:not(.checkbox-label) {
+  display: grid;
+  gap: 6px;
+  color: #536273;
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.cloud-sync-form input[type="url"],
+.cloud-sync-form input[type="password"] {
+  min-height: 40px;
+}
+
+.cloud-account-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #d4e1e8;
+  border-radius: 8px;
+  background: rgba(240, 247, 250, 0.82);
+}
+
+.cloud-account-summary p {
+  margin: 2px 0 0;
+  color: #536273;
+  font-size: 0.82rem;
+}
+
+.cloud-sync-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.cloud-sync-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cloud-sync-stats span,
+.cloud-sync-recovery li {
+  padding: 7px 10px;
+  border: 1px solid rgba(24, 33, 44, 0.1);
+  border-radius: 999px;
+  background: rgba(241, 247, 248, 0.86);
+  color: #253443;
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.cloud-sync-messages,
+.cloud-sync-recovery ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.cloud-sync-recovery li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 8px;
+  list-style: none;
+}
+
+.board-sync-strip {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: -10px 0 10px;
+  pointer-events: none;
+}
+
+.board-sync-status {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid rgba(24, 76, 72, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #48615e;
+  font-size: 0.8rem;
+  font-weight: 760;
+  pointer-events: auto;
+}
+
+.board-sync-status .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.board-sync-status[data-state="Linked"] {
+  color: #1b6f57;
+  background: rgba(214, 255, 239, 0.7);
+}
+
+.board-sync-status[data-state="Conflict"] {
+  color: #8a3b12;
+  background: rgba(255, 230, 188, 0.78);
+}
+
+.sync-board-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid rgba(24, 76, 72, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #1b4d48;
+  font-size: 0.82rem;
+  font-weight: 790;
+  pointer-events: auto;
+}
+
+.sync-board-button:hover {
+  border-color: rgba(24, 76, 72, 0.32);
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .workspace-invite-form {
   width: 100%;
   display: grid;
@@ -679,6 +825,7 @@ button.member-chip:hover {
 
 .sort-pill {
   display: inline-flex;
+  gap: 4px;
   align-items: center;
   min-height: 30px;
   padding: 5px 8px;
@@ -688,6 +835,23 @@ button.member-chip:hover {
   color: #596035;
   font-size: 0.74rem;
   font-weight: 700;
+}
+
+.sort-pill select {
+  width: auto;
+  min-height: 0;
+  padding: 0 22px 0 2px;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sort-pill select:focus-visible {
+  outline: 2px solid rgba(24, 76, 72, 0.35);
+  outline-offset: 2px;
 }
 
 .header-edit-button {

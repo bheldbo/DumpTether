@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "net.heldbo.dumptether",
   "build": {
-    "beforeDevCommand": "npm --prefix ../web run dev",
-    "beforeBuildCommand": "npm --prefix ../web run build",
+    "beforeDevCommand": "node scripts/run-web.mjs dev",
+    "beforeBuildCommand": "node scripts/run-web.mjs build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../../web/dist"
   },
@@ -14,21 +14,32 @@
       {
         "title": "DumpTether",
         "label": "main",
-        "width": 1280,
-        "height": 860,
+        "width": 1440,
+        "height": 900,
         "minWidth": 380,
         "minHeight": 640,
         "resizable": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:55869 ws://127.0.0.1:55869; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:"
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "externalBin": ["binaries/dumptether-api"],
-    "icon": ["icons/icon.ico"]
+    "targets": [
+      "nsis"
+    ],
+    "publisher": "bheldbo",
+    "externalBin": [
+      "binaries/dumptether-api"
+    ],
+    "resources": {
+      "../../../src/DumpTether.Api/appsettings.Desktop.json": "appsettings.Desktop.json"
+    },
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
   }
 }

@@ -17,6 +17,7 @@ export interface TaskItemSummaryResponse {
   archiveResolutionId: string | null;
   noteCount: number;
   shares: TaskItemShareResponse[];
+  syncState: TaskSyncStateResponse | null;
   latestTimelineEntry: TaskTimelineEntryResponse | null;
 }
 
@@ -24,6 +25,86 @@ export interface TaskItemDetailResponse extends TaskItemSummaryResponse {
   template: TaskTemplateDetailResponse | null;
   fieldValues: FieldValueResponse[];
   timelineEntries: TaskTimelineEntryResponse[];
+}
+
+export interface TaskTemplateImportResponse {
+  sourceTemplateId: string;
+  template: TaskTemplateDetailResponse;
+}
+
+export type TaskSyncStatus =
+  | 'LocalOnly'
+  | 'Synced'
+  | 'Conflict'
+  | 'Deleted'
+  | 'SyncFailed'
+  | string;
+
+export interface TaskSyncStateResponse {
+  status: TaskSyncStatus;
+  remoteId: string | null;
+  lastRemoteVersion: string | null;
+  lastAttemptedAt: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+}
+
+export type SyncRootStatus = 'LocalOnly' | 'Linked' | 'Conflict' | string;
+
+export interface SyncRootResponse {
+  id: string;
+  localWorkspaceId: string;
+  remoteWorkspaceId: string | null;
+  cloudUserId: string | null;
+  deviceId: string;
+  status: SyncRootStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastSyncedAt: string | null;
+}
+
+export interface CloudSyncAccountResponse {
+  id: string;
+  cloudApiBaseUrl: string;
+  cloudUserId: string;
+  cloudEmail: string;
+  cloudDisplayName: string;
+  sessionExpiresAt: string;
+  connectedAt: string;
+  updatedAt: string;
+  lastVerifiedAt: string | null;
+  isConnected: boolean;
+}
+
+export interface ConnectCloudAccountRequest {
+  cloudApiBaseUrl: string;
+  email: string;
+  password: string;
+  deviceName?: string | null;
+}
+
+export interface DisconnectCloudAccountResponse {
+  disconnected: boolean;
+}
+
+export interface SyncWorkspaceWithCloudRequest {
+  cloudApiBaseUrl?: string | null;
+  cloudSessionToken?: string | null;
+  remoteWorkspaceId?: string | null;
+  pushLocalChanges?: boolean;
+  pullRemoteChanges?: boolean;
+}
+
+export interface SyncWorkspaceWithCloudResponse {
+  root: SyncRootResponse;
+  taskStates: TaskSyncStateResponse[];
+  pushed: number;
+  pulled: number;
+  updatedLocal: number;
+  updatedRemote: number;
+  conflicts: number;
+  failed: number;
+  messages: string[];
 }
 
 export interface TaskItemViewCountResponse {
@@ -182,6 +263,7 @@ export interface AuthClientOptionsResponse {
   requiresAuthentication: boolean;
   guestSessionsEnabled: boolean;
   developmentLoginEnabled: boolean;
+  localDesktopLoginEnabled: boolean;
   emailConfirmationEnabled: boolean;
   signupMode: 'Open' | 'Whitelist' | 'InviteOnly' | 'Closed' | 1 | 2 | 3 | 4;
   oAuthProviders: string[];

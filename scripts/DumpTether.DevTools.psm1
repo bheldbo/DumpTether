@@ -34,6 +34,22 @@ function Read-DumpTetherDotEnvFile {
     return $values
 }
 
+function Read-DumpTetherDotEnvFiles {
+    param([string[]] $Paths)
+
+    $values = @{}
+
+    foreach ($path in $Paths) {
+        $fileValues = Read-DumpTetherDotEnvFile -Path $path
+
+        foreach ($item in $fileValues.GetEnumerator()) {
+            $values[$item.Key] = $item.Value
+        }
+    }
+
+    return $values
+}
+
 function Remove-DumpTetherInlineDotEnvComment {
     param([string] $Value)
 
@@ -91,6 +107,59 @@ function Get-DumpTetherEnvValue {
     return $value
 }
 
+function Set-DumpTetherAspNetConfigurationAliases {
+    $aliases = @{
+        "DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP" = "Database__ApplyMigrationsOnStartup"
+        "DUMPTETHER_DATABASE_PROVIDER" = "Database__Provider"
+        "DUMPTETHER_SQLITE_PATH" = "Database__Sqlite__Path"
+        "DUMPTETHER_REQUIRE_AUTHENTICATION" = "Auth__RequireAuthentication"
+        "DUMPTETHER_ALLOW_GUEST_SESSIONS" = "Auth__AllowGuestSessions"
+        "DUMPTETHER_SIGNUP_MODE" = "Auth__SignupMode"
+        "DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0" = "Auth__SignupWhitelistEmails__0"
+        "DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0" = "Auth__SignupWhitelistDomains__0"
+        "DUMPTETHER_SIGNUP_INVITE_CODE_0" = "Auth__SignupInviteCodes__0"
+        "DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN" = "Auth__EnableDevelopmentLogin"
+        "DUMPTETHER_ENABLE_LOCAL_DESKTOP_LOGIN" = "Auth__EnableLocalDesktopLogin"
+        "DUMPTETHER_DEVELOPMENT_EMAIL" = "Auth__DevelopmentEmail"
+        "DUMPTETHER_DEVELOPMENT_PASSWORD" = "Auth__DevelopmentPassword"
+        "DUMPTETHER_DEVELOPMENT_DISPLAY_NAME" = "Auth__DevelopmentDisplayName"
+        "DUMPTETHER_AUTH_SESSION_DAYS" = "Auth__SessionDays"
+        "DUMPTETHER_AUTH_SESSION_CLEANUP_DAYS" = "Auth__SessionCleanupDays"
+        "DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS" = "Auth__SessionCleanupIntervalHours"
+        "DUMPTETHER_ARCHIVE_RETENTION_DAYS" = "Archive__RetentionDays"
+        "DUMPTETHER_CORS_ALLOWED_ORIGIN_0" = "Cors__AllowedOrigins__0"
+        "DUMPTETHER_CORS_ALLOWED_ORIGIN_1" = "Cors__AllowedOrigins__1"
+        "DUMPTETHER_CORS_ALLOWED_ORIGIN_2" = "Cors__AllowedOrigins__2"
+        "DUMPTETHER_EMAIL_CONFIRMATION_ENABLED" = "EmailConfirmation__Enabled"
+        "DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL" = "EmailConfirmation__PublicBaseUrl"
+        "DUMPTETHER_EMAIL_FROM" = "Email__FromEmail"
+        "DUMPTETHER_EMAIL_FROM_NAME" = "Email__FromName"
+        "DUMPTETHER_EMAIL_PROVIDER" = "Email__Provider"
+        "DUMPTETHER_EMAIL_SMTP_HOST" = "Email__Smtp__Host"
+        "DUMPTETHER_EMAIL_SMTP_PORT" = "Email__Smtp__Port"
+        "DUMPTETHER_EMAIL_SMTP_USE_AUTHENTICATION" = "Email__Smtp__UseAuthentication"
+        "DUMPTETHER_EMAIL_SMTP_ENABLE_SSL" = "Email__Smtp__EnableSsl"
+        "DUMPTETHER_EMAIL_SMTP_USERNAME" = "Email__Smtp__Username"
+        "DUMPTETHER_EMAIL_SMTP_PASSWORD" = "Email__Smtp__Password"
+        "DUMPTETHER_EMAIL_BREVO_API_KEY" = "Email__BrevoApi__ApiKey"
+        "DUMPTETHER_EMAIL_MFA_ENABLED" = "Mfa__Email__Enabled"
+        "DUMPTETHER_OAUTH_MICROSOFT_ENABLED" = "OAuth__Microsoft__Enabled"
+        "DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID" = "OAuth__Microsoft__ClientId"
+        "DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET" = "OAuth__Microsoft__ClientSecret"
+        "DUMPTETHER_OAUTH_MICROSOFT_TENANT_ID" = "OAuth__Microsoft__TenantId"
+        "DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE" = "Usage__MaxActiveTasksPerWorkspace"
+        "DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE" = "Usage__MaxTotalTasksPerWorkspace"
+    }
+
+    foreach ($alias in $aliases.GetEnumerator()) {
+        $value = [Environment]::GetEnvironmentVariable($alias.Key, "Process")
+
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            [Environment]::SetEnvironmentVariable($alias.Value, $value, "Process")
+        }
+    }
+}
+
 function Get-DumpTetherDockerCommand {
     $docker = Get-Command docker -ErrorAction SilentlyContinue
 
@@ -124,7 +193,9 @@ function Invoke-DumpTetherAtRepoRoot {
 
 Export-ModuleMember -Function `
     Read-DumpTetherDotEnvFile, `
+    Read-DumpTetherDotEnvFiles, `
     Set-DumpTetherProcessEnvironmentFromDotEnv, `
     Get-DumpTetherEnvValue, `
+    Set-DumpTetherAspNetConfigurationAliases, `
     Get-DumpTetherDockerCommand, `
     Invoke-DumpTetherAtRepoRoot

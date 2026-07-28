@@ -1684,6 +1684,108 @@ public sealed class SharingApiTests
         Assert.Contains(sharedUserTemplates!, candidate => candidate.Id == copiedTask.TaskTemplateId);
     }
 
+    [Fact]
+    public async Task TaskTemplateImport_FromSharedTaskAddsTemplateToReceivingUserLibrary()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var sharedClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "import-shared-template-owner@example.com",
+            "correct horse battery");
+        var sharedUser = await RegisterAndLoginAsync(
+            sharedClient,
+            "import-shared-template-user@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+        var template = await CreateTemplateAsync(
+            ownerClient,
+            "Shared Import Template",
+            [
+                new
+                {
+                    name = "Context",
+                    type = "LongText",
+                    scope = "Header",
+                    required = false,
+                    sortOrder = 0,
+                    layoutRow = 1,
+                    layoutColumn = 1,
+                    layoutWeight = 4,
+                    options = Array.Empty<string>()
+                },
+                new
+                {
+                    name = "Done",
+                    type = "Checkbox",
+                    scope = "Entry",
+                    required = false,
+                    sortOrder = 1,
+                    layoutRow = 1,
+                    layoutColumn = 2,
+                    layoutWeight = 1,
+                    options = Array.Empty<string>()
+                }
+            ]);
+        var contextField = template.Fields.Single(field => field.Name == "Context");
+        var sourceTaskResponse = await ownerClient.PostAsJsonAsync(
+            "/api/tasks",
+            new
+            {
+                title = "Shared import source",
+                taskTemplateId = template.Id,
+                fieldValues = new Dictionary<Guid, object?>
+                {
+                    [contextField.Id] = "Visible to the shared user"
+                }
+            });
+        sourceTaskResponse.EnsureSuccessStatusCode();
+        var sourceTask = (await sourceTaskResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+        var shareResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{sourceTask.Id}/share-links",
+            new
+            {
+                email = sharedUser.User.Email
+            });
+        shareResponse.EnsureSuccessStatusCode();
+        var shareLink = (await shareResponse.Content.ReadFromJsonAsync<TaskShareLinkResponse>())!;
+        var acceptResponse = await sharedClient.PostAsJsonAsync(
+            "/api/share-links/accept",
+            new
+            {
+                token = shareLink.Token
+            });
+        acceptResponse.EnsureSuccessStatusCode();
+
+        SetWorkspaceHeader(sharedClient, ownerWorkspaceId);
+        var importResponse = await sharedClient.PostAsync(
+            $"/api/tasks/{sourceTask.Id}/template/import",
+            content: null);
+        var importBody = await importResponse.Content.ReadAsStringAsync();
+        Assert.True(
+            importResponse.IsSuccessStatusCode,
+            $"Expected success, got {importResponse.StatusCode}. Body: {importBody}");
+        var imported = (await importResponse.Content.ReadFromJsonAsync<TaskTemplateImportResponse>())!;
+        var sharedUserTemplates = await GetRequiredJsonAsync<List<TaskTemplateSummaryResponse>>(
+            sharedClient,
+            "/api/templates");
+
+        Assert.Equal(template.Id, imported.SourceTemplateId);
+        Assert.NotEqual(template.Id, imported.Template.Id);
+        Assert.Contains("Shared Import Template", imported.Template.Name);
+        Assert.Equal(2, imported.Template.Fields.Count);
+        Assert.Contains(imported.Template.Fields, field =>
+            field.Name == "Context" &&
+            field.Type == "LongText" &&
+            field.LayoutWeight == 4);
+        Assert.Contains(imported.Template.Fields, field =>
+            field.Name == "Done" &&
+            field.Type == "Checkbox" &&
+            field.LayoutWeight == 1);
+        Assert.Contains(sharedUserTemplates!, candidate => candidate.Id == imported.Template.Id);
+    }
+
     private static async Task<LoginUserResponse> RegisterAndLoginAsync(
         HttpClient client,
         string email,

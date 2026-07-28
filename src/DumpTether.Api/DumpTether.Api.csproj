@@ -6,11 +6,14 @@
   <ItemGroup>
     <ProjectReference Include="..\DumpTether.App\DumpTether.App.csproj" />
     <ProjectReference Include="..\DumpTether.Data\DumpTether.Data.csproj" />
+    <ProjectReference Include="..\DumpTether.Data.Sqlite\DumpTether.Data.Sqlite.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.Facebook" Version="8.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="8.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="8.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 </Project>

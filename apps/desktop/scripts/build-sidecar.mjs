@@ -29,7 +29,7 @@ const sidecarBinary = join(binaryRoot, `dumptether-api-${targetTriple}${extensio
 setNuGetPackageCache();
 mkdirSync(publishDirectory, { recursive: true });
 
-const restoreArgs = ['restore', apiProject, '-r', runtime];
+const restoreArgs = ['restore', apiProject, '-r', runtime, '--disable-build-servers'];
 if (options.ignoreFailedSources) {
   restoreArgs.push('--ignore-failed-sources');
 }
@@ -43,8 +43,12 @@ run('dotnet', [
   '-r',
   runtime,
   '--no-restore',
+  '--disable-build-servers',
+  '-m:1',
   '--self-contained',
   String(options.selfContained),
+  '/p:BuildInParallel=false',
+  '/p:UseSharedCompilation=false',
   '/p:PublishSingleFile=true',
   '/p:IncludeNativeLibrariesForSelfExtract=true',
   '/p:PublishTrimmed=false',
