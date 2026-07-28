@@ -163,6 +163,11 @@
   align-items: center;
 }
 
+.inline-heading-editor-name {
+  min-width: min(560px, 100%);
+  display: block;
+}
+
 .project-heading-editor {
   min-width: min(440px, 100%);
 }
@@ -170,6 +175,26 @@
 .inline-heading-editor input {
   min-height: 34px;
   background: rgba(255, 255, 255, 0.78);
+}
+
+.inline-heading-editor .inline-heading-input {
+  width: min(560px, 100%);
+  min-height: 0;
+  padding: 1px 2px 3px;
+  border: 0;
+  border-bottom: 2px solid color-mix(in srgb, currentColor 34%, transparent);
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.inline-heading-editor .inline-heading-input:focus {
+  border-bottom-color: currentColor;
+  box-shadow: none;
 }
 
 .board-header h1,
@@ -192,7 +217,7 @@
 }
 
 .workspace-header h1 {
-  font-size: 1.15rem;
+  font-size: 1.45rem;
   line-height: 1.08;
 }
 
@@ -215,13 +240,15 @@
 
 .context-chip,
 .context-muted {
-  min-height: 26px;
+  min-height: 28px;
   display: inline-flex;
   align-items: center;
-  padding: 4px 9px;
+  justify-content: center;
+  padding: 5px 11px;
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 760;
+  line-height: 1.15;
 }
 
 .context-chip {
@@ -273,14 +300,14 @@
 .member-chip,
 .share-chip,
 .pending-invite-chip {
-  min-height: 36px;
-  max-height: 36px;
+  min-height: 30px;
+  max-height: 30px;
   display: inline-flex;
   max-width: 240px;
   gap: 5px;
   align-items: center;
   overflow: hidden;
-  padding: 3px 8px;
+  padding: 4px 10px;
   border: 1px solid var(--workspace-chip-border, rgba(24, 33, 44, 0.1));
   border-radius: 999px;
   background: var(--workspace-chip-bg, rgba(255, 255, 255, 0.56));
@@ -473,15 +500,6 @@ button.member-chip:hover {
   list-style: none;
 }
 
-.board-sync-strip {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin: -10px 0 10px;
-  pointer-events: none;
-}
-
 .board-sync-status {
   min-height: 34px;
   display: inline-flex;
@@ -494,7 +512,6 @@ button.member-chip:hover {
   color: #48615e;
   font-size: 0.8rem;
   font-weight: 760;
-  pointer-events: auto;
 }
 
 .board-sync-status .icon {
@@ -524,7 +541,6 @@ button.member-chip:hover {
   color: #1b4d48;
   font-size: 0.82rem;
   font-weight: 790;
-  pointer-events: auto;
 }
 
 .sync-board-button:hover {
@@ -782,7 +798,7 @@ button.member-chip:hover {
   border-radius: 0 999px 999px 0;
   background: color-mix(in srgb, var(--context-chip-color, rgba(255, 255, 255, 0.48)) 54%, transparent);
   color: var(--context-chip-text, #405064);
-  opacity: 0.62;
+  opacity: 0.78;
 }
 
 .project-tag-wrap:hover .project-tag-edit,
@@ -816,42 +832,123 @@ button.member-chip:hover {
 }
 
 .board-actions {
+  width: min(340px, 38vw);
+  flex: 0 0 auto;
+  align-self: stretch;
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workspace-sync-actions {
+  display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   justify-content: flex-end;
 }
 
-.sort-pill {
-  display: inline-flex;
-  gap: 4px;
+.sort-menu {
+  position: relative;
+  width: min(100%, 340px);
+}
+
+.sort-menu-trigger {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 14px;
+  gap: 7px;
   align-items: center;
-  min-height: 30px;
-  padding: 5px 8px;
+  padding: 6px 10px;
   border: 1px solid #d6d7c8;
   border-radius: 999px;
   background: #fbfbf1;
   color: #596035;
   font-size: 0.74rem;
   font-weight: 700;
+  text-align: left;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
 }
 
-.sort-pill select {
-  width: auto;
-  min-height: 0;
-  padding: 0 22px 0 2px;
-  border: 0;
-  border-radius: 0;
-  background-color: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
+.sort-menu-label,
+.sort-menu-value {
+  white-space: nowrap;
 }
 
-.sort-pill select:focus-visible {
+.sort-menu-label {
+  color: #73794e;
+}
+
+.sort-menu-value {
+  min-width: 0;
+  overflow: hidden;
+  color: #42492c;
+  text-overflow: ellipsis;
+}
+
+.sort-menu-trigger > .icon {
+  width: 13px;
+  height: 13px;
+  pointer-events: none;
+  transition: transform 120ms ease;
+}
+
+.sort-menu-trigger[aria-expanded="true"] > .icon {
+  transform: rotate(180deg);
+}
+
+.sort-menu-trigger:focus-visible {
   outline: 2px solid rgba(24, 76, 72, 0.35);
   outline-offset: 2px;
+}
+
+.sort-menu-options {
+  position: absolute;
+  z-index: 38;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  min-width: 100%;
+  max-height: min(360px, calc(100vh - 110px));
+  display: grid;
+  gap: 3px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgba(35, 48, 62, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 34px rgba(32, 45, 58, 0.16);
+}
+
+.sort-menu-option {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #263544;
+  font-size: 0.78rem;
+  font-weight: 680;
+  text-align: left;
+}
+
+.sort-menu-option:hover,
+.sort-menu-option:focus-visible,
+.sort-menu-option[aria-selected="true"] {
+  background: #edf5f4;
+  color: #184c48;
+}
+
+.sort-menu-option .icon {
+  width: 15px;
+  height: 15px;
 }
 
 .header-edit-button {
@@ -1232,14 +1329,33 @@ button.member-chip:hover {
 }
 
 .filter-bar {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(180px, 1.5fr) minmax(112px, 1fr) minmax(138px, 1fr) minmax(112px, 1fr) minmax(112px, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 10px;
+  padding: 10px 52px 10px 10px;
   border: 1px solid #d3dce4;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.filter-bar > select {
+  border-radius: 999px;
+  background-color: #ffffff;
+}
+
+.filter-bar .reset-filters-button {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+}
+
+.filter-bar .reset-filters-button[aria-hidden="true"] {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .filter-search {

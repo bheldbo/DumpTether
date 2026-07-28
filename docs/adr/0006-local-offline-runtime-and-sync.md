@@ -36,7 +36,8 @@ Tauri shell
 
 The first implementation step was making `DumpTether.Api` run against SQLite with `Database:Provider=Sqlite`. The current local runtime also has a Tauri development shell scaffold and a deliberately small first cloud sync pass.
 
-The desktop project should later live in `apps/desktop`. It should package the built React UI and start the local .NET API sidecar on localhost. The desktop sidecar uses a dedicated local development port (`127.0.0.1:55869`) so it cannot be confused with the hosted development API (`127.0.0.1:55868`).
+The desktop project lives in `apps/desktop`. It packages the built React UI and
+starts the local .NET API sidecar on a randomly allocated loopback port.
 
 ## Source Code Boundary
 
@@ -78,12 +79,15 @@ The expected desktop packaging path is:
 - Linux AppImage/deb/rpm depending on distribution needs
 - code signing after the build pipeline is stable
 
-The packaged desktop sidecar is a self-contained .NET executable. Tauri bundles
-the narrow desktop appsettings overlay as an explicit resource and starts the
-sidecar with that resource directory as its working directory. The desktop
-environment selects SQLite and local desktop identity; PostgreSQL and a
-system-wide .NET runtime are not desktop prerequisites. Closing the Tauri
-application must also terminate the sidecar process.
+The packaged desktop sidecar is a self-contained .NET executable. Tauri starts
+it with an allow-listed command-line profile that selects loopback HTTP, SQLite,
+local desktop identity, closed registration, disabled server email/OAuth, and
+one trusted webview origin. Each launch uses a random port and 256-bit bootstrap
+token injected into the webview before React runs. The API requires that token
+on local HTTP requests. The installer does not place an editable
+`appsettings.Desktop.json` beside the binaries. PostgreSQL and a system-wide
+.NET runtime are not desktop prerequisites. Closing Tauri terminates the
+sidecar process.
 
 Do not hand-roll WiX first. Let Tauri own the installer pipeline until there is a concrete deployment need it cannot satisfy. The NSIS `.exe` installer is the MVP path. MSI/WiX is optional and can fail on developer machines if the Windows Installer/WiX validation environment is not healthy.
 
@@ -99,7 +103,11 @@ The local desktop API still uses the same session/authorization model as the hos
 
 On first desktop launch, the local API creates or reuses a local SQLite `AppUser` and an owner workspace. This is not the cloud account. It is the identity the local API uses to keep authorization, workspace ownership and task scoping consistent while offline.
 
-The session token can expire or be replaced. The durable local identity is the SQLite `AppUser`, plus future sync metadata such as `DeviceId`.
+The session token can expire or be replaced. The durable local identity is the
+SQLite `AppUser`, plus future sync metadata such as `DeviceId`. `DesktopLocal`
+sessions cannot be logged out or revoked through the normal session API. If the
+browser token is missing, desktop startup creates a replacement session for the
+same durable local user instead of stranding the local database.
 
 Local desktop login must be explicitly enabled with `Auth:EnableLocalDesktopLogin` and is only valid when `Database:Provider=Sqlite`. Hosted PostgreSQL deployments must not expose the local desktop login endpoint.
 
@@ -111,11 +119,13 @@ selected `deploy/targets/*.json` file. `scripts/configure-client.mjs` generates
 the React target and synchronizes Tauri, npm and Cargo metadata. The
 server/backend URL is deployment configuration, not an in-app user setting.
 
-Deployment targets are not a replacement for ASP.NET
-`appsettings.Desktop.json`; appsettings still owns local sidecar behavior such
-as SQLite, local URLs and auth mode. Secrets never enter deployment targets.
+Deployment targets do not own local sidecar security behavior. The source
+`appsettings.Desktop.json` remains a developer-readable profile for direct API
+runs, while packaged Tauri launches pin the equivalent critical values as
+allow-listed arguments. Secrets never enter deployment targets or the desktop
+package.
 
-Hosted authentication remains a remote-server concern. The desktop overlay does
+Hosted authentication remains a remote-server concern. The desktop package does
 not expose SMTP, email confirmation, MFA, OAuth, registration, or PostgreSQL
 settings. A selected deployment target provides the non-secret hosted API URL;
 the local sidecar stores a protected cloud session after successful login.
@@ -123,11 +133,33 @@ Desktop startup always restores the local session first. Cloud credentials are
 reused for later sync, and the hosted session is verified during sync so a cloud
 outage never blocks local SQLite access.
 
+Disconnecting the cloud account is local-first: DumpTether attempts to revoke
+the hosted `DesktopCloud` session and always erases the protected token from
+SQLite. If the hosted server is unreachable, its hashed session record expires
+according to the server retention policy and the desktop no longer retains the
+credential.
+
+The local machine owner can always modify locally installed software. DumpTether
+does not treat the desktop binary or SQLite database as a cloud authorization
+boundary. The hosted API independently validates the cloud session, role,
+workspace membership, and requested resource on every cloud operation. Editing
+or replacing local files cannot grant additional cloud access.
+
+The packaged Tauri webview has origin `http://tauri.localhost`, while the sidecar
+listens on a random `127.0.0.1` port; browsers therefore apply cross-origin
+rules even though both are local. Desktop CORS permits only the exact packaged
+origin (or the Vite origin in Tauri development). The bootstrap token prevents
+unrelated local clients from using the legitimate sidecar. The random port also
+removes the predictable pre-bind target. The sidecar remains loopback-only and
+does not accept LAN clients.
+
 ## Login and Sync Mapping
 
-Login-driven sync is being built incrementally. The first manual board sync pass
-proves that the local API can push and pull task state through the same hosted
-API contract.
+Login-driven sync is being built incrementally. The first board sync pass proves
+that the local API can push and pull task state through the same hosted API
+contract. Linked boards now retry in the background and immediately after local
+task/note changes. The explicit sync action remains available as a user-controlled
+retry and recovery surface.
 
 A local user can use DumpTether without cloud login. Local boards and tasks are born in SQLite and should show as local-only/not-synced when sync UI exists.
 
@@ -238,7 +270,6 @@ Not included in the first pass:
 - updating already-synced entry-level field values
 - archive/delete/tombstone sync
 - shared-board/task download
-- automatic cloud login or token storage
 - field-level merge UI
 
 This keeps the implementation honest while proving the core mapping path.
@@ -255,7 +286,8 @@ The risky parts are not just "upload local rows":
 - A local-only user and a logged-in cloud user need a clear identity transition. The app must not silently merge two people just because they used the same machine.
 - Shared tasks/workspaces should never be cached as permanently local ownership. They should be visible only while the user is logged in and the server confirms access.
 - Revoked sharing must remove local visibility on next sync. Local caches need access checks, not only data freshness checks.
-- The sidecar API port should eventually be allocated safely instead of assuming a fixed port forever.
+- Sidecar endpoint ownership should continue to be reviewed as desktop threat
+  modeling matures; current launches use a random port and per-launch token.
 - Hard deletes need tombstones or delayed cleanup so another device can learn that a record was deleted.
 - Sync logs must avoid storing raw tokens, passwords, or full secret-bearing request headers.
 - Conflict UI should be quiet by default, but obvious when the same field was edited in two places.

@@ -1,6 +1,11 @@
 import * as signalR from '@microsoft/signalr';
 
-import { getApiBaseUrl, getCookieAuthCsrfHeader, getStoredSessionToken } from './api';
+import {
+  getApiBaseUrl,
+  getCookieAuthCsrfHeader,
+  getDesktopBootstrapHeaders,
+  getStoredSessionToken,
+} from './api';
 
 export interface LiveUpdateMessage {
   eventName: string;
@@ -28,7 +33,10 @@ export function startLiveUpdates(
   const connection = new signalR.HubConnectionBuilder()
     .withUrl(url, {
       accessTokenFactory: () => getStoredSessionToken() ?? '',
-      headers: sessionToken ? undefined : getCookieAuthCsrfHeader(),
+      headers: {
+        ...getDesktopBootstrapHeaders(),
+        ...(sessionToken ? {} : getCookieAuthCsrfHeader()),
+      },
     })
     .withAutomaticReconnect()
     .build();

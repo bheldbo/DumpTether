@@ -10,6 +10,13 @@ internal sealed class NoOpCloudSyncClient : ICloudSyncClient
         throw CreateMissingClientException();
     }
 
+    public Task LogoutAsync(
+        CloudSyncConnection connection,
+        CancellationToken cancellationToken)
+    {
+        throw CreateMissingClientException();
+    }
+
     public Task<CloudSyncUserResponse> GetCurrentUserAsync(
         CloudSyncConnection connection,
         CancellationToken cancellationToken)

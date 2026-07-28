@@ -40,6 +40,8 @@ export function ColorPickerPopover({
         event.target instanceof Node &&
         !popoverRef.current.contains(event.target)
       ) {
+        const nextColor = draftColor.trim().toUpperCase();
+        onChange(isHexColor(nextColor) ? nextColor : '');
         setIsOpen(false);
       }
     };
@@ -47,7 +49,7 @@ export function ColorPickerPopover({
     window.addEventListener('pointerdown', handlePointerDown);
 
     return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [color, isOpen, selectedColor]);
+  }, [color, draftColor, isOpen, onChange, selectedColor]);
 
   const commitColor = () => {
     const nextColor = draftColor.trim().toUpperCase();

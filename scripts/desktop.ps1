@@ -207,8 +207,7 @@ function Build-DesktopExecutable {
     Invoke-DesktopNpmScript "build:desktop:exe"
     Export-DesktopReleaseArtifacts -Patterns @(
         "dumptether-desktop.exe",
-        "dumptether-api.exe",
-        "appsettings.Desktop.json"
+        "dumptether-api.exe"
     )
 }
 
@@ -221,7 +220,6 @@ function Build-DesktopInstaller {
     Export-DesktopReleaseArtifacts -Patterns @(
         "dumptether-desktop.exe",
         "dumptether-api.exe",
-        "appsettings.Desktop.json",
         "bundle\nsis\*.exe"
     )
 }
@@ -235,7 +233,6 @@ function Build-DesktopMsiInstaller {
     Export-DesktopReleaseArtifacts -Patterns @(
         "dumptether-desktop.exe",
         "dumptether-api.exe",
-        "appsettings.Desktop.json",
         "bundle\msi\*.msi"
     )
 }
@@ -256,7 +253,6 @@ function Build-DesktopLinuxBundles {
     Export-DesktopReleaseArtifacts -Patterns @(
         "dumptether-desktop",
         "dumptether-api",
-        "appsettings.Desktop.json",
         "bundle\appimage\*.AppImage",
         "bundle\deb\*.deb",
         "bundle\rpm\*.rpm"
@@ -292,7 +288,22 @@ function Export-DesktopReleaseArtifacts {
     }
 
     if (Test-Path -LiteralPath $destinationFullPath) {
-        Remove-Item -LiteralPath $destinationFullPath -Recurse -Force
+        try {
+            Remove-Item -LiteralPath $destinationFullPath -Recurse -Force
+        }
+        catch {
+            $fallbackName = "$platform-build-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss'))"
+            $destination = Join-Path $releaseRoot "v$version\$fallbackName"
+            $destinationFullPath = [System.IO.Path]::GetFullPath($destination)
+
+            if (-not $destinationFullPath.StartsWith(
+                    "$releaseRootFullPath$([System.IO.Path]::DirectorySeparatorChar)",
+                    [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Refusing to export desktop artifacts outside $releaseRootFullPath."
+            }
+
+            Write-Warning "The existing release folder is in use. Exporting this build to '$destination' instead."
+        }
     }
 
     New-Item -ItemType Directory -Path $destination -Force | Out-Null

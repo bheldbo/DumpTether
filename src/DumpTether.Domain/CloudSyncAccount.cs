@@ -136,6 +136,7 @@ public sealed class CloudSyncAccount
     public void Disconnect(DateTimeOffset disconnectedAt)
     {
         DisconnectedAt ??= disconnectedAt;
+        ProtectedSessionToken = string.Empty;
         UpdatedAt = disconnectedAt;
     }
 
@@ -150,8 +151,19 @@ public sealed class CloudSyncAccount
                 nameof(cloudApiBaseUrl));
         }
 
+        if (uri.Scheme == Uri.UriSchemeHttp && !IsLoopbackHost(uri))
+        {
+            throw new ArgumentException(
+                "Cloud API base URL must use HTTPS unless it targets the local development machine.",
+                nameof(cloudApiBaseUrl));
+        }
+
         return uri.AbsoluteUri.TrimEnd('/');
     }
+
+    private static bool IsLoopbackHost(Uri uri) =>
+        uri.IsLoopback ||
+        uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase);
 
     private static string Truncate(string value, int maxLength)
     {

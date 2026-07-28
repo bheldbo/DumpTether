@@ -514,7 +514,7 @@ export function Sidebar({
             ) : temporarySessionIsActive ? (
               <span className="nav-count">{t('guestModeShort')}</span>
             ) : localDesktopSessionIsActive ? (
-              <span className="nav-count">{t('localDesktopModeShort')}</span>
+              <span className="nav-count local-nav-count">{t('localDesktopModeShort')}</span>
             ) : null}
           </button>
           <button className="refresh-button" onClick={onRefresh} type="button">

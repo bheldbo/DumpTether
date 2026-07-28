@@ -74,7 +74,6 @@ import { BoardLoadingState } from './BoardLoadingState';
 import { DraftTaskCard } from './DraftTaskCard';
 import { FloatingBoardActions } from './FloatingBoardActions';
 import { WorkspaceHeader } from './WorkspaceHeader';
-import { BoardSyncStatus } from '../sync/BoardSyncStatus';
 import { CloudSyncDialog } from '../sync/CloudSyncDialog';
 
 interface DraftTaskTarget {
@@ -520,26 +519,15 @@ export function TaskBoard({
           workspace={workspace}
           canManageWorkspaceMetadata={canManageWorkspaceMetadata}
           canManageSharing={canManageSharing}
+          canSyncWorkspace={
+            localDesktopSessionIsActive &&
+            hasWorkspace &&
+            !workspaceIsSystemAllTasks &&
+            currentUserOwnsWorkspace
+          }
+          onOpenCloudSync={() => openCloudSync(workspace?.id)}
+          syncRoot={syncRoot}
         />
-      ) : null}
-
-      {!focusModeIsEnabled &&
-      localDesktopSessionIsActive &&
-      hasWorkspace &&
-      !workspaceIsSystemAllTasks &&
-      currentUserOwnsWorkspace ? (
-        <div className="board-sync-strip">
-          <BoardSyncStatus syncRoot={syncRoot} t={t} />
-          <button
-            className="sync-board-button"
-            onClick={() => openCloudSync(workspace?.id)}
-            title={t('syncBoard')}
-            type="button"
-          >
-            <Icon name="cloud" />
-            <span>{t('syncBoard')}</span>
-          </button>
-        </div>
       ) : null}
 
       {!focusModeIsEnabled ? (

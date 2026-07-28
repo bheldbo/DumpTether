@@ -225,6 +225,10 @@ function App() {
     shownAt: number;
   } | null>(null);
   const liveConnectionToastAtRef = useRef(0);
+  const cloudSyncFailureToastAtRef = useRef(0);
+  const cloudSyncInFlightRef = useRef<Set<string>>(new Set());
+  const cloudSyncRetryAfterRef = useRef<Map<string, number>>(new Map());
+  const syncRootsRef = useRef<SyncRootResponse[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     getInitialWorkspaceId,
   );
@@ -244,14 +248,56 @@ function App() {
   );
   const accountNotificationCount = incomingWorkspaceInvitations.length + incomingTaskShares.length;
 
+  const applyTaskUpdate = useCallback((updated: TaskItemDetailResponse) => {
+    setSelectedTask((currentTask) =>
+      currentTask?.id === updated.id ? updated : currentTask,
+    );
+    setTaskItems((currentItems) =>
+      currentItems.map((taskItem) =>
+        taskItem.id === updated.id ? updated : taskItem,
+      ),
+    );
+  }, []);
+
+  useEffect(() => {
+    syncRootsRef.current = syncRoots;
+  }, [syncRoots]);
+
   const currentView = useMemo(
     () => savedViews.find((view) => view.id === currentViewId) ?? null,
     [currentViewId, savedViews],
+  );
+  const cleanupWorkspaces = useMemo(
+    () => workspaces.filter((candidate) =>
+      !isSystemAllTasksWorkspace(candidate) &&
+      currentUser?.workspaces.some((membership) =>
+        membership.id === candidate.id &&
+        membership.accessKind !== 'TaskShare' &&
+        isOwnerRole(membership.role)) === true),
+    [currentUser, workspaces],
+  );
+  const cloudLinkedWorkspaceIds = useMemo(
+    () => syncRoots
+      .filter((root) => Boolean(root.remoteWorkspaceId))
+      .map((root) => root.localWorkspaceId),
+    [syncRoots],
   );
   const selectedTaskRequestWorkspaceId = selectedTaskWorkspaceId ??
     selectedTask?.workspaceId ??
     taskItems.find((taskItem) => taskItem.id === selectedTaskId)?.workspaceId ??
     selectedWorkspaceId;
+  const cloudSyncSelectionRef = useRef({
+    taskId: selectedTaskId,
+    taskWorkspaceId: selectedTaskRequestWorkspaceId,
+    viewId: currentViewId,
+    workspaceId: selectedWorkspaceId,
+  });
+  cloudSyncSelectionRef.current = {
+    taskId: selectedTaskId,
+    taskWorkspaceId: selectedTaskRequestWorkspaceId,
+    viewId: currentViewId,
+    workspaceId: selectedWorkspaceId,
+  };
 
   const showToast = useCallback((message: string, tone: ToastMessage['tone'] = 'info') => {
     const now = Date.now();
@@ -732,6 +778,136 @@ function App() {
     temporarySessionIsActive,
   ]);
 
+  const performBackgroundCloudSync = useCallback(async (workspaceId: string) => {
+    if (
+      !localDesktopSessionIsActive ||
+      !cloudSyncAccount?.isConnected ||
+      cloudSyncInFlightRef.current.has(workspaceId) ||
+      document.visibilityState === 'hidden' ||
+      !navigator.onLine ||
+      (cloudSyncRetryAfterRef.current.get(workspaceId) ?? 0) > Date.now()
+    ) {
+      return;
+    }
+
+    const root = syncRootsRef.current.find(
+      (candidate) =>
+        candidate.localWorkspaceId === workspaceId &&
+        Boolean(candidate.remoteWorkspaceId),
+    );
+    if (!root) {
+      return;
+    }
+
+    cloudSyncInFlightRef.current.add(workspaceId);
+    try {
+      const response = await syncWorkspaceWithCloud(workspaceId, {
+        pushLocalChanges: true,
+        pullRemoteChanges: true,
+      });
+      setSyncRoots((currentRoots) => {
+        const nextRoots = currentRoots.some((candidate) => candidate.id === response.root.id)
+          ? currentRoots.map((candidate) =>
+              candidate.id === response.root.id ? response.root : candidate)
+          : [...currentRoots, response.root];
+        syncRootsRef.current = nextRoots;
+        return nextRoots;
+      });
+      cloudSyncRetryAfterRef.current.delete(workspaceId);
+
+      try {
+        setCloudSyncAccount(await getCloudSyncAccount());
+      } catch {
+        // Sync succeeded; stale account presentation is less harmful than failing the sync.
+      }
+
+      const currentSelection = cloudSyncSelectionRef.current;
+      if (
+        currentSelection.workspaceId === workspaceId &&
+        (response.pulled > 0 ||
+          response.updatedLocal > 0 ||
+          response.conflicts > 0 ||
+          response.failed > 0)
+      ) {
+        await loadWorkspace(currentSelection.viewId, workspaceId, {
+          force: true,
+          silent: true,
+        });
+      }
+
+      const taskSelection = cloudSyncSelectionRef.current;
+      if (
+        taskSelection.taskId &&
+        taskSelection.taskWorkspaceId === workspaceId &&
+        response.updatedLocal > 0
+      ) {
+        const taskId = taskSelection.taskId;
+        const refreshedTask = await getTaskItem(taskId, { workspaceId });
+        const latestSelection = cloudSyncSelectionRef.current;
+        if (
+          latestSelection.taskId === taskId &&
+          latestSelection.taskWorkspaceId === workspaceId
+        ) {
+          setSelectedTask(refreshedTask);
+        }
+      }
+    } catch (error) {
+      const now = Date.now();
+      cloudSyncRetryAfterRef.current.set(workspaceId, now + 30000);
+      if (now - cloudSyncFailureToastAtRef.current > 60000) {
+        cloudSyncFailureToastAtRef.current = now;
+        showToast(`${t('cloudSyncPaused')}: ${getErrorMessage(error)}`, 'warning');
+      }
+    } finally {
+      cloudSyncInFlightRef.current.delete(workspaceId);
+    }
+  }, [
+    cloudSyncAccount?.isConnected,
+    loadWorkspace,
+    localDesktopSessionIsActive,
+    showToast,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (!localDesktopSessionIsActive || !cloudSyncAccount?.isConnected) {
+      return undefined;
+    }
+
+    let intervalTick = 0;
+    const syncLinkedWorkspaces = (includeAll: boolean) => {
+      if (document.visibilityState === 'hidden' || !navigator.onLine) {
+        return;
+      }
+
+      const activeWorkspaceId = cloudSyncSelectionRef.current.workspaceId;
+      syncRootsRef.current
+        .filter((root) =>
+          Boolean(root.remoteWorkspaceId) &&
+          (includeAll || root.localWorkspaceId === activeWorkspaceId))
+        .forEach((root) => void performBackgroundCloudSync(root.localWorkspaceId));
+    };
+    const resumeSync = () => syncLinkedWorkspaces(false);
+    const initialTimer = window.setTimeout(() => syncLinkedWorkspaces(true), 1500);
+    const interval = window.setInterval(() => {
+      intervalTick += 1;
+      syncLinkedWorkspaces(intervalTick % 4 === 0);
+    }, 15000);
+    window.addEventListener('online', resumeSync);
+    document.addEventListener('visibilitychange', resumeSync);
+
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(interval);
+      window.removeEventListener('online', resumeSync);
+      document.removeEventListener('visibilitychange', resumeSync);
+    };
+  }, [
+    cloudSyncAccount?.isConnected,
+    localDesktopSessionIsActive,
+    performBackgroundCloudSync,
+  ]);
+
   useEffect(() => {
     if (mode !== 'tasks' || !selectedTaskId) {
       setSelectedTask(null);
@@ -833,6 +1009,7 @@ function App() {
       setCurrentWorkspaceId(null);
       const created = await createWorkspace({ name: name.trim() });
       setWorkspaces((currentWorkspaces) => [...currentWorkspaces, created]);
+      await loadAuth();
       handleSelectWorkspace(created.id);
     } catch (error) {
       const message = getErrorMessage(error);
@@ -1128,6 +1305,10 @@ function App() {
   };
 
   const handleLogout = async () => {
+    if (localDesktopSessionIsActive) {
+      return;
+    }
+
     try {
       await logoutUser();
       setCurrentUser(null);
@@ -1163,6 +1344,11 @@ function App() {
   };
 
   const handleRevokeAuthSession = async (sessionId: string) => {
+    const session = authSessions.find((candidate) => candidate.id === sessionId);
+    if (session?.sessionType === 'DesktopLocal' || session?.sessionType === 2) {
+      return;
+    }
+
     try {
       await revokeAuthSession(sessionId);
       const revokedCurrentSession = authSessions.some((session) =>
@@ -1269,6 +1455,7 @@ function App() {
           [currentViewId]: (counts[currentViewId] ?? 0) + 1,
         }));
       }
+      void performBackgroundCloudSync(targetWorkspaceId);
       return created;
     } catch (error) {
       const message = getErrorMessage(error);
@@ -1310,7 +1497,18 @@ function App() {
   ): Promise<SyncWorkspaceWithCloudResponse> => {
     try {
       const response = await syncWorkspaceWithCloud(workspaceId, requestBody);
-      await loadWorkspace(currentViewId, workspaceId, { force: true });
+      setSyncRoots((currentRoots) => {
+        const nextRoots = currentRoots.some((candidate) => candidate.id === response.root.id)
+          ? currentRoots.map((candidate) =>
+              candidate.id === response.root.id ? response.root : candidate)
+          : [...currentRoots, response.root];
+        syncRootsRef.current = nextRoots;
+        return nextRoots;
+      });
+      await loadWorkspace(currentViewId, workspaceId, {
+        force: true,
+        silent: true,
+      });
       const hasProblems = response.conflicts > 0 || response.failed > 0;
       showToast(
         hasProblems
@@ -1362,8 +1560,8 @@ function App() {
         requestBody,
         { workspaceId: selectedTask.workspaceId },
       );
-      setSelectedTask(updated);
-      await loadWorkspace(currentViewId);
+      applyTaskUpdate(updated);
+      void performBackgroundCloudSync(updated.workspaceId);
     } catch (error) {
       const message = getErrorMessage(error);
       setErrorMessage(message);
@@ -1511,12 +1709,8 @@ function App() {
       }, {
         workspaceId: selectedTask.workspaceId,
       });
-      setSelectedTask(updated);
-      setTaskItems((currentItems) =>
-        currentItems.map((taskItem) =>
-          taskItem.id === updated.id ? updated : taskItem,
-        ),
-      );
+      applyTaskUpdate(updated);
+      void performBackgroundCloudSync(updated.workspaceId);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -1538,12 +1732,8 @@ function App() {
       }, {
         workspaceId: selectedTask.workspaceId,
       });
-      setSelectedTask(updated);
-      setTaskItems((currentItems) =>
-        currentItems.map((taskItem) =>
-          taskItem.id === updated.id ? updated : taskItem,
-        ),
-      );
+      applyTaskUpdate(updated);
+      void performBackgroundCloudSync(updated.workspaceId);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -1560,12 +1750,8 @@ function App() {
         entryId,
         { workspaceId: selectedTask.workspaceId },
       );
-      setSelectedTask(updated);
-      setTaskItems((currentItems) =>
-        currentItems.map((taskItem) =>
-          taskItem.id === updated.id ? updated : taskItem,
-        ),
-      );
+      applyTaskUpdate(updated);
+      void performBackgroundCloudSync(updated.workspaceId);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -1718,6 +1904,45 @@ function App() {
     } catch (error) {
       const message = getErrorMessage(error);
       setErrorMessage(message);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleDeleteOldArchivedTasks = async (
+    workspaceId: string,
+    olderThanDays: number,
+  ) => {
+    try {
+      const archivedTasks = await listTaskItems(
+        { archive: 'Archived' },
+        { workspaceId },
+      );
+      const cutoff = Date.now() - Math.max(0, olderThanDays) * 24 * 60 * 60 * 1000;
+      const taskItemIds = archivedTasks
+        .filter((taskItem) =>
+          taskItem.archivedAt &&
+          new Date(taskItem.archivedAt).getTime() <= cutoff)
+        .map((taskItem) => taskItem.id);
+
+      if (taskItemIds.length === 0) {
+        showToast(t('noArchivedTasksToDelete'), 'info');
+        return 0;
+      }
+
+      await deleteTaskItemsPermanently(
+        { taskItemIds },
+        { workspaceId },
+      );
+
+      if (selectedWorkspaceId === workspaceId) {
+        await loadWorkspace(currentViewId, workspaceId, { force: true });
+      }
+
+      showToast(t('tasksDeletedPermanently'));
+      return taskItemIds.length;
+    } catch (error) {
+      const message = getErrorMessage(error);
       showToast(message, 'error');
       throw error;
     }
@@ -2080,21 +2305,15 @@ function App() {
       {settingsIsOpen ? (
         <SettingsPanel
           archiveResolutions={archiveResolutions}
-          cleanupWorkspace={
-            workspace &&
-            !isSystemAllTasksWorkspace(workspace) &&
-            currentUser?.workspaces.some((candidate) =>
-              candidate.id === workspace.id &&
-              candidate.accessKind !== 'TaskShare' &&
-              isOwnerRole(candidate.role)) === true
-              ? workspace
-              : null
-          }
+          cleanupCloudLinkedWorkspaceIds={cloudLinkedWorkspaceIds}
+          cleanupPreferredWorkspaceId={workspace?.id ?? null}
+          cleanupWorkspaces={cleanupWorkspaces}
           configuredStatuses={configuredStatuses}
           language={language}
           onChangeLanguage={setLanguage}
           onCreateArchiveResolution={handleCreateArchiveResolution}
           onDeleteArchiveResolution={handleDeleteArchiveResolution}
+          onDeleteOldArchivedTasks={handleDeleteOldArchivedTasks}
           onDeleteWorkspace={handleDeleteWorkspace}
           onSaveStatusOptions={handleSaveStatusOptions}
           onUpdateArchiveResolution={handleUpdateArchiveResolution}

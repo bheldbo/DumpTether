@@ -144,6 +144,7 @@ internal static class DumpTetherApiSetup
         }));
 
         app.UseCors(runtimeSetup.CorsPolicyName);
+        app.UseMiddleware<DesktopBootstrapTokenMiddleware>();
         app.UseRateLimiter();
         app.UseMiddleware<SessionCsrfProtectionMiddleware>();
         app.UseAuthentication();

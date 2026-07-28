@@ -7,8 +7,9 @@ import {
   ShareDialog,
   WorkspaceMemberChip,
 } from '../sharing/ShareDialog';
+import { BoardSyncStatus } from '../sync/BoardSyncStatus';
+import { SortMenu } from './SortMenu';
 import {
-  formatSortField,
   formatWorkspaceName,
   isOwnerRole,
 } from '../../appUtils';
@@ -21,6 +22,7 @@ import type {
   CreateWorkspaceInvitationRequest,
   ProjectResponse,
   SavedViewSort,
+  SyncRootResponse,
   UpdateProjectRequest,
   UpdateWorkspaceMemberRequest,
   UpdateWorkspaceRequest,
@@ -33,6 +35,7 @@ import type {
 interface WorkspaceHeaderProps {
   canManageWorkspaceMetadata: boolean;
   canManageSharing: boolean;
+  canSyncWorkspace: boolean;
   colorOptions: string[];
   invitations: WorkspaceInvitationResponse[];
   members: WorkspaceMemberResponse[];
@@ -45,6 +48,7 @@ interface WorkspaceHeaderProps {
   onRemoveWorkspaceMember: (userId: string) => Promise<void>;
   onRevokeWorkspaceInvitation: (id: string) => Promise<void>;
   onSelectProjectFilter: (projectId: string) => void;
+  onOpenCloudSync: () => void;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
   onUpdateWorkspaceMemberRole: (
@@ -54,6 +58,7 @@ interface WorkspaceHeaderProps {
   projects: ProjectResponse[];
   selectedProjectIds: string[];
   sort: SavedViewSort;
+  syncRoot: SyncRootResponse | null;
   t: Translate;
   workspace: WorkspaceResponse | null;
 }
@@ -61,6 +66,7 @@ interface WorkspaceHeaderProps {
 export function WorkspaceHeader({
   canManageWorkspaceMetadata,
   canManageSharing,
+  canSyncWorkspace,
   colorOptions,
   invitations,
   members,
@@ -69,6 +75,7 @@ export function WorkspaceHeader({
   onCreateWorkspaceInvitation,
   onDeleteProject,
   onRemoveWorkspaceMember,
+  onOpenCloudSync,
   onRevokeWorkspaceInvitation,
   onSelectProjectFilter,
   onUpdateProject,
@@ -77,10 +84,11 @@ export function WorkspaceHeader({
   projects,
   selectedProjectIds,
   sort,
+  syncRoot,
   t,
   workspace,
 }: WorkspaceHeaderProps) {
-  const [workspaceIsEditing, setWorkspaceIsEditing] = useState(false);
+  const [workspaceNameIsEditing, setWorkspaceNameIsEditing] = useState(false);
   const [workspaceName, setWorkspaceName] = useState(workspace?.name ?? '');
   const [workspaceColor, setWorkspaceColor] = useState(workspace?.color ?? '');
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
@@ -101,12 +109,12 @@ export function WorkspaceHeader({
   useEffect(() => {
     setWorkspaceName(workspace?.name ?? '');
     setWorkspaceColor(workspace?.color ?? '');
-    setWorkspaceIsEditing(false);
+    setWorkspaceNameIsEditing(false);
   }, [workspace]);
 
   useEffect(() => {
     if (!canManageWorkspaceMetadata) {
-      setWorkspaceIsEditing(false);
+      setWorkspaceNameIsEditing(false);
       setEditingProjectId(null);
       setNewProjectIsOpen(false);
       setPendingDeleteProject(null);
@@ -128,24 +136,27 @@ export function WorkspaceHeader({
   };
 
   const cancelWorkspaceEditing = () => {
-    setWorkspaceIsEditing(false);
+    setWorkspaceNameIsEditing(false);
     setWorkspaceName(workspace?.name ?? '');
-    setWorkspaceColor(workspace?.color ?? '');
   };
 
-  const saveWorkspace = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const saveWorkspaceName = async () => {
     const trimmedName = workspaceName.trim();
     if (!trimmedName) {
+      cancelWorkspaceEditing();
+      return;
+    }
+
+    if (trimmedName === workspace?.name) {
+      setWorkspaceNameIsEditing(false);
       return;
     }
 
     await onUpdateWorkspace({
       name: trimmedName,
-      color: workspaceColor.trim() || null,
+      color: workspace?.color ?? null,
     });
-    setWorkspaceIsEditing(false);
+    setWorkspaceNameIsEditing(false);
   };
 
   const saveProject = async (event: FormEvent<HTMLFormElement>) => {
@@ -190,13 +201,19 @@ export function WorkspaceHeader({
       >
         <div className="workspace-title-block">
           <div className="workspace-title-row">
-            {workspaceIsEditing ? (
+            {workspaceNameIsEditing ? (
               <form
-                className="inline-heading-editor"
-                onSubmit={(event) => void saveWorkspace(event)}
+                className="inline-heading-editor inline-heading-editor-name"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveWorkspaceName();
+                }}
               >
                 <input
                   aria-label={t('editBoard')}
+                  autoFocus
+                  className="inline-heading-input"
+                  onBlur={() => void saveWorkspaceName()}
                   onChange={(event) => setWorkspaceName(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Escape') {
@@ -207,31 +224,13 @@ export function WorkspaceHeader({
                   type="text"
                   value={workspaceName}
                 />
-                <ColorPickerPopover
-                  color={workspaceColor}
-                  colorOptions={colorOptions}
-                  label={t('boardColor')}
-                  onChange={setWorkspaceColor}
-                  t={t}
-                />
-                <button className="icon-button" title={t('saved')} type="submit">
-                  <Icon name="check" />
-                </button>
-                <button
-                  className="icon-button"
-                  onClick={cancelWorkspaceEditing}
-                  title={t('cancel')}
-                  type="button"
-                >
-                  <Icon name="close" />
-                </button>
               </form>
             ) : (
               <>
                 {canManageWorkspaceMetadata ? (
                   <button
                     className="heading-edit-trigger"
-                    onClick={() => setWorkspaceIsEditing(true)}
+                    onClick={() => setWorkspaceNameIsEditing(true)}
                     title={t('editBoard')}
                     type="button"
                   >
@@ -244,19 +243,20 @@ export function WorkspaceHeader({
                     {workspace ? formatWorkspaceName(workspace.name, t) : 'DumpTether'}
                   </h1>
                 )}
-                {canManageWorkspaceMetadata ? (
-                  <button
-                    className="icon-button header-edit-button"
-                    onClick={() => setWorkspaceIsEditing(true)}
-                    title={t('editBoard')}
-                    type="button"
-                  >
-                    <span
-                      className="header-color-dot"
-                      style={{ backgroundColor: workspace?.color ?? '#ffffff' }}
-                    />
-                    <Icon name="edit" />
-                  </button>
+                {canManageWorkspaceMetadata && workspace ? (
+                  <ColorPickerPopover
+                    color={workspaceColor}
+                    colorOptions={colorOptions}
+                    label={t('boardColor')}
+                    onChange={async (color) => {
+                      setWorkspaceColor(color);
+                      await onUpdateWorkspace({
+                        name: workspace.name,
+                        color: color || null,
+                      });
+                    }}
+                    t={t}
+                  />
                 ) : null}
               </>
             )}
@@ -483,29 +483,21 @@ export function WorkspaceHeader({
           <p>{t('wallHelp')}</p>
         </div>
         <div className="board-actions">
-          <label className="sort-pill">
-            <span>{t('sortedBy')}</span>
-            <select
-              aria-label={t('sortedBy')}
-              onChange={(event) => {
-                const [field, direction] = event.target.value.split(':');
-                onChangeSort({
-                  field: field as NonNullable<SavedViewSort['field']>,
-                  direction: direction as NonNullable<SavedViewSort['direction']>,
-                });
-              }}
-              value={`${sort.field ?? 'lastTouchedAt'}:${sort.direction ?? 'desc'}`}
-            >
-              {(['lastTouchedAt', 'createdAt', 'followUpAt', 'title', 'status'] as const)
-                .flatMap((field) => (['desc', 'asc'] as const).map((direction) => (
-                  <option key={`${field}:${direction}`} value={`${field}:${direction}`}>
-                    {formatSortField(field, t)} - {
-                      direction === 'asc' ? t('sortAscending') : t('sortDescending')
-                    }
-                  </option>
-                )))}
-            </select>
-          </label>
+          <SortMenu onChange={onChangeSort} sort={sort} t={t} />
+          {canSyncWorkspace ? (
+            <div className="workspace-sync-actions">
+              <BoardSyncStatus syncRoot={syncRoot} t={t} />
+              <button
+                className="sync-board-button"
+                onClick={onOpenCloudSync}
+                title={t('syncBoard')}
+                type="button"
+              >
+                <Icon name="cloud" />
+                <span>{t('syncBoard')}</span>
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
       {pendingDeleteProject ? (

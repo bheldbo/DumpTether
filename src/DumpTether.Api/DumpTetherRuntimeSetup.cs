@@ -12,9 +12,10 @@ internal static class DumpTetherRuntimeSetupReader
 {
     public static DumpTetherRuntimeSetup Read(
         IConfiguration configuration,
-        bool isDevelopment)
+        bool isDevelopment,
+        bool isDesktop)
     {
-        RuntimeConfigurationValidator.Validate(configuration, isDevelopment);
+        RuntimeConfigurationValidator.Validate(configuration, isDevelopment, isDesktop);
 
         return new DumpTetherRuntimeSetup(
             DumpTetherRuntimeSetup.DefaultCorsPolicyName,

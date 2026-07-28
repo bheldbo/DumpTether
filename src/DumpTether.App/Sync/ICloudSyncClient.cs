@@ -7,6 +7,10 @@ public interface ICloudSyncClient
         CloudSyncLoginRequest request,
         CancellationToken cancellationToken);
 
+    Task LogoutAsync(
+        CloudSyncConnection connection,
+        CancellationToken cancellationToken);
+
     Task<CloudSyncUserResponse> GetCurrentUserAsync(
         CloudSyncConnection connection,
         CancellationToken cancellationToken);

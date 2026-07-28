@@ -5,11 +5,19 @@ namespace DumpTether.Api;
 
 public static class RuntimeConfigurationValidator
 {
-    public static void Validate(IConfiguration configuration, bool isDevelopment)
+    public static void Validate(
+        IConfiguration configuration,
+        bool isDevelopment,
+        bool isDesktop = false)
     {
         var missingKeys = new List<string>();
 
         CorsConfiguration.ValidateAllowedOrigins(configuration);
+        if (isDesktop)
+        {
+            ValidateDesktopRuntime(configuration);
+        }
+
         var emailProvider = GetEmailProvider(configuration);
 
         if (GetBoolean(configuration, "EmailConfirmation:Enabled"))
@@ -224,4 +232,76 @@ public static class RuntimeConfigurationValidator
     private static bool HasAnyValue(IConfigurationSection section) =>
         section.GetChildren().Any(child => !string.IsNullOrWhiteSpace(child.Value));
 
+    private static void ValidateDesktopRuntime(IConfiguration configuration)
+    {
+        RequireValue(configuration, "Database:Provider", "Sqlite");
+        RequireBoolean(configuration, "Auth:RequireAuthentication", expected: true);
+        RequireBoolean(configuration, "Auth:AllowGuestSessions", expected: false);
+        RequireBoolean(configuration, "Auth:EnableDevelopmentLogin", expected: false);
+        RequireBoolean(configuration, "Auth:EnableLocalDesktopLogin", expected: true);
+        RequireValue(configuration, "Auth:SignupMode", "Closed");
+        RequireBoolean(configuration, "EmailConfirmation:Enabled", expected: false);
+        RequireBoolean(configuration, "Mfa:Email:Enabled", expected: false);
+        RequireBoolean(configuration, "OAuth:Microsoft:Enabled", expected: false);
+
+        var urls = configuration["Urls"];
+        if (string.IsNullOrWhiteSpace(urls))
+        {
+            throw new InvalidOperationException(
+                "Desktop runtime requires a loopback-only 'Urls' setting.");
+        }
+
+        foreach (var value in urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+                uri.Scheme != Uri.UriSchemeHttp ||
+                !uri.IsLoopback)
+            {
+                throw new InvalidOperationException(
+                    "Desktop runtime 'Urls' must contain only HTTP loopback addresses.");
+            }
+        }
+
+        var allowedOrigins = CorsConfiguration.GetAllowedOrigins(configuration);
+        if (allowedOrigins.Length != 1 ||
+            (!allowedOrigins[0].Equals("http://tauri.localhost", StringComparison.OrdinalIgnoreCase) &&
+             !allowedOrigins[0].Equals("http://localhost:5173", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                "Desktop runtime CORS must allow exactly the packaged Tauri origin " +
+                "or the local Tauri development origin.");
+        }
+
+        var bootstrapToken = configuration["Desktop:BootstrapToken"];
+        if (!string.IsNullOrWhiteSpace(bootstrapToken) &&
+            (bootstrapToken.Length != 64 || bootstrapToken.Any(character => !Uri.IsHexDigit(character))))
+        {
+            throw new InvalidOperationException(
+                "Desktop runtime bootstrap token must contain exactly 64 hexadecimal characters.");
+        }
+    }
+
+    private static void RequireValue(
+        IConfiguration configuration,
+        string key,
+        string expected)
+    {
+        if (!string.Equals(configuration[key], expected, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Desktop runtime setting '{key}' must be '{expected}'.");
+        }
+    }
+
+    private static void RequireBoolean(
+        IConfiguration configuration,
+        string key,
+        bool expected)
+    {
+        if (GetBoolean(configuration, key) != expected)
+        {
+            throw new InvalidOperationException(
+                $"Desktop runtime setting '{key}' must be '{expected.ToString().ToLowerInvariant()}'.");
+        }
+    }
 }

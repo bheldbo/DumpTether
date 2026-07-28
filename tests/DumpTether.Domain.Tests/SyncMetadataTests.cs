@@ -88,4 +88,45 @@ public sealed class SyncMetadataTests
         Assert.Equal(attemptedAt, mapping.UpdatedAt);
         Assert.Null(mapping.LastSyncedAt);
     }
+
+    [Theory]
+    [InlineData("http://localhost:55868", "http://localhost:55868")]
+    [InlineData("http://127.0.0.1:55868/", "http://127.0.0.1:55868")]
+    [InlineData("https://tasks.example.com/api/", "https://tasks.example.com/api")]
+    public void CloudApiBaseUrl_AllowsHttpsAndLoopbackDevelopment(
+        string value,
+        string expected)
+    {
+        Assert.Equal(expected, CloudSyncAccount.NormalizeCloudApiBaseUrl(value));
+    }
+
+    [Theory]
+    [InlineData("http://tasks.example.com")]
+    [InlineData("http://192.168.1.20:55868")]
+    public void CloudApiBaseUrl_RejectsInsecureRemoteServer(string value)
+    {
+        Assert.Throws<ArgumentException>(
+            () => CloudSyncAccount.NormalizeCloudApiBaseUrl(value));
+    }
+
+    [Fact]
+    public void CloudAccount_DisconnectErasesProtectedSessionToken()
+    {
+        var now = new DateTimeOffset(2026, 7, 1, 14, 30, 0, TimeSpan.Zero);
+        var account = CloudSyncAccount.Create(
+            Guid.NewGuid(),
+            "https://tasks.example.com",
+            Guid.NewGuid(),
+            "user@example.com",
+            "Test User",
+            "protected-session-token",
+            now.AddDays(30),
+            now);
+
+        account.Disconnect(now.AddMinutes(5));
+
+        Assert.Equal(string.Empty, account.ProtectedSessionToken);
+        Assert.Equal(now.AddMinutes(5), account.DisconnectedAt);
+        Assert.False(account.HasUsableSession(now.AddMinutes(5)));
+    }
 }

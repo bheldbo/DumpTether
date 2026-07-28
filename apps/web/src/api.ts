@@ -62,7 +62,22 @@ import type {
   UpdateWorkspaceMemberRequest,
 } from './types';
 
-const desktopLocalApiBaseUrl = 'http://127.0.0.1:55869';
+interface DesktopRuntimeConfiguration {
+  apiBaseUrl: string;
+  bootstrapToken: string;
+}
+
+declare global {
+  interface Window {
+    __DUMPTETHER_DESKTOP_RUNTIME__?: DesktopRuntimeConfiguration;
+  }
+}
+
+const desktopRuntimeConfiguration = typeof window === 'undefined'
+  ? undefined
+  : window.__DUMPTETHER_DESKTOP_RUNTIME__;
+const desktopLocalApiBaseUrl =
+  desktopRuntimeConfiguration?.apiBaseUrl ?? 'http://127.0.0.1:55869';
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
 const apiBaseUrl = configuredBaseUrl ?? getDefaultApiBaseUrl();
 const sessionTokenStorageKey = 'dumptether.sessionToken';
@@ -95,6 +110,13 @@ export function getCookieAuthCsrfHeader(): Record<string, string> {
   return csrfToken ? { [csrfHeaderName]: csrfToken } : {};
 }
 
+export function getDesktopBootstrapHeaders(): Record<string, string> {
+  const bootstrapToken = desktopRuntimeConfiguration?.bootstrapToken;
+  return bootstrapToken
+    ? { 'X-DumpTether-Desktop-Bootstrap': bootstrapToken }
+    : {};
+}
+
 function getDefaultApiBaseUrl() {
   if (typeof window === 'undefined') {
     return '';
@@ -113,7 +135,11 @@ export function isDesktopRuntime() {
     __TAURI__?: unknown;
   };
 
-  return Boolean(desktopWindow.__TAURI_INTERNALS__ || desktopWindow.__TAURI__) ||
+  return Boolean(
+    desktopRuntimeConfiguration ||
+    desktopWindow.__TAURI_INTERNALS__ ||
+    desktopWindow.__TAURI__,
+  ) ||
     window.location.protocol === 'tauri:' ||
     window.location.protocol === 'file:' ||
     window.location.hostname === 'tauri.localhost';
@@ -167,6 +193,7 @@ async function request<T>(
     signal: init?.signal ?? options.signal,
     headers: {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...getDesktopBootstrapHeaders(),
       ...(currentSessionToken ? { Authorization: `Bearer ${currentSessionToken}` } : {}),
       ...(csrfToken ? { [csrfHeaderName]: csrfToken } : {}),
       ...(requestWorkspaceId ? { 'X-DumpTether-Workspace-Id': requestWorkspaceId } : {}),
@@ -431,11 +458,12 @@ export function reopenTaskItems(
 
 export function deleteTaskItemsPermanently(
   requestBody: DeleteTaskItemsRequest,
+  options: ApiRequestOptions = {},
 ): Promise<TaskItemBatchResponse> {
   return request<TaskItemBatchResponse>('/api/tasks/permanent-delete', {
     method: 'POST',
     body: JSON.stringify(requestBody),
-  });
+  }, options);
 }
 
 export function listArchiveResolutions(

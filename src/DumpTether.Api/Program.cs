@@ -8,7 +8,8 @@ builder.Logging.AddDebug();
 
 var runtimeSetup = DumpTetherRuntimeSetupReader.Read(
     builder.Configuration,
-    builder.Environment.IsDevelopment());
+    builder.Environment.IsDevelopment(),
+    builder.Environment.IsEnvironment("Desktop"));
 
 builder.Services.AddDumpTetherApiRuntime(
     builder.Configuration,

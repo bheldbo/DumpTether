@@ -120,6 +120,39 @@ public sealed class AuthController : ControllerBase
         }
     }
 
+    [EnableRateLimiting("auth")]
+    [HttpPost("desktop-cloud-login")]
+    public async Task<ActionResult<LoginUserResponse>> DesktopCloudLogin(
+        LoginUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _authService.DesktopCloudLoginAsync(
+                request,
+                new AuthRequestMetadata(
+                    Request.Headers.UserAgent.FirstOrDefault(),
+                    HttpContext.Connection.RemoteIpAddress?.ToString()),
+                cancellationToken);
+
+            return Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException)
+        {
+            return Unauthorized(new { error = "Invalid email or password." });
+        }
+        catch (EmailConfirmationRequiredException)
+        {
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                new { error = "Email confirmation is required." });
+        }
+    }
+
     [HttpGet("confirm-email")]
     public async Task<IActionResult> ConfirmEmail(
         [FromQuery] string? token,
