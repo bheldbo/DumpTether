@@ -12,7 +12,42 @@
           "name": "binaries/dumptether-api",
           "sidecar": true,
           "args": [
-            "--environment=Desktop"
+            "--environment",
+            "Desktop",
+            "--urls",
+            {
+              "validator": "http://127\\.0\\.0\\.1:[1-9][0-9]{3,4}"
+            },
+            "--Desktop:BootstrapToken",
+            {
+              "validator": "[0-9a-f]{64}"
+            },
+            "--Database:Provider",
+            "Sqlite",
+            "--Database:ApplyMigrationsOnStartup",
+            "true",
+            "--Auth:RequireAuthentication",
+            "true",
+            "--Auth:AllowGuestSessions",
+            "false",
+            "--Auth:SignupMode",
+            "Closed",
+            "--Auth:EnableDevelopmentLogin",
+            "false",
+            "--Auth:EnableLocalDesktopLogin",
+            "true",
+            "--EmailConfirmation:Enabled",
+            "false",
+            "--Email:Provider",
+            "None",
+            "--Mfa:Email:Enabled",
+            "false",
+            "--OAuth:Microsoft:Enabled",
+            "false",
+            "--Cors:AllowedOrigins:0",
+            {
+              "validator": "http://(?:tauri\\.localhost|localhost:5173)"
+            }
           ]
         }
       ]

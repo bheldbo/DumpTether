@@ -11,6 +11,11 @@ public interface IAuthService
         AuthRequestMetadata metadata,
         CancellationToken cancellationToken);
 
+    Task<LoginUserResponse> DesktopCloudLoginAsync(
+        LoginUserRequest request,
+        AuthRequestMetadata metadata,
+        CancellationToken cancellationToken);
+
     Task<LoginUserResponse> DevelopmentLoginAsync(
         AuthRequestMetadata metadata,
         CancellationToken cancellationToken);

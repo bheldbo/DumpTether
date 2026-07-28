@@ -157,7 +157,9 @@ export function AuthPanel({
       <section className={wrapperClassName} aria-label={t('account')}>
         <div className="auth-heading">
           <p className="detail-kicker">{t('account')}</p>
-          <h2>{displayName}</h2>
+          <h2 className={localDesktopSessionIsActive ? 'local-mode-chip' : undefined}>
+            {displayName}
+          </h2>
           {!localDesktopSessionIsActive ? (
             <p>{t('signedInAs')}: {currentUser.user.email}</p>
           ) : null}
@@ -397,6 +399,13 @@ export function AccountPanel({
   temporarySessionIsActive: boolean;
   t: Translate;
 }) {
+  const revocableSessions = authSessions.filter(
+    (session) =>
+      !session.revokedAt &&
+      session.sessionType !== 'DesktopLocal' &&
+      session.sessionType !== 2,
+  );
+
   return (
     <ModalFrame onClose={onClose}>
       <section
@@ -440,16 +449,11 @@ export function AccountPanel({
           />
         ) : null}
 
-        {currentUser ? (
+        {currentUser && revocableSessions.length > 0 ? (
           <section className="settings-section">
             <h3>{t('sessions')}</h3>
-            {authSessions.filter((session) => !session.revokedAt).length === 0 ? (
-              <p>{t('noSessions')}</p>
-            ) : (
-              <div className="account-notification-list">
-                {authSessions
-                  .filter((session) => !session.revokedAt)
-                  .map((session) => (
+            <div className="account-notification-list">
+              {revocableSessions.map((session) => (
                     <article className="account-notification-card" key={session.id}>
                       <Icon name={sessionIcon(session.sessionType)} />
                       <div>
@@ -475,8 +479,7 @@ export function AccountPanel({
                       </button>
                     </article>
                   ))}
-              </div>
-            )}
+            </div>
           </section>
         ) : null}
 
@@ -635,12 +638,26 @@ function CloudAccountSection({
       <p>{t('cloudAccountHelp')}</p>
 
       {cloudSyncAccount?.isConnected ? (
-        <div className="account-notification-card">
+        <div className="account-notification-card cloud-account-card">
           <Icon name="cloud" />
           <div>
-            <strong>{cloudSyncAccount.cloudDisplayName || cloudSyncAccount.cloudEmail}</strong>
+            <strong>
+              {t('sessionDesktopCloud')} · {
+                cloudSyncAccount.cloudDisplayName || cloudSyncAccount.cloudEmail
+              }
+            </strong>
             <p>{cloudSyncAccount.cloudEmail}</p>
-            <small>{cloudSyncAccount.cloudApiBaseUrl}</small>
+            <div className="session-metadata">
+              <small>{cloudSyncAccount.cloudApiBaseUrl}</small>
+              <small>
+                {t('expires')}: {formatDateTime(cloudSyncAccount.sessionExpiresAt)}
+              </small>
+              {cloudSyncAccount.lastVerifiedAt ? (
+                <small>
+                  {t('lastVerified')}: {formatDateTime(cloudSyncAccount.lastVerifiedAt)}
+                </small>
+              ) : null}
+            </div>
           </div>
           <button
             className="secondary-action logout-button"
@@ -765,26 +782,35 @@ function sessionIcon(sessionType: AuthSessionListItemResponse['sessionType']): I
 
 export function SettingsPanel({
   archiveResolutions,
-  cleanupWorkspace,
+  cleanupCloudLinkedWorkspaceIds,
+  cleanupPreferredWorkspaceId,
+  cleanupWorkspaces,
   configuredStatuses,
   language,
   onChangeLanguage,
   onClose,
   onCreateArchiveResolution,
   onDeleteArchiveResolution,
+  onDeleteOldArchivedTasks,
   onDeleteWorkspace,
   onSaveStatusOptions,
   onUpdateArchiveResolution,
   t,
 }: {
   archiveResolutions: ArchiveResolutionResponse[];
-  cleanupWorkspace: WorkspaceResponse | null;
+  cleanupCloudLinkedWorkspaceIds: string[];
+  cleanupPreferredWorkspaceId: string | null;
+  cleanupWorkspaces: WorkspaceResponse[];
   configuredStatuses: string[];
   language: Language;
   onChangeLanguage: (language: Language) => void;
   onClose: () => void;
   onCreateArchiveResolution: (requestBody: CreateArchiveResolutionRequest) => Promise<void>;
   onDeleteArchiveResolution: (id: string) => Promise<void>;
+  onDeleteOldArchivedTasks: (
+    workspaceId: string,
+    olderThanDays: number,
+  ) => Promise<number>;
   onDeleteWorkspace: ((workspaceId: string) => Promise<void>) | null;
   onSaveStatusOptions: (statuses: string[]) => void;
   onUpdateArchiveResolution: (
@@ -799,6 +825,32 @@ export function SettingsPanel({
   const [archiveReasonRequiresNote, setArchiveReasonRequiresNote] = useState(false);
   const [workspacePendingDeletion, setWorkspacePendingDeletion] =
     useState<WorkspaceResponse | null>(null);
+  const [archiveCleanupMode, setArchiveCleanupMode] =
+    useState<'all' | 'older' | null>(null);
+  const [archiveCleanupDays, setArchiveCleanupDays] = useState(30);
+  const [cleanupWorkspaceId, setCleanupWorkspaceId] = useState(
+    cleanupWorkspaces.some((workspace) => workspace.id === cleanupPreferredWorkspaceId)
+      ? cleanupPreferredWorkspaceId ?? ''
+      : cleanupWorkspaces[0]?.id ?? '',
+  );
+  const cleanupWorkspace = cleanupWorkspaces.find(
+    (workspace) => workspace.id === cleanupWorkspaceId,
+  ) ?? null;
+  const cleanupIsCloudLinked = cleanupWorkspace
+    ? cleanupCloudLinkedWorkspaceIds.includes(cleanupWorkspace.id)
+    : false;
+
+  useEffect(() => {
+    if (cleanupWorkspaces.some((workspace) => workspace.id === cleanupWorkspaceId)) {
+      return;
+    }
+
+    setCleanupWorkspaceId(
+      cleanupWorkspaces.some((workspace) => workspace.id === cleanupPreferredWorkspaceId)
+        ? cleanupPreferredWorkspaceId ?? ''
+        : cleanupWorkspaces[0]?.id ?? '',
+    );
+  }, [cleanupPreferredWorkspaceId, cleanupWorkspaceId, cleanupWorkspaces]);
   const settingsSections: Array<{ key: SettingsSectionKey; label: string; icon: IconName }> = [
     { key: 'general', label: t('settingsGeneral'), icon: 'settings' },
     { key: 'statuses', label: t('statusOptions'), icon: 'status' },
@@ -963,11 +1015,43 @@ export function SettingsPanel({
               <div className="settings-section settings-section-flat">
                 <h3>{t('cleanup')}</h3>
                 <p>{t('cleanupFuture')}</p>
+                {cleanupWorkspaces.length > 0 ? (
+                  <label className="field-label">
+                    {t('cleanupBoard')}
+                    <select
+                      onChange={(event) => setCleanupWorkspaceId(event.target.value)}
+                      value={cleanupWorkspaceId}
+                    >
+                      {cleanupWorkspaces.map((cleanupCandidate) => (
+                        <option key={cleanupCandidate.id} value={cleanupCandidate.id}>
+                          {cleanupCandidate.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <p className="form-help">{t('cleanupNeedsOwnedBoard')}</p>
+                )}
+                {cleanupIsCloudLinked ? (
+                  <p className="form-help">{t('cleanupCloudLinkedUnavailable')}</p>
+                ) : null}
                 <div className="settings-action-grid">
-                  <button disabled type="button">{t('clearArchive')}</button>
-                  <button disabled type="button">{t('clearOldTasks')}</button>
-                  <button disabled type="button">{t('clearWorkspaceTasks')}</button>
-                  <button disabled type="button">{t('deleteProjectTag')}</button>
+                  <button
+                    disabled={!cleanupWorkspace || cleanupIsCloudLinked}
+                    onClick={() => setArchiveCleanupMode('all')}
+                    type="button"
+                  >
+                    <Icon name="trash" />
+                    {t('clearArchive')}
+                  </button>
+                  <button
+                    disabled={!cleanupWorkspace || cleanupIsCloudLinked}
+                    onClick={() => setArchiveCleanupMode('older')}
+                    type="button"
+                  >
+                    <Icon name="clock" />
+                    {t('clearOldTasks')}
+                  </button>
                   <button
                     className="danger-action"
                     disabled={!cleanupWorkspace || !onDeleteWorkspace}
@@ -998,7 +1082,99 @@ export function SettingsPanel({
           workspace={workspacePendingDeletion}
         />
       ) : null}
+      {archiveCleanupMode && cleanupWorkspace ? (
+        <ArchiveCleanupDialog
+          days={archiveCleanupDays}
+          mode={archiveCleanupMode}
+          onChangeDays={setArchiveCleanupDays}
+          onClose={() => setArchiveCleanupMode(null)}
+          onDelete={async () => {
+            await onDeleteOldArchivedTasks(
+              cleanupWorkspace.id,
+              archiveCleanupMode === 'all' ? 0 : archiveCleanupDays,
+            );
+            setArchiveCleanupMode(null);
+          }}
+          t={t}
+          workspace={cleanupWorkspace}
+        />
+      ) : null}
     </>
+  );
+}
+
+function ArchiveCleanupDialog({
+  days,
+  mode,
+  onChangeDays,
+  onClose,
+  onDelete,
+  t,
+  workspace,
+}: {
+  days: number;
+  mode: 'all' | 'older';
+  onChangeDays: (days: number) => void;
+  onClose: () => void;
+  onDelete: () => Promise<void>;
+  t: Translate;
+  workspace: WorkspaceResponse;
+}) {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  return (
+    <ModalFrame onClose={onClose}>
+      <section
+        aria-labelledby="archive-cleanup-title"
+        aria-modal="true"
+        className="delete-workspace-dialog"
+        role="dialog"
+      >
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">{t('cleanup')}</p>
+            <h2 id="archive-cleanup-title">{workspace.name}</h2>
+          </div>
+          <button className="icon-button" disabled={isDeleting} onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">{t('close')}</span>
+          </button>
+        </div>
+        <p>{t('cleanupArchiveWarning')}</p>
+        {mode === 'older' ? (
+          <label className="field-label">
+            {t('olderThanDays')}
+            <input
+              min={1}
+              onChange={(event) => onChangeDays(Math.max(1, Number(event.target.value)))}
+              type="number"
+              value={days}
+            />
+          </label>
+        ) : null}
+        <div className="dialog-actions">
+          <button className="ghost-button" disabled={isDeleting} onClick={onClose} type="button">
+            {t('cancel')}
+          </button>
+          <button
+            className="danger-action"
+            disabled={isDeleting || (mode === 'older' && days < 1)}
+            onClick={async () => {
+              setIsDeleting(true);
+              try {
+                await onDelete();
+              } finally {
+                setIsDeleting(false);
+              }
+            }}
+            type="button"
+          >
+            <Icon name="trash" />
+            {t('deleteArchivedNow')}
+          </button>
+        </div>
+      </section>
+    </ModalFrame>
   );
 }
 

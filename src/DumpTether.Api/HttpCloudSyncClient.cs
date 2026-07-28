@@ -26,7 +26,7 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
     {
         var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            BuildUri(cloudApiBaseUrl, "/api/auth/login"))
+            BuildUri(cloudApiBaseUrl, "/api/auth/desktop-cloud-login"))
         {
             Content = JsonContent.Create(new LoginUserRequest(
                 request.Email,
@@ -57,6 +57,25 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                 login.User.DisplayName),
             login.SessionToken,
             login.ExpiresAt);
+    }
+
+    public async Task LogoutAsync(
+        CloudSyncConnection connection,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            BuildUri(connection.BaseUrl, "/api/auth/logout"));
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            connection.SessionToken);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Cloud logout failed with HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
+        }
     }
 
     public async Task<CloudSyncUserResponse> GetCurrentUserAsync(

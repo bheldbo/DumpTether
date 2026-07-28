@@ -197,6 +197,32 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task PostDesktopCloudLogin_CreatesDesktopCloudSession()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "desktop-cloud@example.com", "correct horse battery");
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/desktop-cloud-login",
+            new
+            {
+                email = "desktop-cloud@example.com",
+                password = "correct horse battery",
+                deviceName = "DumpTether desktop"
+            });
+
+        response.EnsureSuccessStatusCode();
+        var login = await response.Content.ReadFromJsonAsync<LoginUserResponse>();
+        Assert.Equal(UserSessionType.DesktopCloud, login!.Session.SessionType);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var session = await dbContext.UserSessions.SingleAsync();
+        Assert.Equal(UserSessionType.DesktopCloud, session.SessionType);
+    }
+
+    [Fact]
     public async Task PostLogin_UsesConfiguredSessionDays()
     {
         using var factory = new DumpTetherApiFactory(
@@ -599,6 +625,54 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task PostLogout_ForDesktopLocalSession_DoesNotRevokeLocalIdentity()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop");
+        using var client = factory.CreateClient();
+
+        var loginResponse = await client.PostAsync("/api/auth/local-desktop", content: null);
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<LoginUserResponse>();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login!.SessionToken);
+
+        var logoutResponse = await client.PostAsync("/api/auth/logout", content: null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, logoutResponse.StatusCode);
+        var current = await client.GetFromJsonAsync<CurrentUserResponse>("/api/auth/me");
+        Assert.Equal(login.User.Id, current!.User.Id);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var session = await dbContext.UserSessions.SingleAsync(
+            candidate => candidate.Id == login.Session.Id);
+        Assert.Null(session.RevokedAt);
+    }
+
+    [Fact]
+    public async Task DeleteSession_ForDesktopLocalSession_DoesNotRevokeLocalIdentity()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop");
+        using var client = factory.CreateClient();
+
+        var loginResponse = await client.PostAsync("/api/auth/local-desktop", content: null);
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<LoginUserResponse>();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login!.SessionToken);
+
+        var revokeResponse = await client.DeleteAsync($"/api/auth/sessions/{login.Session.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, revokeResponse.StatusCode);
+        var current = await client.GetFromJsonAsync<CurrentUserResponse>("/api/auth/me");
+        Assert.Equal(login.User.Id, current!.User.Id);
+    }
+
+    [Fact]
     public async Task LocalDesktopSession_CanCreateAndReadTaskWithoutCloudLogin()
     {
         using var factory = new DumpTetherApiFactory(
@@ -795,6 +869,62 @@ public sealed class AuthApiTests
         RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true);
     }
 
+    [Fact]
+    public void Startup_WhenDesktopRuntimeIsLoopbackSqlite_PassesValidation()
+    {
+        var configuration = BuildDesktopConfiguration();
+
+        RuntimeConfigurationValidator.Validate(
+            configuration,
+            isDevelopment: false,
+            isDesktop: true);
+    }
+
+    [Theory]
+    [InlineData("Urls", "http://0.0.0.0:55869")]
+    [InlineData("Database:Provider", "Postgres")]
+    [InlineData("Auth:RequireAuthentication", "false")]
+    [InlineData("Auth:AllowGuestSessions", "true")]
+    [InlineData("Auth:EnableLocalDesktopLogin", "false")]
+    [InlineData("Cors:AllowedOrigins:0", "http://example.test")]
+    [InlineData("Desktop:BootstrapToken", "not-a-valid-token")]
+    public void Startup_WhenDesktopRuntimeBoundaryIsWeakened_Throws(
+        string key,
+        string value)
+    {
+        var values = BuildDesktopConfigurationValues();
+        values[key] = value;
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(values)
+            .Build();
+
+        Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(
+                configuration,
+                isDevelopment: false,
+                isDesktop: true));
+    }
+
+    [Fact]
+    public async Task DesktopBootstrapToken_WhenConfigured_IsRequiredForApiRequests()
+    {
+        var token = new string('a', 64);
+        using var factory = new DumpTetherApiFactory(
+            environmentName: "Desktop",
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["Desktop:BootstrapToken"] = token
+            });
+        using var client = factory.CreateClient();
+
+        var rejected = await client.GetAsync("/api/auth/options");
+        client.DefaultRequestHeaders.Add("X-DumpTether-Desktop-Bootstrap", token);
+        var accepted = await client.GetAsync("/api/auth/options");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+    }
+
     [Theory]
     [InlineData("google")]
     [InlineData("facebook")]
@@ -873,6 +1003,29 @@ public sealed class AuthApiTests
         Assert.NotNull(task);
         Assert.DoesNotContain(secondUserTasks!, candidate => candidate.Id == task.Id);
     }
+
+    private static IConfiguration BuildDesktopConfiguration() =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(BuildDesktopConfigurationValues())
+            .Build();
+
+    private static Dictionary<string, string?> BuildDesktopConfigurationValues() =>
+        new()
+        {
+            ["Urls"] = "http://127.0.0.1:55869",
+            ["Database:Provider"] = "Sqlite",
+            ["Database:ApplyMigrationsOnStartup"] = "true",
+            ["Auth:RequireAuthentication"] = "true",
+            ["Auth:AllowGuestSessions"] = "false",
+            ["Auth:SignupMode"] = "Closed",
+            ["Auth:EnableDevelopmentLogin"] = "false",
+            ["Auth:EnableLocalDesktopLogin"] = "true",
+            ["EmailConfirmation:Enabled"] = "false",
+            ["Email:Provider"] = "None",
+            ["Mfa:Email:Enabled"] = "false",
+            ["OAuth:Microsoft:Enabled"] = "false",
+            ["Cors:AllowedOrigins:0"] = "http://tauri.localhost"
+        };
 
     private static async Task<RegisterUserResponse> RegisterAsync(
         HttpClient client,

@@ -10,19 +10,9 @@
     "frontendDist": "../../web/dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "DumpTether",
-        "label": "main",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 380,
-        "minHeight": 640,
-        "resizable": true
-      }
-    ],
+    "windows": [],
     "security": {
-      "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:55869 ws://127.0.0.1:55869; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:"
+      "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:*; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:"
     }
   },
   "bundle": {
@@ -34,9 +24,6 @@
     "externalBin": [
       "binaries/dumptether-api"
     ],
-    "resources": {
-      "../../../src/DumpTether.Api/appsettings.Desktop.json": "appsettings.Desktop.json"
-    },
     "icon": [
       "icons/icon.png",
       "icons/icon.ico"

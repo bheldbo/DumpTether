@@ -238,6 +238,57 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task DisconnectCloudAccount_RevokesRemoteSessionAndErasesLocalToken()
+    {
+        var cloud = new FakeCloudSyncClient();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        await LoginDesktopAsync(client);
+        await ConnectCloudAccountAsync(client);
+
+        var response = await client.DeleteAsync("/api/sync/cloud-account");
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal(1, cloud.LogoutCount);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var stored = await dbContext.CloudSyncAccounts.SingleAsync();
+        Assert.Equal(string.Empty, stored.ProtectedSessionToken);
+        Assert.NotNull(stored.DisconnectedAt);
+    }
+
+    [Fact]
+    public async Task DisconnectCloudAccount_WhenCloudIsUnavailable_StillErasesLocalToken()
+    {
+        var cloud = new FakeCloudSyncClient
+        {
+            LogoutException = new HttpRequestException("Cloud is unavailable.")
+        };
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        await LoginDesktopAsync(client);
+        await ConnectCloudAccountAsync(client);
+
+        var response = await client.DeleteAsync("/api/sync/cloud-account");
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal(1, cloud.LogoutCount);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var stored = await dbContext.CloudSyncAccounts.SingleAsync();
+        Assert.Equal(string.Empty, stored.ProtectedSessionToken);
+        Assert.NotNull(stored.DisconnectedAt);
+    }
+
+    [Fact]
     public async Task SyncWorkspaceWithCloud_WhenConnectedCloudAccount_PushesLocalTask()
     {
         var cloud = new FakeCloudSyncClient();
@@ -830,6 +881,10 @@ public sealed class SyncApiTests
 
         public Dictionary<Guid, List<CloudSyncTaskResponse>> TasksByWorkspace { get; } = [];
 
+        public int LogoutCount { get; private set; }
+
+        public Exception? LogoutException { get; init; }
+
         public Task<CloudSyncLoginResponse> LoginAsync(
             string cloudApiBaseUrl,
             CloudSyncLoginRequest request,
@@ -839,6 +894,19 @@ public sealed class SyncApiTests
                 _user,
                 "fake-cloud-session-token",
                 DateTimeOffset.UtcNow.AddDays(30)));
+        }
+
+        public Task LogoutAsync(
+            CloudSyncConnection connection,
+            CancellationToken cancellationToken)
+        {
+            LogoutCount++;
+            if (LogoutException is not null)
+            {
+                throw LogoutException;
+            }
+
+            return Task.CompletedTask;
         }
 
         public Task<CloudSyncUserResponse> GetCurrentUserAsync(

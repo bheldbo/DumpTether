@@ -108,6 +108,18 @@ internal sealed class AuthService : IAuthService
             cancellationToken);
     }
 
+    public async Task<LoginUserResponse> DesktopCloudLoginAsync(
+        LoginUserRequest request,
+        AuthRequestMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        return await LoginCoreAsync(
+            request,
+            metadata,
+            UserSessionType.DesktopCloud,
+            cancellationToken);
+    }
+
     private async Task<LoginUserResponse> LoginCoreAsync(
         LoginUserRequest request,
         AuthRequestMetadata metadata,
@@ -455,6 +467,11 @@ internal sealed class AuthService : IAuthService
             return false;
         }
 
+        if (session.SessionType == UserSessionType.DesktopLocal)
+        {
+            return false;
+        }
+
         session.Revoke(_clock.UtcNow);
         await _authRepository.SaveChangesAsync(cancellationToken);
 
@@ -532,6 +549,11 @@ internal sealed class AuthService : IAuthService
             cancellationToken);
 
         if (session is null || session.UserId != current.UserId)
+        {
+            return new RevokeAuthSessionResponse(false, false);
+        }
+
+        if (session.SessionType == UserSessionType.DesktopLocal)
         {
             return new RevokeAuthSessionResponse(false, false);
         }

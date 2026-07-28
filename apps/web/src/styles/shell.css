@@ -218,8 +218,8 @@
 }
 
 .workspace-row-action {
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0.38;
+  pointer-events: auto;
   transition: opacity 120ms ease;
 }
 
@@ -257,6 +257,14 @@
   height: 16px;
   border: 1px solid rgba(24, 33, 44, 0.16);
   border-radius: 999px;
+}
+
+.local-nav-count {
+  min-width: auto;
+  padding-inline: 8px;
+  border: 1px solid rgba(214, 165, 20, 0.24);
+  background: rgba(254, 243, 199, 0.9);
+  color: #725514;
 }
 
 .shared-workspace-badge {

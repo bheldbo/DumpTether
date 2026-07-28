@@ -174,6 +174,19 @@ internal sealed class SyncService : ISyncService
             return new DisconnectCloudAccountResponse(false);
         }
 
+        try
+        {
+            var sessionToken = _cloudSessionProtector.Unprotect(account.ProtectedSessionToken);
+            await _cloudSyncClient.LogoutAsync(
+                new CloudSyncConnection(account.CloudApiBaseUrl, sessionToken),
+                cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Disconnect is local-first. The remote session still expires server-side
+            // if the cloud endpoint cannot be reached for best-effort revocation.
+        }
+
         account.Disconnect(_clock.UtcNow);
         await _syncRepository.SaveChangesAsync(cancellationToken);
 

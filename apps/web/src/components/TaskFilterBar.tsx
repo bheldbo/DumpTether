@@ -99,17 +99,18 @@ export function TaskFilterBar({
         value={filters.sharedWith}
       />
 
-      {filtersAreActive ? (
-        <button
-          className="icon-button reset-filters-button"
-          onClick={onReset}
-          title={t('removeFilters')}
-          type="button"
-        >
-          <Icon name="filterOff" />
-          <span className="sr-only">{t('removeFilters')}</span>
-        </button>
-      ) : null}
+      <button
+        aria-hidden={!filtersAreActive}
+        className="icon-button reset-filters-button"
+        disabled={!filtersAreActive}
+        onClick={onReset}
+        tabIndex={filtersAreActive ? 0 : -1}
+        title={filtersAreActive ? t('removeFilters') : undefined}
+        type="button"
+      >
+        <Icon name="filterOff" />
+        <span className="sr-only">{t('removeFilters')}</span>
+      </button>
     </div>
   );
 }

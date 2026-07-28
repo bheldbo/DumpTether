@@ -118,7 +118,7 @@ Local SQLite path:
 .\scripts\dev.ps1 -Target LocalBoth -OpenBrowser
 ```
 
-That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation. Local SQLite mode enables a local desktop-style session automatically, so you can edit local data without creating a hosted account. A first manual cloud sync pass exists for task headers, templates, header field values and newly-synced note/entry field values. Later note edits/deletes, archive/delete sync and richer conflict recovery are still future work.
+That starts the same API against a local SQLite database and starts Vite. It does not start Docker or PostgreSQL. By default the database is created at `%APPDATA%\DumpTether\dumptether.db` on Windows or the local application data folder on Linux. This is the offline foundation. Local SQLite mode enables a local desktop-style session automatically, so you can edit local data without creating a hosted account. Linked boards retry cloud sync in the background and immediately after task/note changes; the manual sync action remains available for explicit retry. Later note edits/deletes, archive/delete sync and richer conflict recovery are still future work.
 
 Quick chooser:
 
@@ -267,7 +267,8 @@ API endpoint configuration is intentionally split by runtime:
 - Packaged desktop/cloud sync server: select a `deploy/targets/*.json` file before building. `cloudApiBaseUrl` becomes the package's default hosted API.
 - Direct web build: use the same generated target; the hosted web app should normally call its own same-origin `/api`.
 - Vite dev: `apps/web/vite.config.ts` proxies `/api` and `/health` to `http://127.0.0.1:55868`.
-- Desktop local app: the React UI talks to the local sidecar API at `http://127.0.0.1:55869`.
+- Desktop local app: Tauri injects a random loopback sidecar URL and per-launch
+  bootstrap token before React starts.
 - Desktop cloud login/sync: the Account panel logs in to the configured cloud server URL. The user does not edit the server/backend URL inside the running app.
 
 So the WCF-style mental model is close, but the knob is an HTTP API base URL. The offline desktop runtime should keep using its local sidecar for normal work; sync/login can point at your hosted API. Pointing the whole desktop UI directly at a remote backend would be an online-client mode and is future work.
@@ -318,8 +319,11 @@ VITE_API_BASE_URL
 
 The `scripts/dev.ps1` and `scripts/db.ps1` helpers read root `.env`, overlay
 `.env.local`, then map `DUMPTETHER_*` variables to ASP.NET configuration keys.
-The desktop helper reads only `DUMPTETHER_DEPLOYMENT_TARGET` from those files;
-the bundled sidecar keeps its SQLite settings from `appsettings.Desktop.json`.
+The desktop helper reads only `DUMPTETHER_DEPLOYMENT_TARGET` from those files.
+For direct developer runs, the sidecar reads `appsettings.Desktop.json`.
+Packaged Tauri builds do not copy that editable file beside the app; they launch
+the sidecar with an exact loopback/SQLite/local-identity profile and validate it
+before startup.
 
 Docker Compose reads root `.env` automatically, but does not automatically read
 `.env.local`. Use `docker compose --env-file .env.local ...` when that override
@@ -527,7 +531,12 @@ Tauri window
   -> same React task wall UI
 ```
 
-The desktop shell does not contain business logic. It starts the local API sidecar with `--environment=Desktop`; the API reads `appsettings.Desktop.json`, uses SQLite and creates/reuses a local desktop session. Cloud login/sync is layered on top of that local session instead of replacing it.
+The desktop shell does not contain business logic. It starts the local API
+sidecar with an allow-listed Desktop profile, a random loopback port and a fresh
+per-launch handshake token. It uses SQLite and creates/reuses a local session.
+The source `appsettings.Desktop.json` supports direct developer runs; the
+packaged app does not copy it beside the executable. Cloud login/sync is layered
+on top of the durable local identity instead of replacing it.
 
 Install desktop prerequisites first:
 
