@@ -54,6 +54,14 @@ Do not introduce calendar/email integrations into the MVP.
 - Prefer small cleanup commits when the cleanup is directly adjacent to the active work.
 - Prefer backlog notes when the cleanup crosses feature boundaries or would distract from the user's current goal.
 
+## GitHub issue hygiene
+
+- Before starting a work packet, inspect related open issues and milestones when GitHub is available.
+- Do not create duplicate issues. Add reproduction details, acceptance criteria, or architecture context to an existing issue when it already covers the finding.
+- Record out-of-scope defects discovered during implementation in `docs/engineering/refactor-backlog.md` and create or update a GitHub issue when the finding is user-visible, risky, or needs a future work packet.
+- Before opening or merging a pull request, reconcile the related issues. Close only issues fully implemented and verified by the run; comment on partially covered issues with the remaining work.
+- Reference the relevant issue in the branch and pull request when the work started from an issue.
+
 ## Context map
 
 Use these docs as the repo grows instead of rediscovering the same decisions from code alone:

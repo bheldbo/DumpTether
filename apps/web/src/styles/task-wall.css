@@ -304,10 +304,10 @@
   max-height: 30px;
   display: inline-flex;
   max-width: 240px;
-  gap: 5px;
+  gap: 6px;
   align-items: center;
   overflow: hidden;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border: 1px solid var(--workspace-chip-border, rgba(24, 33, 44, 0.1));
   border-radius: 999px;
   background: var(--workspace-chip-bg, rgba(255, 255, 255, 0.56));
@@ -336,7 +336,7 @@ button.member-chip:hover {
 
 .member-chip-manageable {
   position: relative;
-  padding-right: 6px;
+  padding-right: 10px;
 }
 
 .member-chip-manageable > span:first-of-type {
@@ -707,6 +707,18 @@ button.member-chip:hover {
   text-overflow: ellipsis;
 }
 
+.task-share-trigger {
+  width: 34px;
+  height: 34px;
+  border-color: rgba(24, 76, 72, 0.14);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.task-share-trigger .icon {
+  width: 17px;
+  height: 17px;
+}
+
 .task-share-menu {
   position: absolute;
   z-index: 35;
@@ -843,6 +855,7 @@ button.member-chip:hover {
 }
 
 .workspace-sync-actions {
+  width: 100%;
   display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -906,16 +919,13 @@ button.member-chip:hover {
 }
 
 .sort-menu-options {
-  position: absolute;
-  z-index: 38;
-  top: calc(100% + 6px);
-  right: 0;
-  width: max-content;
-  min-width: 100%;
-  max-height: min(360px, calc(100vh - 110px));
+  position: fixed;
+  z-index: 120;
+  min-width: 0;
   display: grid;
   gap: 3px;
-  overflow-y: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid rgba(35, 48, 62, 0.14);
   border-radius: 8px;
@@ -1347,8 +1357,10 @@ button.member-chip:hover {
 
 .filter-bar .reset-filters-button {
   position: absolute;
+  z-index: 2;
   top: 50%;
   right: 10px;
+  margin: 0;
   transform: translateY(-50%);
   border-radius: 999px;
 }

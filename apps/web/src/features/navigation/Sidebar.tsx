@@ -542,7 +542,7 @@ export function Sidebar({
             <a href="https://github.com/bheldbo/DumpTether" rel="noreferrer" target="_blank">
               GitHub
             </a>
-            <span>(c) 2026</span>
+            <span>&copy; 2026</span>
           </div>
         </div>
       </aside>

@@ -488,7 +488,7 @@ export function TaskShareStrip({
           </button>
         ) : null}
         <button
-          className="tiny-icon-button"
+          className="tiny-icon-button task-share-trigger"
           onClick={(event) => {
             event.stopPropagation();
             setFocusedTaskShareId(null);
@@ -497,7 +497,7 @@ export function TaskShareStrip({
           title={t('shareTask')}
           type="button"
         >
-          <Icon name="plus" />
+          <Icon name="userPlus" />
         </button>
       </div>
 

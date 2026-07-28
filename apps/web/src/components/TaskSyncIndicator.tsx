@@ -10,7 +10,10 @@ interface TaskSyncIndicatorProps {
 }
 
 export function TaskSyncIndicator({ onRetry, syncState, t }: TaskSyncIndicatorProps) {
-  if (!syncState || syncState.status === 'LocalOnly') {
+  if (
+    !syncState ||
+    (syncState.status === 'LocalOnly' && !syncState.lastSyncedAt)
+  ) {
     return null;
   }
 
@@ -70,6 +73,8 @@ function getSyncStatusLabel(status: string, t: Translate) {
   switch (status) {
     case 'Synced':
       return t('syncSynced');
+    case 'LocalOnly':
+      return t('syncRootLocalOnly');
     case 'Conflict':
       return t('syncConflict');
     case 'Deleted':

@@ -1912,6 +1912,7 @@ function App() {
   const handleDeleteOldArchivedTasks = async (
     workspaceId: string,
     olderThanDays: number,
+    status: string | null = null,
   ) => {
     try {
       const archivedTasks = await listTaskItems(
@@ -1922,7 +1923,11 @@ function App() {
       const taskItemIds = archivedTasks
         .filter((taskItem) =>
           taskItem.archivedAt &&
-          new Date(taskItem.archivedAt).getTime() <= cutoff)
+          new Date(taskItem.archivedAt).getTime() <= cutoff &&
+          (!status ||
+            taskItem.status?.localeCompare(status, undefined, {
+              sensitivity: 'accent',
+            }) === 0))
         .map((taskItem) => taskItem.id);
 
       if (taskItemIds.length === 0) {

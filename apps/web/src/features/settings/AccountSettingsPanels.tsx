@@ -810,6 +810,7 @@ export function SettingsPanel({
   onDeleteOldArchivedTasks: (
     workspaceId: string,
     olderThanDays: number,
+    status?: string | null,
   ) => Promise<number>;
   onDeleteWorkspace: ((workspaceId: string) => Promise<void>) | null;
   onSaveStatusOptions: (statuses: string[]) => void;
@@ -826,8 +827,11 @@ export function SettingsPanel({
   const [workspacePendingDeletion, setWorkspacePendingDeletion] =
     useState<WorkspaceResponse | null>(null);
   const [archiveCleanupMode, setArchiveCleanupMode] =
-    useState<'all' | 'older' | null>(null);
+    useState<'all' | 'older' | 'status' | null>(null);
   const [archiveCleanupDays, setArchiveCleanupDays] = useState(30);
+  const [archiveCleanupStatus, setArchiveCleanupStatus] = useState(
+    configuredStatuses[0] ?? '',
+  );
   const [cleanupWorkspaceId, setCleanupWorkspaceId] = useState(
     cleanupWorkspaces.some((workspace) => workspace.id === cleanupPreferredWorkspaceId)
       ? cleanupPreferredWorkspaceId ?? ''
@@ -1053,6 +1057,18 @@ export function SettingsPanel({
                     {t('clearOldTasks')}
                   </button>
                   <button
+                    disabled={
+                      !cleanupWorkspace ||
+                      cleanupIsCloudLinked ||
+                      configuredStatuses.length === 0
+                    }
+                    onClick={() => setArchiveCleanupMode('status')}
+                    type="button"
+                  >
+                    <Icon name="status" />
+                    {t('clearTasksWithStatus')}
+                  </button>
+                  <button
                     className="danger-action"
                     disabled={!cleanupWorkspace || !onDeleteWorkspace}
                     onClick={() => setWorkspacePendingDeletion(cleanupWorkspace)}
@@ -1087,15 +1103,19 @@ export function SettingsPanel({
           days={archiveCleanupDays}
           mode={archiveCleanupMode}
           onChangeDays={setArchiveCleanupDays}
+          onChangeStatus={setArchiveCleanupStatus}
           onClose={() => setArchiveCleanupMode(null)}
           onDelete={async () => {
             await onDeleteOldArchivedTasks(
               cleanupWorkspace.id,
-              archiveCleanupMode === 'all' ? 0 : archiveCleanupDays,
+              archiveCleanupMode === 'older' ? archiveCleanupDays : 0,
+              archiveCleanupMode === 'status' ? archiveCleanupStatus : null,
             );
             setArchiveCleanupMode(null);
           }}
           t={t}
+          status={archiveCleanupStatus}
+          statuses={configuredStatuses}
           workspace={cleanupWorkspace}
         />
       ) : null}
@@ -1107,17 +1127,23 @@ function ArchiveCleanupDialog({
   days,
   mode,
   onChangeDays,
+  onChangeStatus,
   onClose,
   onDelete,
   t,
+  status,
+  statuses,
   workspace,
 }: {
   days: number;
-  mode: 'all' | 'older';
+  mode: 'all' | 'older' | 'status';
   onChangeDays: (days: number) => void;
+  onChangeStatus: (status: string) => void;
   onClose: () => void;
   onDelete: () => Promise<void>;
   t: Translate;
+  status: string;
+  statuses: string[];
   workspace: WorkspaceResponse;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -1152,13 +1178,32 @@ function ArchiveCleanupDialog({
             />
           </label>
         ) : null}
+        {mode === 'status' ? (
+          <label className="field-label">
+            {t('status')}
+            <select
+              onChange={(event) => onChangeStatus(event.target.value)}
+              value={status}
+            >
+              {statuses.map((statusOption) => (
+                <option key={statusOption} value={statusOption}>
+                  {statusOption}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div className="dialog-actions">
           <button className="ghost-button" disabled={isDeleting} onClick={onClose} type="button">
             {t('cancel')}
           </button>
           <button
             className="danger-action"
-            disabled={isDeleting || (mode === 'older' && days < 1)}
+            disabled={
+              isDeleting ||
+              (mode === 'older' && days < 1) ||
+              (mode === 'status' && !status)
+            }
             onClick={async () => {
               setIsDeleting(true);
               try {

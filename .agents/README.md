@@ -100,3 +100,14 @@ The Coordinator should keep working while sub-agents handle independent
 sidecar tasks. Parallel implementation is allowed only when write scopes do
 not overlap.
 
+## GitHub Issue Hygiene
+
+When GitHub is available, the Coordinator:
+
+- reviews related open issues and milestones before defining a work packet
+- updates an existing issue instead of duplicating it
+- creates an issue for a deferred user-visible defect or risky follow-up, with
+  reproduction steps and acceptance criteria
+- reconciles issue state before a pull request is merged
+- closes only work that is implemented and verified; partial work receives a
+  comment describing what remains
