@@ -529,6 +529,25 @@ button.task-sync-indicator {
   overflow-wrap: anywhere;
 }
 
+.task-heading-trigger {
+  min-width: 0;
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.task-heading-trigger > .icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  opacity: 0.58;
+}
+
+.task-heading-trigger:hover > .icon,
+.task-heading-trigger:focus-visible > .icon {
+  opacity: 1;
+}
+
 .task-title-input {
   width: min(620px, 100%);
   flex: 1 1 360px;

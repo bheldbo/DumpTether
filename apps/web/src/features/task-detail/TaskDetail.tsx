@@ -527,6 +527,7 @@ function TaskHeaderEditor({
         {editingField === 'title' ? (
           <input
             aria-label={t('editTask')}
+            autoFocus
             className="task-title-input"
             disabled={isSubmitting}
             onBlur={() => void saveChanges({}, { field: 'title' })}
@@ -547,19 +548,9 @@ function TaskHeaderEditor({
             type="button"
           >
             <h2>{taskItem.title}</h2>
+            <Icon name="edit" />
           </button>
         )}
-        <button
-          className="icon-button header-edit-button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setEditingField('title');
-          }}
-          title={t('editTask')}
-          type="button"
-        >
-          <Icon name="edit" />
-        </button>
       </div>
       <div className="task-header-fields">
         <span>{t('created')}: {formatFullDate(taskItem.createdAt)}</span>

@@ -97,6 +97,8 @@ export function ColorPickerPopover({
                 onClick={(event) => {
                   event.stopPropagation();
                   setDraftColor(choice);
+                  onChange(choice);
+                  setIsOpen(false);
                 }}
                 style={{ backgroundColor: choice }}
                 type="button"

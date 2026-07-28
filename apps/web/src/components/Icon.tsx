@@ -32,6 +32,7 @@ export type IconName =
   | 'trash'
   | 'undo'
   | 'user'
+  | 'userPlus'
   | 'users'
   | 'waiting';
 
@@ -69,6 +70,7 @@ const iconPaths: Record<IconName, string> = {
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   undo: 'M9 7 4 12l5 5M4 12h10a5 5 0 1 1-3.5 8.5',
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0',
+  userPlus: 'M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 8a7 7 0 0 1 12 0M18 9v6m-3-3h6',
   users: 'M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 8a7 7 0 0 1 12 0M17 11a3 3 0 1 0 0-6M15 20a5 5 0 0 1 7-4.5',
   waiting: 'M6 4h12M8 4v5l4 3 4-3V4M8 20v-5l4-3 4 3v5M6 20h12',
 };
