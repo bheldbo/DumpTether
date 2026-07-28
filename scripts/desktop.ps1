@@ -208,7 +208,6 @@ function Build-DesktopExecutable {
     Export-DesktopReleaseArtifacts -Patterns @(
         "dumptether-desktop.exe",
         "dumptether-api.exe",
-        "appsettings.json",
         "appsettings.Desktop.json"
     )
 }
@@ -222,7 +221,6 @@ function Build-DesktopInstaller {
     Export-DesktopReleaseArtifacts -Patterns @(
         "dumptether-desktop.exe",
         "dumptether-api.exe",
-        "appsettings.json",
         "appsettings.Desktop.json",
         "bundle\nsis\*.exe"
     )
@@ -237,7 +235,6 @@ function Build-DesktopMsiInstaller {
     Export-DesktopReleaseArtifacts -Patterns @(
         "dumptether-desktop.exe",
         "dumptether-api.exe",
-        "appsettings.json",
         "appsettings.Desktop.json",
         "bundle\msi\*.msi"
     )
@@ -259,7 +256,6 @@ function Build-DesktopLinuxBundles {
     Export-DesktopReleaseArtifacts -Patterns @(
         "dumptether-desktop",
         "dumptether-api",
-        "appsettings.json",
         "appsettings.Desktop.json",
         "bundle\appimage\*.AppImage",
         "bundle\deb\*.deb",

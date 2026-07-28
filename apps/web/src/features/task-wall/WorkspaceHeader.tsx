@@ -20,7 +20,7 @@ import {
 import type {
   CreateWorkspaceInvitationRequest,
   ProjectResponse,
-  SavedViewResponse,
+  SavedViewSort,
   UpdateProjectRequest,
   UpdateWorkspaceMemberRequest,
   UpdateWorkspaceRequest,
@@ -34,10 +34,10 @@ interface WorkspaceHeaderProps {
   canManageWorkspaceMetadata: boolean;
   canManageSharing: boolean;
   colorOptions: string[];
-  currentView: SavedViewResponse | null;
   invitations: WorkspaceInvitationResponse[];
   members: WorkspaceMemberResponse[];
   onCreateProject: (name: string, color?: string | null) => Promise<void>;
+  onChangeSort: (sort: SavedViewSort) => void;
   onCreateWorkspaceInvitation: (
     requestBody: CreateWorkspaceInvitationRequest,
   ) => Promise<WorkspaceInvitationResponse>;
@@ -53,6 +53,7 @@ interface WorkspaceHeaderProps {
   ) => Promise<WorkspaceMemberResponse>;
   projects: ProjectResponse[];
   selectedProjectIds: string[];
+  sort: SavedViewSort;
   t: Translate;
   workspace: WorkspaceResponse | null;
 }
@@ -61,10 +62,10 @@ export function WorkspaceHeader({
   canManageWorkspaceMetadata,
   canManageSharing,
   colorOptions,
-  currentView,
   invitations,
   members,
   onCreateProject,
+  onChangeSort,
   onCreateWorkspaceInvitation,
   onDeleteProject,
   onRemoveWorkspaceMember,
@@ -75,6 +76,7 @@ export function WorkspaceHeader({
   onUpdateWorkspaceMemberRole,
   projects,
   selectedProjectIds,
+  sort,
   t,
   workspace,
 }: WorkspaceHeaderProps) {
@@ -481,10 +483,29 @@ export function WorkspaceHeader({
           <p>{t('wallHelp')}</p>
         </div>
         <div className="board-actions">
-          <span className="sort-pill">
-            {t('sortedBy')} {formatSortField(currentView?.sort.field, t)}{' '}
-            {currentView?.sort.direction === 'asc' ? t('sortAscending') : t('sortDescending')}
-          </span>
+          <label className="sort-pill">
+            <span>{t('sortedBy')}</span>
+            <select
+              aria-label={t('sortedBy')}
+              onChange={(event) => {
+                const [field, direction] = event.target.value.split(':');
+                onChangeSort({
+                  field: field as NonNullable<SavedViewSort['field']>,
+                  direction: direction as NonNullable<SavedViewSort['direction']>,
+                });
+              }}
+              value={`${sort.field ?? 'lastTouchedAt'}:${sort.direction ?? 'desc'}`}
+            >
+              {(['lastTouchedAt', 'createdAt', 'followUpAt', 'title', 'status'] as const)
+                .flatMap((field) => (['desc', 'asc'] as const).map((direction) => (
+                  <option key={`${field}:${direction}`} value={`${field}:${direction}`}>
+                    {formatSortField(field, t)} - {
+                      direction === 'asc' ? t('sortAscending') : t('sortDescending')
+                    }
+                  </option>
+                )))}
+            </select>
+          </label>
         </div>
       </div>
       {pendingDeleteProject ? (

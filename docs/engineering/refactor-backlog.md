@@ -38,3 +38,40 @@ Use it when a cleanup is real but not worth derailing the current task.
 - Future cleanup: inventory actual usage, preserve reusable filter behavior, and
   either migrate SavedViews into a personal saved-filter model or retire them
   with explicit provider migrations.
+
+### Synced permanent deletion needs tombstones
+
+- Status: blocks bulk archive cleanup
+- Context: permanent local task deletion can leave a sync mapping without a
+  deletion tombstone. A later pull could recreate a task the user believed was
+  permanently removed.
+- Why it can wait: board deletion is already owner-only and confirmed, while
+  archive retention can remain non-destructive until deletion sync is designed.
+- Future cleanup: add task deletion tombstones or an explicit unlink/delete
+  protocol, cover both PostgreSQL and SQLite, then enable bulk archive cleanup.
+
+### Desktop device identity and cloud session health
+
+- Status: deferred hardening
+- Context: desktop cloud sessions currently use a human-readable device name and
+  sync roots still use a default local device identifier. Cloud tokens are
+  protected locally and verified when sync runs, but the UI does not yet
+  distinguish an unreachable cloud from a remotely revoked session at startup.
+- Why it can wait: local startup must remain independent of the cloud, and sync
+  already rejects invalid hosted sessions authoritatively.
+- Future cleanup: generate a random per-install DeviceId in protected app data,
+  add a non-blocking cloud-session probe with explicit offline/revoked states,
+  and disconnect SignalR promptly when hosted sessions are revoked. Do not use
+  MAC addresses or bind sessions to changing IP addresses.
+
+### Authentication metadata semantics
+
+- Status: deferred hardening
+- Context: `UserSession.LastSeenAt` is stored but is not refreshed by ordinary
+  authenticated requests, and the current IP hash is useful only as audit
+  metadata.
+- Why it can wait: expiry and revocation remain authoritative and the UI no
+  longer presents LastSeenAt as live device activity.
+- Future cleanup: implement a throttled last-seen update if product value
+  justifies the writes, and use a keyed HMAC or omit IP metadata rather than a
+  plain deterministic hash.

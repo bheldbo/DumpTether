@@ -44,6 +44,7 @@ import type {
   FieldValueMap,
   ProjectResponse,
   SavedViewResponse,
+  SavedViewSort,
   TaskItemDetailResponse,
   TaskItemShareRole,
   TaskItemSummaryResponse,
@@ -233,8 +234,12 @@ export function TaskBoard({
     : false;
   const hasWorkspace = Boolean(workspace?.id);
   const workspaceIsSystemAllTasks = workspace ? isSystemAllTasksWorkspace(workspace) : false;
-  const canManageSharing = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
-  const canManageWorkspaceMetadata = currentUserOwnsWorkspace && !workspaceIsTaskShareOnly;
+  const canManageSharing = currentUserOwnsWorkspace &&
+    !workspaceIsTaskShareOnly &&
+    !workspaceIsSystemAllTasks;
+  const canManageWorkspaceMetadata = currentUserOwnsWorkspace &&
+    !workspaceIsTaskShareOnly &&
+    !workspaceIsSystemAllTasks;
   const archiveViewIsActive = currentView?.filter.archive === 'Archived';
   const canCreateTask = hasWorkspace &&
     !archiveViewIsActive &&
@@ -253,11 +258,18 @@ export function TaskBoard({
   const [batchShareIsOpen, setBatchShareIsOpen] = useState(false);
   const [cloudSyncIsOpen, setCloudSyncIsOpen] = useState(false);
   const [cloudSyncWorkspaceId, setCloudSyncWorkspaceId] = useState<string | null>(null);
+  const [wallSort, setWallSort] = useState<SavedViewSort>(() => ({
+    field: currentView?.sort.field ?? 'lastTouchedAt',
+    direction: currentView?.sort.direction ?? 'desc',
+  }));
   const longPressTimerRef = useRef<number | null>(null);
   const longPressHandledRef = useRef(false);
   const visibleTaskItems = useMemo(
-    () => applyTaskWallFilters(taskItems, filters, currentUserEmail, projects),
-    [currentUserEmail, filters, projects, taskItems],
+    () => sortTaskItems(
+      applyTaskWallFilters(taskItems, filters, currentUserEmail, projects),
+      wallSort,
+    ),
+    [currentUserEmail, filters, projects, taskItems, wallSort],
   );
   const [draftTaskIsOpen, setDraftTaskIsOpen] = useState(false);
   const focusedTaskItem = selectedTaskId
@@ -302,6 +314,13 @@ export function TaskBoard({
   useEffect(() => {
     setPendingDeletedNoteIds([]);
   }, [selectedTaskId]);
+
+  useEffect(() => {
+    setWallSort({
+      field: currentView?.sort.field ?? 'lastTouchedAt',
+      direction: currentView?.sort.direction ?? 'desc',
+    });
+  }, [currentView?.id, currentView?.sort.direction, currentView?.sort.field]);
 
   useEffect(() => {
     setSelectedTaskIds((currentIds) =>
@@ -481,7 +500,8 @@ export function TaskBoard({
     >
       {!focusModeIsEnabled ? (
         <WorkspaceHeader
-          currentView={currentView}
+          sort={wallSort}
+          onChangeSort={setWallSort}
           onCreateProject={onCreateProject}
           onDeleteProject={onDeleteProject}
           onSelectProjectFilter={toggleProjectFilter}
@@ -857,4 +877,53 @@ export function TaskBoard({
       ) : null}
     </section>
   );
+}
+
+function sortTaskItems(
+  taskItems: TaskItemSummaryResponse[],
+  sort: SavedViewSort,
+) {
+  const field = sort.field ?? 'lastTouchedAt';
+  const direction = sort.direction === 'asc' ? 1 : -1;
+
+  return [...taskItems].sort((left, right) => {
+    const leftValue = getTaskSortValue(left, field);
+    const rightValue = getTaskSortValue(right, field);
+
+    if (leftValue === null || rightValue === null) {
+      if (leftValue === rightValue) {
+        return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' });
+      }
+
+      return leftValue === null ? 1 : -1;
+    }
+
+    const comparison = leftValue.localeCompare(rightValue, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+
+    return comparison === 0
+      ? left.title.localeCompare(right.title, undefined, { sensitivity: 'base' })
+      : comparison * direction;
+  });
+}
+
+function getTaskSortValue(
+  taskItem: TaskItemSummaryResponse,
+  field: NonNullable<SavedViewSort['field']>,
+) {
+  switch (field) {
+    case 'createdAt':
+      return taskItem.createdAt;
+    case 'followUpAt':
+      return taskItem.followUpAt;
+    case 'title':
+      return taskItem.title;
+    case 'status':
+      return taskItem.status ?? '';
+    case 'lastTouchedAt':
+    default:
+      return taskItem.lastTouchedAt;
+  }
 }

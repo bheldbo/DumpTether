@@ -440,6 +440,11 @@
   box-shadow: 0 0 0 3px rgba(217, 72, 65, 0.16);
 }
 
+.connection-indicator[data-state="local"] > span {
+  background: #d6a514;
+  box-shadow: 0 0 0 3px rgba(214, 165, 20, 0.17);
+}
+
 .connection-indicator small {
   grid-column: 2;
   margin-top: -5px;
@@ -465,6 +470,11 @@
 .mobile-connection-dot[data-state="offline"] {
   background: #d94841;
   box-shadow: 0 0 0 3px rgba(217, 72, 65, 0.16);
+}
+
+.mobile-connection-dot[data-state="local"] {
+  background: #d6a514;
+  box-shadow: 0 0 0 3px rgba(214, 165, 20, 0.17);
 }
 
 .guest-warning-link {

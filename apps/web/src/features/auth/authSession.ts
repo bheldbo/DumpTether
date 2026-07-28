@@ -64,7 +64,7 @@ async function loadAuthenticatedSession(
 
     return {
       authOptions,
-      authSessions,
+      authSessions: authSessions.filter((session) => !session.revokedAt),
       currentUser,
       incomingTaskShares,
       incomingWorkspaceInvitations,

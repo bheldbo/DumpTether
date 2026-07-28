@@ -30,6 +30,7 @@ import {
   getInitialViewId,
   getInitialWorkspaceId,
   isAbortError,
+  isOwnerRole,
   isSystemAllTasksWorkspace,
   isTaskShareWorkspace,
   pickSavedViewId,
@@ -1172,7 +1173,9 @@ function App() {
         return;
       }
 
-      await loadAuth();
+      setAuthSessions((currentSessions) =>
+        currentSessions.filter((session) => session.id !== sessionId),
+      );
       showToast(t('sessionRevoked'), 'info');
       setErrorMessage(null);
     } catch (error) {
@@ -2077,11 +2080,22 @@ function App() {
       {settingsIsOpen ? (
         <SettingsPanel
           archiveResolutions={archiveResolutions}
+          cleanupWorkspace={
+            workspace &&
+            !isSystemAllTasksWorkspace(workspace) &&
+            currentUser?.workspaces.some((candidate) =>
+              candidate.id === workspace.id &&
+              candidate.accessKind !== 'TaskShare' &&
+              isOwnerRole(candidate.role)) === true
+              ? workspace
+              : null
+          }
           configuredStatuses={configuredStatuses}
           language={language}
           onChangeLanguage={setLanguage}
           onCreateArchiveResolution={handleCreateArchiveResolution}
           onDeleteArchiveResolution={handleDeleteArchiveResolution}
+          onDeleteWorkspace={handleDeleteWorkspace}
           onSaveStatusOptions={handleSaveStatusOptions}
           onUpdateArchiveResolution={handleUpdateArchiveResolution}
           onClose={() => setSettingsIsOpen(false)}

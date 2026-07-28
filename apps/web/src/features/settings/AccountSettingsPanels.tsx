@@ -4,10 +4,10 @@ import type { SettingsSectionKey } from '../../appTypes';
 import { readCloudSyncApiBaseUrl } from '../../appSettings';
 import { Icon, type IconName } from '../../components/Icon';
 import { ModalFrame } from '../../components/ModalFrame';
+import { DeleteWorkspaceDialog } from '../../components/DeleteWorkspaceDialog';
 import {
   formatDateTime,
   formatOAuthProvider,
-  formatRelativeDate,
   formatWorkspaceRole,
   getErrorMessage,
 } from '../../appUtils';
@@ -26,6 +26,7 @@ import type {
   TaskShareInboxResponse,
   UpdateArchiveResolutionRequest,
   WorkspaceInvitationInboxResponse,
+  WorkspaceResponse,
 } from '../../types';
 
 export function AuthPanel({
@@ -148,12 +149,18 @@ export function AuthPanel({
     (!registrationNeedsInvite || inviteCode.trim().length > 0);
 
   if (currentUser) {
+    const displayName = localDesktopSessionIsActive
+      ? t('localDesktopModeShort')
+      : currentUser.user.displayName || currentUser.user.email;
+
     return (
       <section className={wrapperClassName} aria-label={t('account')}>
         <div className="auth-heading">
           <p className="detail-kicker">{t('account')}</p>
-          <h2>{currentUser.user.displayName || currentUser.user.email}</h2>
-          <p>{t('signedInAs')}: {currentUser.user.email}</p>
+          <h2>{displayName}</h2>
+          {!localDesktopSessionIsActive ? (
+            <p>{t('signedInAs')}: {currentUser.user.email}</p>
+          ) : null}
         </div>
         {temporarySessionIsActive ? (
           <p className="guest-warning">{t('guestModePersistent')}</p>
@@ -172,7 +179,7 @@ export function AuthPanel({
             </span>
           ))}
         </div>
-        {onLogout ? (
+        {onLogout && !localDesktopSessionIsActive ? (
           <button
             className="secondary-action logout-button"
             disabled={isSubmitting}
@@ -436,13 +443,13 @@ export function AccountPanel({
         {currentUser ? (
           <section className="settings-section">
             <h3>{t('sessions')}</h3>
-            {authSessions.length === 0 ? (
+            {authSessions.filter((session) => !session.revokedAt).length === 0 ? (
               <p>{t('noSessions')}</p>
             ) : (
               <div className="account-notification-list">
-                {authSessions.map((session) => {
-                  const isRevoked = Boolean(session.revokedAt);
-                  return (
+                {authSessions
+                  .filter((session) => !session.revokedAt)
+                  .map((session) => (
                     <article className="account-notification-card" key={session.id}>
                       <Icon name={sessionIcon(session.sessionType)} />
                       <div>
@@ -450,33 +457,24 @@ export function AccountPanel({
                           {formatSessionType(session.sessionType, t)}
                           {session.isCurrent ? ` (${t('currentSession')})` : ''}
                         </strong>
-                        <p>
-                          {session.deviceName || t('unknownDevice')}
-                          {' - '}
-                          {t('lastSeen')}: {formatRelativeDate(session.lastSeenAt)}
-                        </p>
-                        <small title={formatDateTime(session.createdAt)}>
-                          {t('created')}: {formatDateTime(session.createdAt)}
-                        </small>
-                        {isRevoked ? (
-                          <small>{t('revoked')}: {formatDateTime(session.revokedAt!)}</small>
-                        ) : (
+                        <p>{session.deviceName || t('unknownDevice')}</p>
+                        <div className="session-metadata">
+                          <small title={formatDateTime(session.createdAt)}>
+                            {t('created')}: {formatDateTime(session.createdAt)}
+                          </small>
                           <small>{t('expires')}: {formatDateTime(session.expiresAt)}</small>
-                        )}
+                        </div>
                       </div>
-                      {!isRevoked ? (
-                        <button
-                          className="secondary-action logout-button"
-                          onClick={() => void onRevokeAuthSession(session.id)}
-                          type="button"
-                        >
-                          <Icon name="logout" />
-                          {session.isCurrent ? t('logout') : t('revokeSession')}
-                        </button>
-                      ) : null}
+                      <button
+                        className="secondary-action logout-button"
+                        onClick={() => void onRevokeAuthSession(session.id)}
+                        type="button"
+                      >
+                        <Icon name="logout" />
+                        {session.isCurrent ? t('logout') : t('revokeSession')}
+                      </button>
                     </article>
-                  );
-                })}
+                  ))}
               </div>
             )}
           </section>
@@ -767,23 +765,27 @@ function sessionIcon(sessionType: AuthSessionListItemResponse['sessionType']): I
 
 export function SettingsPanel({
   archiveResolutions,
+  cleanupWorkspace,
   configuredStatuses,
   language,
   onChangeLanguage,
   onClose,
   onCreateArchiveResolution,
   onDeleteArchiveResolution,
+  onDeleteWorkspace,
   onSaveStatusOptions,
   onUpdateArchiveResolution,
   t,
 }: {
   archiveResolutions: ArchiveResolutionResponse[];
+  cleanupWorkspace: WorkspaceResponse | null;
   configuredStatuses: string[];
   language: Language;
   onChangeLanguage: (language: Language) => void;
   onClose: () => void;
   onCreateArchiveResolution: (requestBody: CreateArchiveResolutionRequest) => Promise<void>;
   onDeleteArchiveResolution: (id: string) => Promise<void>;
+  onDeleteWorkspace: ((workspaceId: string) => Promise<void>) | null;
   onSaveStatusOptions: (statuses: string[]) => void;
   onUpdateArchiveResolution: (
     id: string,
@@ -795,6 +797,8 @@ export function SettingsPanel({
   const [statusDraft, setStatusDraft] = useState('');
   const [archiveReasonName, setArchiveReasonName] = useState('');
   const [archiveReasonRequiresNote, setArchiveReasonRequiresNote] = useState(false);
+  const [workspacePendingDeletion, setWorkspacePendingDeletion] =
+    useState<WorkspaceResponse | null>(null);
   const settingsSections: Array<{ key: SettingsSectionKey; label: string; icon: IconName }> = [
     { key: 'general', label: t('settingsGeneral'), icon: 'settings' },
     { key: 'statuses', label: t('statusOptions'), icon: 'status' },
@@ -831,13 +835,14 @@ export function SettingsPanel({
   };
 
   return (
-    <ModalFrame onClose={onClose}>
-      <section
-        aria-labelledby="settings-title"
-        aria-modal="true"
-        className="settings-panel"
-        role="dialog"
-      >
+    <>
+      <ModalFrame onClose={onClose}>
+        <section
+          aria-labelledby="settings-title"
+          aria-modal="true"
+          className="settings-panel"
+          role="dialog"
+        >
         <div className="dialog-header">
           <div>
             <p className="detail-kicker">DumpTether</p>
@@ -963,14 +968,37 @@ export function SettingsPanel({
                   <button disabled type="button">{t('clearOldTasks')}</button>
                   <button disabled type="button">{t('clearWorkspaceTasks')}</button>
                   <button disabled type="button">{t('deleteProjectTag')}</button>
-                  <button disabled type="button">{t('deleteBoard')}</button>
+                  <button
+                    className="danger-action"
+                    disabled={!cleanupWorkspace || !onDeleteWorkspace}
+                    onClick={() => setWorkspacePendingDeletion(cleanupWorkspace)}
+                    type="button"
+                  >
+                    <Icon name="trash" />
+                    {cleanupWorkspace
+                      ? `${t('deleteBoard')}: ${cleanupWorkspace.name}`
+                      : t('deleteBoard')}
+                  </button>
                 </div>
               </div>
             ) : null}
           </div>
         </div>
-      </section>
-    </ModalFrame>
+        </section>
+      </ModalFrame>
+      {workspacePendingDeletion && onDeleteWorkspace ? (
+        <DeleteWorkspaceDialog
+          onClose={() => setWorkspacePendingDeletion(null)}
+          onDelete={async () => {
+            await onDeleteWorkspace(workspacePendingDeletion.id);
+            setWorkspacePendingDeletion(null);
+            onClose();
+          }}
+          t={t}
+          workspace={workspacePendingDeletion}
+        />
+      ) : null}
+    </>
   );
 }
 

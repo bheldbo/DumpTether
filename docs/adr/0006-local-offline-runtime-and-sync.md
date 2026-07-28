@@ -79,7 +79,7 @@ The expected desktop packaging path is:
 - code signing after the build pipeline is stable
 
 The packaged desktop sidecar is a self-contained .NET executable. Tauri bundles
-the safe base and desktop appsettings as explicit resources and starts the
+the narrow desktop appsettings overlay as an explicit resource and starts the
 sidecar with that resource directory as its working directory. The desktop
 environment selects SQLite and local desktop identity; PostgreSQL and a
 system-wide .NET runtime are not desktop prerequisites. Closing the Tauri
@@ -114,6 +114,14 @@ server/backend URL is deployment configuration, not an in-app user setting.
 Deployment targets are not a replacement for ASP.NET
 `appsettings.Desktop.json`; appsettings still owns local sidecar behavior such
 as SQLite, local URLs and auth mode. Secrets never enter deployment targets.
+
+Hosted authentication remains a remote-server concern. The desktop overlay does
+not expose SMTP, email confirmation, MFA, OAuth, registration, or PostgreSQL
+settings. A selected deployment target provides the non-secret hosted API URL;
+the local sidecar stores a protected cloud session after successful login.
+Desktop startup always restores the local session first. Cloud credentials are
+reused for later sync, and the hosted session is verified during sync so a cloud
+outage never blocks local SQLite access.
 
 ## Login and Sync Mapping
 

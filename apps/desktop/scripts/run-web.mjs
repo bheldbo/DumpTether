@@ -14,14 +14,22 @@ if (!['build', 'dev'].includes(mode)) {
 }
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const childEnvironment = mode === 'dev'
+  ? {
+      ...process.env,
+      VITE_API_BASE_URL: '',
+      VITE_PROXY_TARGET: 'http://127.0.0.1:55869',
+    }
+  : process.env;
 const result = process.platform === 'win32'
-  ? spawnSync(`${npmCommand} run ${mode}`, {
+  ? spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `${npmCommand} run ${mode}`], {
       cwd: webRoot,
-      shell: true,
+      env: childEnvironment,
       stdio: 'inherit',
     })
   : spawnSync(npmCommand, ['run', mode], {
       cwd: webRoot,
+      env: childEnvironment,
       stdio: 'inherit',
     });
 

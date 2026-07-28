@@ -1223,6 +1223,13 @@
   font-size: 0.82rem;
 }
 
+.session-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 3px;
+}
+
 .notification-actions {
   display: inline-flex;
   flex-wrap: wrap;
