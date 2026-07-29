@@ -798,6 +798,39 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task ReadinessHealthCheck_WhenDatabaseIsAvailable_ReturnsHealthy()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/health/ready");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.EnsureSuccessStatusCode();
+        Assert.Contains("\"status\":\"healthy\"", body);
+    }
+
+    [Fact]
+    public async Task HealthChecks_WhenRequestRateIsExcessive_AreRateLimited()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        HttpResponseMessage? response = null;
+
+        for (var index = 0; index < 61; index++)
+        {
+            response?.Dispose();
+            response = await client.GetAsync("/health/live");
+        }
+
+        using (response)
+        {
+            Assert.NotNull(response);
+            Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+    }
+
+    [Fact]
     public void Startup_WhenEmailConfirmationEnabledWithoutProvider_ThrowsHelpfulError()
     {
         var configuration = new ConfigurationBuilder()

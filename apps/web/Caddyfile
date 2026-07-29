@@ -1,0 +1,13 @@
+:80 {
+    root * /srv
+    try_files {path} /index.html
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    file_server
+}

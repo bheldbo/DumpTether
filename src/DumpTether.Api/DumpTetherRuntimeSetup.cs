@@ -3,7 +3,8 @@ namespace DumpTether.Api;
 public sealed record DumpTetherRuntimeSetup(
     string CorsPolicyName,
     string[] CorsAllowedOrigins,
-    bool ApplyMigrationsOnStartup)
+    bool ApplyMigrationsOnStartup,
+    bool TrustForwardedHeaders)
 {
     public const string DefaultCorsPolicyName = "DumpTether.Cors";
 }
@@ -20,6 +21,7 @@ internal static class DumpTetherRuntimeSetupReader
         return new DumpTetherRuntimeSetup(
             DumpTetherRuntimeSetup.DefaultCorsPolicyName,
             CorsConfiguration.GetAllowedOrigins(configuration),
-            configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"));
+            configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"),
+            configuration.GetValue<bool>("ReverseProxy:TrustForwardedHeaders"));
     }
 }

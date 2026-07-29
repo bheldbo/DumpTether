@@ -8,6 +8,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - dumptether-postgres-data:/var/lib/postgresql/data
+    networks:
+      - data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -19,8 +21,11 @@ services:
     restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      AllowedHosts: ${DUMPTETHER_DOMAIN}
       Database__Provider: ${DUMPTETHER_DATABASE_PROVIDER:-Postgres}
       Database__ApplyMigrationsOnStartup: ${DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP:-false}
+      DataProtection__KeysPath: /home/app/.aspnet/DataProtection-Keys
+      ReverseProxy__TrustForwardedHeaders: "true"
       Auth__RequireAuthentication: ${DUMPTETHER_REQUIRE_AUTHENTICATION:-true}
       Auth__AllowGuestSessions: ${DUMPTETHER_ALLOW_GUEST_SESSIONS:-false}
       Auth__SignupMode: ${DUMPTETHER_SIGNUP_MODE:-InviteOnly}
@@ -54,11 +59,25 @@ services:
       Usage__MaxActiveTasksPerWorkspace: ${DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE:-1000}
       Usage__MaxTotalTasksPerWorkspace: ${DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE:-5000}
       ConnectionStrings__DumpTether: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+    volumes:
+      - dumptether-data-protection-keys:/home/app/.aspnet/DataProtection-Keys
     expose:
       - "8080"
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - proxy-api
+      - api-egress
+      - data
+
+  web:
+    image: ${DUMPTETHER_WEB_IMAGE}
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - proxy-web
 
   reverse-proxy:
     image: caddy:2-alpine
@@ -74,8 +93,24 @@ services:
       - dumptether-caddy-config:/config
     depends_on:
       - api
+      - web
+    networks:
+      - public
+      - proxy-api
+      - proxy-web
 
 volumes:
   dumptether-postgres-data:
+  dumptether-data-protection-keys:
   dumptether-caddy-data:
   dumptether-caddy-config:
+
+networks:
+  public:
+  proxy-api:
+    internal: true
+  proxy-web:
+    internal: true
+  api-egress:
+  data:
+    internal: true

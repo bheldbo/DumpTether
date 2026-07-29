@@ -61,21 +61,14 @@ import type {
   UpdateTaskShareRequest,
   UpdateWorkspaceMemberRequest,
 } from './types';
+import {
+  getDesktopRuntimeConfiguration,
+  isDesktopRuntime,
+} from './clientRuntime';
 
-interface DesktopRuntimeConfiguration {
-  apiBaseUrl: string;
-  bootstrapToken: string;
-}
+export { isDesktopRuntime } from './clientRuntime';
 
-declare global {
-  interface Window {
-    __DUMPTETHER_DESKTOP_RUNTIME__?: DesktopRuntimeConfiguration;
-  }
-}
-
-const desktopRuntimeConfiguration = typeof window === 'undefined'
-  ? undefined
-  : window.__DUMPTETHER_DESKTOP_RUNTIME__;
+const desktopRuntimeConfiguration = getDesktopRuntimeConfiguration();
 const desktopLocalApiBaseUrl =
   desktopRuntimeConfiguration?.apiBaseUrl ?? 'http://127.0.0.1:55869';
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
@@ -127,22 +120,6 @@ function getDefaultApiBaseUrl() {
   }
 
   return '';
-}
-
-export function isDesktopRuntime() {
-  const desktopWindow = window as Window & {
-    __TAURI_INTERNALS__?: unknown;
-    __TAURI__?: unknown;
-  };
-
-  return Boolean(
-    desktopRuntimeConfiguration ||
-    desktopWindow.__TAURI_INTERNALS__ ||
-    desktopWindow.__TAURI__,
-  ) ||
-    window.location.protocol === 'tauri:' ||
-    window.location.protocol === 'file:' ||
-    window.location.hostname === 'tauri.localhost';
 }
 
 export function isTemporarySession() {

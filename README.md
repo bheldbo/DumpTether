@@ -174,7 +174,11 @@ API health:
 
 ```text
 http://localhost:55868/health
+http://localhost:55868/health/live
+http://localhost:55868/health/ready
 ```
+
+`live` checks the API process. `ready` also checks the configured database.
 
 ## Visual Studio
 
@@ -421,12 +425,15 @@ docs/deployment/docker-compose-production.md
 
 Production rules:
 
+- Web runs as a small static Docker image.
 - API runs as a Docker image.
 - PostgreSQL runs as a separate Docker service.
 - PostgreSQL uses a persistent Docker volume.
+- Data Protection keys use a separate persistent volume.
 - PostgreSQL should not publish port `5432` publicly.
+- API port `8080` should not be published publicly.
 - Secrets live on the server, not in GitHub.
-- Caddy/nginx should terminate public HTTP/HTTPS.
+- Caddy terminates public HTTP/HTTPS, serves web, and proxies API/health routes.
 - Run migrations intentionally, not accidentally.
 
 Validate production compose shape:
@@ -590,6 +597,17 @@ That builds the Linux sidecar and asks Tauri for AppImage/deb/rpm bundles. Expec
 
 Server deployment to Linux is already the intended production path: use the Docker image and `deploy/docker/docker-compose.prod.example.yml`. That is separate from Linux desktop publishing.
 
+The hosted release consists of two independently versioned images built from the
+same commit:
+
+- `dumptether-web`: the React static client.
+- `dumptether-api`: ASP.NET Core, Domain/App/Data assemblies and the HTTP/SignalR
+  host.
+
+PostgreSQL is a separate service and is never bundled into either image. Desktop
+and future mobile clients call the same API contract but keep their own local
+offline store.
+
 ## Security Notes
 
 Current security posture:
@@ -607,8 +625,15 @@ Before a real public MVP:
 
 - Confirm production cookies/session settings.
 - Confirm HTTPS at the reverse proxy.
+- Persist Data Protection keys and test restoring them with PostgreSQL.
+- Configure external monitoring for `/health/live` and `/health/ready`.
 - Review auth error logging so it helps debugging without leaking tokens.
 - Harden sharing and live update authorization paths.
+
+Server administration is deliberately separate from Owner/Member/Guest product
+roles. The planned first operator surface is a CLI used over SSH or a private
+VPN, with metadata-only defaults and audited privileged actions. See
+`docs/adr/0009-server-operations-and-administration.md`.
 
 ## Testing
 
@@ -653,16 +678,31 @@ Pull requests should include:
 - risks
 - follow-up work
 
-CI currently covers backend restore/build/test, frontend lint/typecheck/build, CodeQL and Docker build validation where configured.
+CI covers backend restore/build/test, frontend lint/typecheck/build, CodeQL, and
+production API/web Docker image validation. Version tags publish matching images
+to GHCR; no workflow deploys to a server.
 
 Release direction:
 
 1. Merge to `main`.
 2. Tag a release when the MVP state is worth preserving.
-3. Build/publish API image.
-4. Server pulls the new image.
+3. GitHub builds/publishes versioned API and web images to GHCR.
+4. Server pulls both image tags.
 5. Run migrations intentionally.
-6. Restart API with Docker Compose.
+6. Recreate the Compose stack and verify live/ready health.
+
+For example:
+
+```powershell
+git switch main
+git pull --ff-only
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The same `v*` tag starts the hosted-image workflow and the desktop installer
+workflow. Hosted images are published to GHCR; desktop installers are attached
+to the GitHub Release. Neither workflow changes a running server.
 
 Automatic deployment is intentionally not wired yet.
 

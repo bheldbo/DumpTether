@@ -2,12 +2,13 @@
 
 This document describes the intended production direction for the current DumpTether Docker setup. It is not automatic deployment yet.
 
-## Build the API Image Locally
+## Build the Production Images Locally
 
 From the repository root:
 
 ```powershell
 docker build -f src/DumpTether.Api/Dockerfile -t dumptether-api:local .
+docker build -f apps/web/Dockerfile -t dumptether-web:local .
 ```
 
 The Dockerfile is multi-stage:
@@ -16,6 +17,12 @@ The Dockerfile is multi-stage:
 - ASP.NET Core runtime image runs the published output.
 - Runtime configuration is supplied through environment variables.
 - `.env` files and local secrets are excluded by `.dockerignore`.
+- The runtime image uses the built-in non-root `app` user.
+
+The web image builds `apps/web` and serves its static output. In the production
+Compose shape, Caddy sends `/api/*` and `/health*` to the API and everything else
+to the web image. The web app therefore uses same-origin requests and the image
+does not need a customer-specific API URL.
 
 ## Run Local Compose
 
@@ -58,6 +65,7 @@ POSTGRES_DB=dumptether
 POSTGRES_USER=dumptether
 POSTGRES_PASSWORD=<long random secret>
 DUMPTETHER_API_IMAGE=<registry>/<image>:<tag>
+DUMPTETHER_WEB_IMAGE=<registry>/<web-image>:<tag>
 DUMPTETHER_DATABASE_PROVIDER=Postgres
 DUMPTETHER_APPLY_MIGRATIONS_ON_STARTUP=false
 DUMPTETHER_REQUIRE_AUTHENTICATION=true
@@ -88,6 +96,17 @@ DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com
 ```
 
 The API maps that to `Cors:AllowedOrigins:0` and rejects wildcard origins. Use an origin only, not a path.
+
+Production Compose enables trusted forwarded headers because Caddy is the only
+peer on the dedicated `proxy-api` network and its private Docker address is
+dynamic. Caddy gets public/ACME access through `public`; the API gets provider
+access through `api-egress`; proxy traffic, static web and PostgreSQL each use
+separate internal networks. Do not publish API port `8080` or attach unrelated
+services to `proxy-api` while that trust mode is enabled.
+
+Data Protection keys are mounted from a persistent named volume. Losing those
+keys can invalidate protected cloud-session material even when PostgreSQL is
+intact, so include that volume in the server recovery plan.
 
 ## Start Production Compose
 
@@ -150,19 +169,61 @@ ports:
 
 to production PostgreSQL unless you also add strict firewall and network controls.
 
+The same rule applies to API port `8080`, Mailpit ports `1025/8025`, and any
+future operations UI. Public inbound traffic should normally be limited to
+`80/443`; restrict SSH to keys and preferably an allowlist or VPN. Apply the
+same intent to IPv6 rules.
+
+Docker-published ports have their own packet-filtering behavior. Verify the
+effective Docker firewall rules rather than assuming a host firewall alone will
+hide a published container port.
+
+## Health And Monitoring
+
+Use:
+
+```text
+/health/live
+/health/ready
+```
+
+`live` is process liveness. `ready` also calls the configured database. Readiness
+results are cached briefly and both endpoints are rate-limited, but monitoring
+should still use a sensible interval such as 30-60 seconds. Configure an
+external uptime monitor against both endpoints. A stopped API cannot email about
+its own failure.
+
+Administrative actions are a separate server-operator boundary described in
+`docs/adr/0009-server-operations-and-administration.md`. The future first
+surface is a CLI reached over SSH/VPN, not an Admin role in the public client.
+
 ## GitHub Actions Direction
 
-Current PR checks can build the Docker image without pushing it.
+Pull requests build both production images without pushing them.
 
-Later, GitHub Actions can:
+`.github/workflows/hosted-release.yml` publishes matching API and web images to
+GHCR for `v*` tags, or for an explicitly named manual preview. Each build gets
+the requested version tag and an immutable `sha-...` tag. It uses the repository
+`GITHUB_TOKEN`; no registry password is stored in DumpTether configuration.
 
-1. Build the API image.
-2. Tag it with the commit SHA and/or release version.
-3. Push it to GHCR.
-4. The server pulls the new image.
-5. The server runs `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d`.
+The workflow deliberately does not deploy. On the server:
 
-Do not add automatic deployment or GHCR pushes until the registry, secrets, and server update process are explicit.
+1. Put the selected immutable/versioned image tags in `.env.prod`.
+2. Pull both images.
+3. Back up PostgreSQL.
+4. Apply reviewed migrations intentionally.
+5. Run `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d`.
+6. Check `/health/live` and `/health/ready`.
+
+If the GHCR packages are private, sign the server in with a narrowly scoped
+token that can read packages:
+
+```bash
+echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
+```
+
+Keep that token in the server secret store or root-owned environment, never in
+Compose source or the repository. Public packages do not require registry login.
 
 ## Configuration Categories
 
