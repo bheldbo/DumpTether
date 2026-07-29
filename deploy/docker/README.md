@@ -12,17 +12,21 @@ Do not commit those real files.
 
 ## Files
 
-- `docker-compose.prod.example.yml`: API, PostgreSQL, and Caddy reverse proxy.
+- `docker-compose.prod.example.yml`: web, API, PostgreSQL, and Caddy reverse proxy.
 - `.env.prod.example`: placeholder production environment values.
 - `Caddyfile.example`: placeholder reverse proxy config.
 
 ## Production Shape
 
 - Caddy publishes ports `80` and `443`.
+- Caddy serves the React web image and routes `/api/*` plus health checks to the API.
 - API listens internally on Docker port `8080`.
+- The API runs as a non-root user.
 - PostgreSQL listens only on the Docker network and does not publish `5432`.
 - PostgreSQL data is stored in the `dumptether-postgres-data` named volume.
-- CORS uses exact allowed origins from `.env.prod` when the frontend is hosted separately.
+- Data Protection keys persist in the `dumptether-data-protection-keys` volume.
+- Same-origin web/API traffic does not require CORS. Exact origins remain available
+  for separately hosted browser or webview clients.
 - `DUMPTETHER_DATABASE_PROVIDER` should stay `Postgres` for production compose.
 
 ## First Server Setup
@@ -66,6 +70,17 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f api
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f reverse-proxy
 ```
 
+External monitoring should call:
+
+```text
+https://your-domain.example/health/live
+https://your-domain.example/health/ready
+```
+
+`live` checks that the API process can respond. `ready` also checks that the
+database is reachable. The monitor must run outside the API process, preferably
+outside the VPS, if it is expected to alert when the server is down.
+
 Restart only the API:
 
 ```bash
@@ -80,3 +95,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
 ```
 
 PostgreSQL is intentionally not exposed publicly. Do not add a `ports:` entry to the production PostgreSQL service unless you fully understand the network exposure and firewall rules.
+
+Mailpit is intentionally absent. It is a development inbox, not a production
+mail server. Use a transactional SMTP/API provider for confirmation and security
+email.

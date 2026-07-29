@@ -11,9 +11,12 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 
@@ -61,7 +64,28 @@ internal static class DumpTetherApiSetup
         services.AddDumpTetherRateLimiting();
         services.AddControllers();
         services.AddSignalR();
+        services.AddSingleton<DatabaseReadinessHealthCheck>();
+        services
+            .AddHealthChecks()
+            .AddCheck<DatabaseReadinessHealthCheck>(
+                "database",
+                tags: ["ready"]);
         services.AddHostedService<SessionCleanupHostedService>();
+
+        if (runtimeSetup.TrustForwardedHeaders)
+        {
+            services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders =
+                    ForwardedHeaders.XForwardedFor |
+                    ForwardedHeaders.XForwardedProto;
+
+                // Caddy is the only production network path to this container,
+                // but its private Docker address is allocated dynamically.
+                options.KnownNetworks.Clear();
+                options.KnownProxies.Clear();
+            });
+        }
 
         return services;
     }
@@ -122,6 +146,11 @@ internal static class DumpTetherApiSetup
         this WebApplication app,
         DumpTetherRuntimeSetup runtimeSetup)
     {
+        if (runtimeSetup.TrustForwardedHeaders)
+        {
+            app.UseForwardedHeaders();
+        }
+
         app.UseMiddleware<SecurityHeadersMiddleware>();
 
         app.Use(async (context, next) =>
@@ -137,11 +166,14 @@ internal static class DumpTetherApiSetup
             }
         });
 
-        app.MapGet("/health", () => Results.Ok(new
-        {
-            status = "ok",
-            service = "DumpTether.Api"
-        }));
+        app.MapHealthChecks("/health", CreateHealthCheckOptions(_ => false))
+            .RequireRateLimiting("health");
+        app.MapHealthChecks("/health/live", CreateHealthCheckOptions(_ => false))
+            .RequireRateLimiting("health");
+        app.MapHealthChecks(
+            "/health/ready",
+            CreateHealthCheckOptions(check => check.Tags.Contains("ready")))
+            .RequireRateLimiting("health");
 
         app.UseCors(runtimeSetup.CorsPolicyName);
         app.UseMiddleware<DesktopBootstrapTokenMiddleware>();
@@ -156,6 +188,22 @@ internal static class DumpTetherApiSetup
 
         return app;
     }
+
+    private static HealthCheckOptions CreateHealthCheckOptions(
+        Func<HealthCheckRegistration, bool> predicate) =>
+        new()
+        {
+            Predicate = predicate,
+            ResponseWriter = async (context, report) =>
+            {
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    status = report.Status.ToString().ToLowerInvariant(),
+                    service = "DumpTether.Api"
+                });
+            }
+        };
 
     private static IServiceCollection AddDumpTetherDataProtection(
         this IServiceCollection services,
@@ -341,6 +389,16 @@ internal static class DumpTetherApiSetup
     {
         services.AddRateLimiter(options =>
         {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy("health", context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    context.Connection.RemoteIpAddress?.ToString() ?? "unknown-health-client",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 60,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0
+                    }));
             options.AddPolicy("auth", context =>
                 RateLimitPartition.GetFixedWindowLimiter(
                     GetRateLimitKey(context),

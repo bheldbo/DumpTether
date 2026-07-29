@@ -1,0 +1,93 @@
+name: Hosted Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Image tag to publish
+        required: true
+        default: preview
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REGISTRY: ghcr.io
+
+jobs:
+  publish:
+    name: Publish API And Web Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image coordinates
+        shell: bash
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            image_tag="${GITHUB_REF_NAME}"
+          else
+            image_tag="${{ inputs.image_tag }}"
+          fi
+
+          if [[ ! "${image_tag}" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+            echo "Image tag contains unsupported characters."
+            exit 1
+          fi
+
+          echo "API_IMAGE=${REGISTRY}/${owner}/dumptether-api" >> "${GITHUB_ENV}"
+          echo "WEB_IMAGE=${REGISTRY}/${owner}/dumptether-web" >> "${GITHUB_ENV}"
+          echo "IMAGE_TAG=${image_tag}" >> "${GITHUB_ENV}"
+          echo "SHA_TAG=sha-${GITHUB_SHA::12}" >> "${GITHUB_ENV}"
+
+      - name: Sign in to GHCR
+        shell: bash
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" |
+            docker login "${REGISTRY}" \
+              --username "${GITHUB_ACTOR}" \
+              --password-stdin
+
+      - name: Build API image
+        run: |
+          docker build \
+            -f src/DumpTether.Api/Dockerfile \
+            -t "${API_IMAGE}:${IMAGE_TAG}" \
+            -t "${API_IMAGE}:${SHA_TAG}" \
+            .
+
+      - name: Build web image
+        run: |
+          docker build \
+            -f apps/web/Dockerfile \
+            -t "${WEB_IMAGE}:${IMAGE_TAG}" \
+            -t "${WEB_IMAGE}:${SHA_TAG}" \
+            .
+
+      - name: Publish images
+        run: |
+          docker push "${API_IMAGE}:${IMAGE_TAG}"
+          docker push "${API_IMAGE}:${SHA_TAG}"
+          docker push "${WEB_IMAGE}:${IMAGE_TAG}"
+          docker push "${WEB_IMAGE}:${SHA_TAG}"
+
+      - name: Write release summary
+        shell: bash
+        run: |
+          {
+            echo "## Hosted images"
+            echo
+            echo "- \`${API_IMAGE}:${IMAGE_TAG}\`"
+            echo "- \`${WEB_IMAGE}:${IMAGE_TAG}\`"
+            echo "- immutable source tag: \`${SHA_TAG}\`"
+            echo
+            echo "No server deployment was performed."
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -42,13 +42,26 @@ Event payloads stay small and contain identifiers, timestamps, and future versio
 
 The backend remains authoritative. SignalR connections are authenticated when login is required. Hub groups are scoped by workspace membership and task-share access. Events must not leak tasks, notes, emails, tokens, connection strings, or other secrets to clients without access.
 
-## Desktop and offline impact
+## Desktop, mobile and offline impact
 
-The future desktop app can use the same event names locally from the .NET sidecar API. Offline sync remains separate future work. When sync is implemented, it should use stable IDs, `CreatedAt`, `UpdatedAt`, `DeletedAt`, `Version`, `DeviceId`, and append-only timeline entries where possible.
+The desktop app can use the same event names locally from the .NET sidecar API.
+Durable sync uses stable IDs, versions, device/root mappings and append-only
+timeline entries where possible. SignalR is not the durable sync protocol.
 
 Shared tasks and shared workspaces are server/session-scoped. The offline desktop app should show local user-owned data without login, then after login check server status, sync the user's own cloud data, and fetch shared tasks/workspaces only when the server connection succeeds. Sync or server connection errors should be shown clearly to the user without blocking local use.
 
 SignalR events should not become the source of truth. If a desktop client is offline, it can miss events and still recover by syncing/refetching later.
+
+SignalR remains useful while a future Android or iOS app is active. Mobile
+operating systems suspend background connections, so background attention will
+use FCM on Android and APNs on iOS. Push payloads contain only minimal IDs and
+version hints. Opening or resuming the app fetches authoritative state through
+the API and durable sync path.
+
+Unread state is also durable data, not a count of received SignalR events. A
+future per-user task read state will compare a user's read watermark with the
+task's meaningful activity version. SignalR may invalidate cached task/board
+counts, but missing an event must not lose unread state.
 
 ## Consequences
 
@@ -57,6 +70,7 @@ This keeps the app responsive for shared boards without turning the frontend int
 ## Non-goals
 
 - No full live sync implementation yet.
-- No offline conflict resolution yet.
+- No mobile push provider integration yet.
+- No per-user read watermark implementation yet.
 - No websocket-only API behavior.
 - No AI, MCP, email, calendar, desktop, SQLite, or sync implementation in this step.
