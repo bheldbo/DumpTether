@@ -50,10 +50,28 @@ public sealed class TaskTimelineEntry
         DateTimeOffset occurredAt,
         string? details = null)
     {
+        return Create(
+            Guid.NewGuid(),
+            taskItemId,
+            kind,
+            summary,
+            occurredAt,
+            details);
+    }
+
+    public static TaskTimelineEntry Create(
+        Guid id,
+        Guid taskItemId,
+        TaskTimelineEntryKind kind,
+        string summary,
+        DateTimeOffset occurredAt,
+        string? details = null)
+    {
+        DomainGuards.NotEmpty(id, nameof(id));
         DomainGuards.NotEmpty(taskItemId, nameof(taskItemId));
 
         return new TaskTimelineEntry(
-            Guid.NewGuid(),
+            id,
             taskItemId,
             kind,
             DomainGuards.NotBlank(summary, nameof(summary)),

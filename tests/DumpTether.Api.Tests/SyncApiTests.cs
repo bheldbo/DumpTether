@@ -238,6 +238,86 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task ReconcileCloudWorkspaces_ImportsCloudOnlyBoardAndPullsItsTasks()
+    {
+        var cloud = new FakeCloudSyncClient();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        await LoginDesktopAsync(client);
+        await ConnectCloudAccountAsync(client);
+        var remoteWorkspace = cloud.AddWorkspace("Cloud only", "#A7F3D0");
+        cloud.AddTask(
+            remoteWorkspace.Id,
+            "Visible after reconciliation",
+            lastTouchedAt: DateTimeOffset.UtcNow);
+
+        var reconcileResponse = await client.PostAsync(
+            "/api/sync/cloud-workspaces/reconcile",
+            content: null);
+
+        reconcileResponse.EnsureSuccessStatusCode();
+        var reconciliation =
+            (await reconcileResponse.Content.ReadFromJsonAsync<ReconcileCloudWorkspacesResponse>())!;
+        var importedRoot = Assert.Single(
+            reconciliation.Roots,
+            root => root.RemoteWorkspaceId == remoteWorkspace.Id);
+        Assert.Equal(1, reconciliation.Imported);
+        Assert.Equal(SyncRootOrigin.CloudImported, importedRoot.Origin);
+
+        var syncResponse = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{importedRoot.LocalWorkspaceId}/run",
+            new SyncWorkspaceWithCloudRequest(
+                PushLocalChanges: false,
+                PullRemoteChanges: true));
+        syncResponse.EnsureSuccessStatusCode();
+
+        using var workspaceRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/api/tasks");
+        workspaceRequest.Headers.Add(
+            "X-DumpTether-Workspace-Id",
+            importedRoot.LocalWorkspaceId.ToString());
+        var tasksResponse = await client.SendAsync(workspaceRequest);
+        tasksResponse.EnsureSuccessStatusCode();
+        var tasks = (await tasksResponse.Content.ReadFromJsonAsync<List<TaskItemSummaryResponse>>())!;
+
+        Assert.Contains(tasks, task => task.Title == "Visible after reconciliation");
+    }
+
+    [Fact]
+    public async Task ReconcileCloudWorkspaces_WhenRemoteAccessIsGone_MarksImportedRootRevoked()
+    {
+        var cloud = new FakeCloudSyncClient();
+        var remoteWorkspace = cloud.AddWorkspace("Temporary cloud access");
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        await LoginDesktopAsync(client);
+        await ConnectCloudAccountAsync(client);
+        cloud.Workspaces.Clear();
+        cloud.TasksByWorkspace.Remove(remoteWorkspace.Id);
+
+        var response = await client.PostAsync(
+            "/api/sync/cloud-workspaces/reconcile",
+            content: null);
+
+        response.EnsureSuccessStatusCode();
+        var reconciliation =
+            (await response.Content.ReadFromJsonAsync<ReconcileCloudWorkspacesResponse>())!;
+        var root = Assert.Single(
+            reconciliation.Roots,
+            candidate => candidate.RemoteWorkspaceId == remoteWorkspace.Id);
+
+        Assert.Equal(1, reconciliation.AccessRevoked);
+        Assert.Equal(SyncRootStatus.AccessRevoked, root.Status);
+    }
+
+    [Fact]
     public async Task DisconnectCloudAccount_RevokesRemoteSessionAndErasesLocalToken()
     {
         var cloud = new FakeCloudSyncClient();
@@ -443,6 +523,92 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenRemoteCreateSucceededBeforeFailure_RetryDoesNotDuplicateTask()
+    {
+        var cloud = new FakeCloudSyncClient
+        {
+            FailAfterNextTaskCreate = true
+        };
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        var created = await CreateTaskItemAsync(client, "Retry remote create");
+        var request = new SyncWorkspaceWithCloudRequest(
+            "https://cloud.example",
+            "cloud-token");
+
+        var failure = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.PostAsJsonAsync(
+                $"/api/sync/workspaces/{workspaceId}/run",
+                request));
+        Assert.Contains("lost response", failure.Message, StringComparison.OrdinalIgnoreCase);
+
+        var secondResponse = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            request);
+        secondResponse.EnsureSuccessStatusCode();
+        var second = (await secondResponse.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+
+        Assert.Equal(0, second.Failed);
+        var remoteTask = Assert.Single(
+            cloud.TasksByWorkspace[cloud.Workspaces.Single().Id],
+            task => task.Id == created.Id);
+        Assert.Equal(created.Title, remoteTask.Title);
+        Assert.Equal(2, cloud.CreateTaskAttempts);
+    }
+
+    [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenRequestsOverlap_SerializesWorkspaceSync()
+    {
+        var cloud = new FakeCloudSyncClient
+        {
+            PauseNextTaskCreate = true
+        };
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        var created = await CreateTaskItemAsync(client, "Concurrent sync");
+        var request = new SyncWorkspaceWithCloudRequest(
+            "https://cloud.example",
+            "cloud-token");
+
+        var firstRequest = client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            request);
+        await cloud.WaitForPausedTaskCreateAsync();
+        var secondRequest = client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            request);
+
+        var prematureCompletion = await Task.WhenAny(
+            secondRequest,
+            Task.Delay(TimeSpan.FromMilliseconds(100)));
+        Assert.NotSame(secondRequest, prematureCompletion);
+        Assert.Equal(1, cloud.CreateTaskAttempts);
+
+        cloud.ResumeTaskCreate();
+        var responses = await Task.WhenAll(firstRequest, secondRequest);
+
+        foreach (var response in responses)
+        {
+            response.EnsureSuccessStatusCode();
+        }
+
+        Assert.Single(
+            cloud.TasksByWorkspace[cloud.Workspaces.Single().Id],
+            task => task.Id == created.Id);
+        Assert.Equal(1, cloud.CreateTaskAttempts);
+    }
+
+    [Fact]
     public async Task SyncWorkspaceWithCloud_WhenCloudUrlIsInvalid_ReturnsBadRequest()
     {
         var cloud = new FakeCloudSyncClient();
@@ -539,6 +705,56 @@ public sealed class SyncApiTests
         Assert.Equal(1, sync.Pulled);
         var pulled = Assert.Single(tasks!, task => task.Title == "Pulled from cloud");
         Assert.Equal(SyncMappingStatus.Synced.ToString(), pulled.SyncState?.Status);
+    }
+
+    [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenUntemplatedRemoteTaskHasNote_PullsStableNoteOnce()
+    {
+        var cloud = new FakeCloudSyncClient();
+        var remoteWorkspace = cloud.AddWorkspace("Cloud board");
+        var remoteNoteId = Guid.NewGuid();
+        cloud.AddTask(
+            remoteWorkspace.Id,
+            "Remote note",
+            lastTouchedAt: DateTimeOffset.UtcNow,
+            timelineEntries:
+            [
+                new CloudSyncTimelineEntryResponse(
+                    remoteNoteId,
+                    "Pulled exactly once.",
+                    DateTimeOffset.UtcNow)
+            ]);
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        var request = new SyncWorkspaceWithCloudRequest(
+            "https://cloud.example",
+            "cloud-token",
+            remoteWorkspace.Id,
+            PushLocalChanges: false);
+
+        var firstResponse = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            request);
+        var secondResponse = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            request);
+
+        firstResponse.EnsureSuccessStatusCode();
+        secondResponse.EnsureSuccessStatusCode();
+        var tasks = (await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks"))!;
+        var pulled = Assert.Single(tasks, task => task.Title == "Remote note");
+        var detail = (await client.GetFromJsonAsync<TaskItemDetailResponse>(
+            $"/api/tasks/{pulled.Id}"))!;
+
+        var note = Assert.Single(
+            detail.TimelineEntries,
+            entry => entry.Id == remoteNoteId);
+        Assert.Equal("Pulled exactly once.", note.Details);
     }
 
     [Fact]
@@ -870,10 +1086,22 @@ public sealed class SyncApiTests
 
     private sealed class FakeCloudSyncClient : ICloudSyncClient
     {
+        private readonly TaskCompletionSource<bool> _pausedTaskCreateEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _resumeTaskCreate =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly CloudSyncUserResponse _user = new(
             Guid.NewGuid(),
             "cloud@example.test",
             "Cloud User");
+        private int _createTaskAttempts;
+        private int _pauseTaskCreateConsumed;
+
+        public bool FailAfterNextTaskCreate { get; set; }
+
+        public bool PauseNextTaskCreate { get; set; }
+
+        public int CreateTaskAttempts => Volatile.Read(ref _createTaskAttempts);
 
         public List<CloudSyncWorkspaceResponse> Workspaces { get; } = [];
 
@@ -932,6 +1160,30 @@ public sealed class SyncApiTests
             return Task.FromResult(AddWorkspace(request.Name, request.Color));
         }
 
+        public Task<CloudSyncWorkspaceResponse> UpdateWorkspaceAsync(
+            CloudSyncConnection connection,
+            Guid workspaceId,
+            CloudSyncUpdateWorkspaceRequest request,
+            CancellationToken cancellationToken)
+        {
+            var index = Workspaces.FindIndex(workspace => workspace.Id == workspaceId);
+            if (index < 0)
+            {
+                throw new InvalidOperationException("Workspace was not found.");
+            }
+
+            var workspace = Workspaces[index];
+            var updated = workspace with
+            {
+                Name = request.Name ?? workspace.Name,
+                Color = request.Color,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            Workspaces[index] = updated;
+
+            return Task.FromResult(updated);
+        }
+
         public Task<IReadOnlyList<CloudSyncTaskTemplateResponse>> ListTaskTemplatesAsync(
             CloudSyncConnection connection,
             CancellationToken cancellationToken)
@@ -988,12 +1240,20 @@ public sealed class SyncApiTests
             return Task.FromResult<IReadOnlyList<CloudSyncTaskResponse>>(tasks);
         }
 
-        public Task<CloudSyncTaskResponse> CreateTaskAsync(
+        public async Task<CloudSyncTaskResponse> CreateTaskAsync(
             CloudSyncConnection connection,
             Guid workspaceId,
             CloudSyncCreateTaskRequest request,
             CancellationToken cancellationToken)
         {
+            Interlocked.Increment(ref _createTaskAttempts);
+            if (PauseNextTaskCreate &&
+                Interlocked.CompareExchange(ref _pauseTaskCreateConsumed, 1, 0) == 0)
+            {
+                _pausedTaskCreateEntered.TrySetResult(true);
+                await _resumeTaskCreate.Task.WaitAsync(cancellationToken);
+            }
+
             var created = AddTask(
                 workspaceId,
                 request.Title,
@@ -1003,9 +1263,28 @@ public sealed class SyncApiTests
                 request.Color,
                 request.FollowUpAt,
                 DateTimeOffset.UtcNow,
-                request.FieldValues);
+                request.FieldValues,
+                request.ClientGeneratedId,
+                MapTimelineEntries(request.TimelineEntries));
 
-            return Task.FromResult(created);
+            if (FailAfterNextTaskCreate)
+            {
+                FailAfterNextTaskCreate = false;
+                throw new HttpRequestException(
+                    "Simulated lost response after cloud task creation.");
+            }
+
+            return created;
+        }
+
+        public Task WaitForPausedTaskCreateAsync()
+        {
+            return _pausedTaskCreateEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        public void ResumeTaskCreate()
+        {
+            _resumeTaskCreate.TrySetResult(true);
         }
 
         public Task<CloudSyncTaskResponse> UpdateTaskAsync(
@@ -1069,11 +1348,23 @@ public sealed class SyncApiTests
             string? color = null,
             DateTimeOffset? followUpAt = null,
             DateTimeOffset? lastTouchedAt = null,
-            IReadOnlyDictionary<Guid, string>? fieldValues = null)
+            IReadOnlyDictionary<Guid, string>? fieldValues = null,
+            Guid? id = null,
+            IReadOnlyList<CloudSyncTimelineEntryResponse>? timelineEntries = null)
         {
             var createdAt = lastTouchedAt ?? DateTimeOffset.UtcNow;
+            var taskId = id ?? Guid.NewGuid();
+            if (TasksByWorkspace.TryGetValue(workspaceId, out var existingTasks))
+            {
+                var existingTask = existingTasks.FirstOrDefault(task => task.Id == taskId);
+                if (existingTask is not null)
+                {
+                    return existingTask;
+                }
+            }
+
             var task = new CloudSyncTaskResponse(
-                Guid.NewGuid(),
+                taskId,
                 workspaceId,
                 taskTemplateId,
                 title,
@@ -1084,7 +1375,8 @@ public sealed class SyncApiTests
                 lastTouchedAt ?? createdAt,
                 followUpAt,
                 ArchivedAt: null,
-                MapFieldValues(fieldValues));
+                MapFieldValues(fieldValues),
+                timelineEntries);
 
             TasksByWorkspace[workspaceId].Add(task);
 
@@ -1158,6 +1450,23 @@ public sealed class SyncApiTests
                     value.Key,
                     value.Value,
                     DateTimeOffset.UtcNow))
+                .ToList();
+        }
+
+        private static IReadOnlyList<CloudSyncTimelineEntryResponse> MapTimelineEntries(
+            IReadOnlyList<CloudSyncTimelineEntryRequest>? timelineEntries)
+        {
+            if (timelineEntries is null || timelineEntries.Count == 0)
+            {
+                return [];
+            }
+
+            return timelineEntries
+                .Select(entry => new CloudSyncTimelineEntryResponse(
+                    entry.ClientGeneratedId,
+                    entry.Note,
+                    DateTimeOffset.UtcNow,
+                    MapFieldValues(entry.FieldValues)))
                 .ToList();
         }
 

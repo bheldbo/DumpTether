@@ -39,6 +39,15 @@ internal sealed class NoOpCloudSyncClient : ICloudSyncClient
         throw CreateMissingClientException();
     }
 
+    public Task<CloudSyncWorkspaceResponse> UpdateWorkspaceAsync(
+        CloudSyncConnection connection,
+        Guid workspaceId,
+        CloudSyncUpdateWorkspaceRequest request,
+        CancellationToken cancellationToken)
+    {
+        throw CreateMissingClientException();
+    }
+
     public Task<IReadOnlyList<CloudSyncTaskTemplateResponse>> ListTaskTemplatesAsync(
         CloudSyncConnection connection,
         CancellationToken cancellationToken)

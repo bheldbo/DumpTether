@@ -27,6 +27,7 @@ import { getSidebarStyle } from '../../taskUtils';
 import type {
   CurrentUserResponse,
   SavedViewResponse,
+  SyncRootResponse,
   UpdateWorkspaceRequest,
   WorkspaceResponse,
 } from '../../types';
@@ -58,6 +59,7 @@ export function Sidebar({
   t,
   temporarySessionIsActive,
   templateCount,
+  syncRoots,
   workspace,
   workspaces,
 }: {
@@ -90,6 +92,7 @@ export function Sidebar({
   t: Translate;
   temporarySessionIsActive: boolean;
   templateCount: number;
+  syncRoots: SyncRootResponse[];
   workspace: WorkspaceResponse | null;
   workspaces: WorkspaceResponse[];
 }) {
@@ -288,14 +291,31 @@ export function Sidebar({
 
         <nav className="view-nav workspace-nav" aria-label={t('workspaces')}>
           {workspaces.map((candidate) => {
-            const isSharedOnly = isTaskShareWorkspace(candidate);
+            const syncRoot = syncRoots.find((root) => root.localWorkspaceId === candidate.id);
+            const isCloudImported = syncRoot?.origin === 'CloudImported' ||
+              syncRoot?.origin === 2;
+            const isSharedOnly = isTaskShareWorkspace(candidate) ||
+              syncRoot?.remoteAccessKind === 'TaskShare';
             const isSystemBoard = isSystemAllTasksWorkspace(candidate);
             const membership = workspaceMembershipsById.get(candidate.id);
-            const isOwner = Boolean(membership && isOwnerRole(membership.role));
+            const effectiveRole = isCloudImported
+              ? syncRoot?.remoteRole
+              : membership?.role;
+            const isOwner = effectiveRole ? isOwnerRole(effectiveRole) : false;
             const isSharedMembership = Boolean(membership && !isOwnerRole(membership.role));
-            const canDelete = Boolean(membership && isOwnerRole(membership.role) && !isSharedOnly && !isSystemBoard);
-            const canEdit = canDelete;
-            const canLeave = isSharedOnly || isSharedMembership;
+            const canDelete = Boolean(
+              !isCloudImported &&
+              membership &&
+              isOwnerRole(membership.role) &&
+              !isSharedOnly &&
+              !isSystemBoard,
+            );
+            const canEdit = Boolean(
+              isOwner &&
+              !isSharedOnly &&
+              !isSystemBoard,
+            );
+            const canLeave = !isCloudImported && (isSharedOnly || isSharedMembership);
             const isEditing = editingWorkspaceId === candidate.id;
             const leaveIsPending = pendingWorkspaceLeaveId === candidate.id;
             const isSharedAccess = isSharedOnly || isSharedMembership;
@@ -369,6 +389,11 @@ export function Sidebar({
                       style={{ backgroundColor: candidate.color ?? '#184c48' }}
                     />
                     <span className="nav-label">{formatWorkspaceName(candidate.name, t)}</span>
+                    {isCloudImported ? (
+                      <span className="cloud-workspace-badge" title={t('cloudSync')}>
+                        <Icon name="cloud" />
+                      </span>
+                    ) : null}
                     {ownerSharedSignalIsVisible ? (
                       <span className="owner-workspace-badge" title={t('roleOwner')}>
                         <Icon name="crown" />

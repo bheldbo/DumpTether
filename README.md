@@ -87,7 +87,7 @@ Design principles:
 
 Current shortcomings:
 
-- Desktop/offline mode has the SQLite/API foundation, Tauri scaffold, local sync status metadata and a first cloud push/pull pass for task headers, templates, header field values and newly-synced note/entry field values. Later edits/deletes to existing notes, archive/delete sync and full conflict resolution are still future work.
+- Desktop/offline mode has the SQLite/API foundation, Tauri shell, local sync status metadata, cloud board-catalog discovery, and a first cloud push/pull pass for task headers, templates, header field values and newly-synced note/entry field values. Later edits/deletes to existing notes, archive/delete sync, a hosted SignalR relay, and full conflict recovery are still future work.
 - Email confirmation/OAuth plumbing exists, but provider setup is still rough.
 - Sharing works as an MVP flow, but permissions and notifications need more polish.
 - Live updates are early and should be hardened before real multi-user use.
@@ -103,14 +103,19 @@ Prerequisites:
 - Docker Desktop or Docker Engine with Compose
 - Git
 
-Fast web/server path:
+Full development bench:
 
 ```powershell
 dotnet tool restore
-.\scripts\dev.ps1 -Target Both -OpenBrowser
+dotnet restore DumpTether.sln
+.\scripts\dev.ps1 -Target All -OpenBrowser
 ```
 
-That starts PostgreSQL, applies EF migrations, runs the API and starts Vite.
+That starts Docker PostgreSQL and Mailpit, applies EF migrations, runs the
+hosted API and Vite, then opens the Tauri desktop shell with its own local
+SQLite sidecar. It prints every URL and the PostgreSQL container name. If Docker
+Desktop is stopped or PostgreSQL never becomes healthy, the script reports what
+it looked for and the command to inspect the container logs.
 
 Local SQLite path:
 
@@ -125,7 +130,8 @@ Quick chooser:
 ```text
 Open dev script menu:        .\scripts\dev.ps1
 Open desktop script menu:    .\scripts\desktop.ps1
-Web dev with PostgreSQL:    .\scripts\dev.ps1 -Target Both -OpenBrowser
+Everything for sync testing: .\scripts\dev.ps1 -Target All -OpenBrowser
+Web dev with PostgreSQL:     .\scripts\dev.ps1 -Target Backend
 Offline-style web dev:      .\scripts\dev.ps1 -Target LocalBoth -OpenBrowser
 Desktop dev shell:          .\scripts\desktop.ps1 -Target Dev
 Windows desktop exe only:    .\scripts\desktop.ps1 -Target BuildExe
@@ -218,7 +224,11 @@ Docker orchestration still belongs to scripts:
 .\scripts\db.ps1 -Action Migrate
 ```
 
-The frontend lives in `apps/web`. Visual Studio is fine for the solution/backend; Vite is still the normal frontend dev server.
+The frontend lives in `apps/web` and is included in `DumpTether.sln` as
+`apps/web/DumpTether.Web.esproj`, so its TypeScript, localization, CSS, and Vite
+files are visible in Visual Studio. Install Visual Studio's JavaScript and
+TypeScript tooling. npm/Vite remain the frontend build and development-server
+owners; the `.esproj` does not turn React into ASP.NET MVC.
 
 ## Configuration
 
@@ -368,6 +378,22 @@ DUMPTETHER_EMAIL_SMTP_ENABLE_SSL=false
 Register a user and open `http://127.0.0.1:8025` to inspect the confirmation
 message. A containerized API uses `mailpit` instead of `localhost` as the SMTP
 host. Production still needs a delivery-capable SMTP relay or `BrevoApi`.
+
+`DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true` and
+`DUMPTETHER_EMAIL_PROVIDER=None` is intentionally rejected at API startup.
+Choose `Smtp` for Mailpit.
+
+Option `1` in `.\scripts\dev.ps1` starts Mailpit automatically. You can open the
+inbox at any time without registering a Mailpit account:
+
+```text
+http://127.0.0.1:8025
+```
+
+If registration says `Failed to fetch`, first check
+`http://127.0.0.1:55868/health`. If the API is healthy but no message appears,
+check the SMTP host: use `localhost` when the API runs through `dotnet run`, and
+use `mailpit` only when the API runs inside Docker Compose.
 
 ### Microsoft Login
 

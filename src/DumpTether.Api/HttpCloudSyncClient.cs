@@ -6,6 +6,7 @@ using DumpTether.App.Sync;
 using DumpTether.App.Tasks;
 using DumpTether.App.Templates;
 using DumpTether.App.Workspaces;
+using DumpTether.Domain;
 
 namespace DumpTether.Api;
 
@@ -112,7 +113,11 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
             .Select(workspace => new CloudSyncWorkspaceResponse(
                 workspace.Id,
                 workspace.Name,
-                workspace.Color))
+                workspace.Color,
+                workspace.CreatedAt,
+                workspace.UpdatedAt ?? workspace.CreatedAt,
+                workspace.Role ?? WorkspaceMembershipRole.Owner,
+                workspace.AccessKind))
             .ToList();
     }
 
@@ -132,7 +137,35 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
         return new CloudSyncWorkspaceResponse(
             response.Id,
             response.Name,
-            response.Color);
+            response.Color,
+            response.CreatedAt,
+            response.UpdatedAt ?? response.CreatedAt,
+            response.Role ?? WorkspaceMembershipRole.Owner,
+            response.AccessKind);
+    }
+
+    public async Task<CloudSyncWorkspaceResponse> UpdateWorkspaceAsync(
+        CloudSyncConnection connection,
+        Guid workspaceId,
+        CloudSyncUpdateWorkspaceRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync<WorkspaceResponse>(
+            connection,
+            HttpMethod.Patch,
+            $"/api/workspaces/{workspaceId}",
+            workspaceId,
+            new UpdateWorkspaceRequest(request.Name, request.Color),
+            cancellationToken);
+
+        return new CloudSyncWorkspaceResponse(
+            response.Id,
+            response.Name,
+            response.Color,
+            response.CreatedAt,
+            response.UpdatedAt ?? response.CreatedAt,
+            response.Role ?? WorkspaceMembershipRole.Owner,
+            response.AccessKind);
     }
 
     public async Task<IReadOnlyList<CloudSyncTaskTemplateResponse>> ListTaskTemplatesAsync(
@@ -267,7 +300,8 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                 request.TaskTemplateId,
                 BuildFieldValuePayload(request.FieldValues),
                 ProjectId: null,
-                request.Category),
+                request.Category,
+                request.ClientGeneratedId),
             cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(request.Status) ||
@@ -299,7 +333,8 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                 workspaceId,
                 new AddTaskTimelineEntryRequest(
                     timelineEntry.Note,
-                    BuildFieldValuePayload(timelineEntry.FieldValues)),
+                    BuildFieldValuePayload(timelineEntry.FieldValues),
+                    timelineEntry.ClientGeneratedId),
                 cancellationToken);
         }
 

@@ -12,11 +12,13 @@ public sealed class SyncRoot
         Guid id,
         Guid localWorkspaceId,
         string deviceId,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        SyncRootOrigin origin)
     {
         Id = id;
         LocalWorkspaceId = localWorkspaceId;
         DeviceId = NormalizeDeviceId(deviceId);
+        Origin = origin;
         Status = SyncRootStatus.LocalOnly;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
@@ -31,6 +33,12 @@ public sealed class SyncRoot
     public Guid? CloudUserId { get; private set; }
 
     public string DeviceId { get; private set; } = string.Empty;
+
+    public SyncRootOrigin Origin { get; private set; } = SyncRootOrigin.LocalEnrolled;
+
+    public string? RemoteAccessKind { get; private set; }
+
+    public WorkspaceMembershipRole? RemoteRole { get; private set; }
 
     public SyncRootStatus Status { get; private set; } = SyncRootStatus.LocalOnly;
 
@@ -53,7 +61,23 @@ public sealed class SyncRoot
             Guid.NewGuid(),
             localWorkspaceId,
             deviceId,
-            createdAt);
+            createdAt,
+            SyncRootOrigin.LocalEnrolled);
+    }
+
+    public static SyncRoot CreateCloudImported(
+        Guid localWorkspaceId,
+        string deviceId,
+        DateTimeOffset createdAt)
+    {
+        DomainGuards.NotEmpty(localWorkspaceId, nameof(localWorkspaceId));
+
+        return new SyncRoot(
+            Guid.NewGuid(),
+            localWorkspaceId,
+            deviceId,
+            createdAt,
+            SyncRootOrigin.CloudImported);
     }
 
     public void LinkRemote(
@@ -80,6 +104,22 @@ public sealed class SyncRoot
         CloudUserId = cloudUserId;
         Status = SyncRootStatus.Linked;
         UpdatedAt = linkedAt;
+    }
+
+    public void UpdateRemoteAccess(
+        string accessKind,
+        WorkspaceMembershipRole role,
+        DateTimeOffset updatedAt)
+    {
+        RemoteAccessKind = DomainGuards.NotBlank(accessKind, nameof(accessKind));
+        RemoteRole = role;
+        UpdatedAt = updatedAt;
+    }
+
+    public void MarkAccessRevoked(DateTimeOffset occurredAt)
+    {
+        Status = SyncRootStatus.AccessRevoked;
+        UpdatedAt = occurredAt;
     }
 
     public void MarkSynced(DateTimeOffset syncedAt)

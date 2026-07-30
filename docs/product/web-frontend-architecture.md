@@ -9,8 +9,10 @@ business rules to the ASP.NET Core API.
 Open `DumpTether.sln` when working on the backend, migrations, API tests, and shared C#
 domain/application code.
 
-Treat `apps/web` as a separate Vite application. It is included in the solution for discovery,
-but the normal frontend loop is still:
+`apps/web/DumpTether.Web.esproj` makes the Vite app a real JavaScript project in
+Visual Studio Solution Explorer. Open `DumpTether.sln` to browse both C# and
+TypeScript/CSS sources. The project does not replace npm: the normal frontend
+loop is still:
 
 ```powershell
 cd apps/web
@@ -22,6 +24,10 @@ npm run build
 
 `npm run build` uses Vite's production pipeline, so the modular source CSS is bundled and
 minified into release assets without a separate hand-written minifier step.
+
+Visual Studio needs its JavaScript/TypeScript development support installed to
+load `.esproj` projects. The solution build leaves the frontend production
+build to CI and the explicit npm commands above.
 
 ## Module Boundaries
 

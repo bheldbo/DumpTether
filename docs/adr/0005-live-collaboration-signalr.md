@@ -24,6 +24,9 @@ The initial event names should be:
 - `NoteEdited`
 - `NoteDeleted`
 - `TaskShared`
+- `WorkspaceCreated`
+- `WorkspaceUpdated`
+- `WorkspaceDeleted`
 - `WorkspaceInviteAccepted`
 
 Event payloads stay small and contain identifiers, timestamps, and future version hints rather than full business objects:
@@ -52,6 +55,23 @@ Shared tasks and shared workspaces are server/session-scoped. The offline deskto
 
 SignalR events should not become the source of truth. If a desktop client is offline, it can miss events and still recover by syncing/refetching later.
 
+Hosted browser clients now treat events from the same user as valid
+invalidations. Two clients signed in as the same account are distinct clients;
+discarding an event only because `actorUserId` matches would leave the other
+client stale.
+
+The local desktop sidecar maintains an outbound authenticated SignalR
+connection for each connected cloud account. Hosted events are translated into
+local invalidation events using local workspace IDs; remote task and timeline
+IDs are not exposed to React. React then invokes the same C# sync path used by
+manual and periodic synchronization.
+
+SignalR provides immediate attention, not durable delivery. The desktop keeps a
+slow reconciliation pass for recovery after sleep, disconnection, app
+suspension, or missed events. The active board reconciles once per minute and a
+full board/catalog pass runs less frequently. This replaces aggressive
+whole-board polling without pretending a live socket is a durable sync log.
+
 SignalR remains useful while a future Android or iOS app is active. Mobile
 operating systems suspend background connections, so background attention will
 use FCM on Android and APNs on iOS. Push payloads contain only minimal IDs and
@@ -69,7 +89,7 @@ This keeps the app responsive for shared boards without turning the frontend int
 
 ## Non-goals
 
-- No full live sync implementation yet.
+- No field-level live merge or collaborative editing protocol.
 - No mobile push provider integration yet.
 - No per-user read watermark implementation yet.
 - No websocket-only API behavior.

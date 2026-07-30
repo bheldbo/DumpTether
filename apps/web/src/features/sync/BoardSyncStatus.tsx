@@ -41,6 +41,8 @@ function getSyncRootLabel(status: string, t: Translate) {
       return t('syncRootLinked');
     case 'Conflict':
       return t('syncConflict');
+    case 'AccessRevoked':
+      return t('syncRootAccessRevoked');
     default:
       return t('syncUnknown');
   }

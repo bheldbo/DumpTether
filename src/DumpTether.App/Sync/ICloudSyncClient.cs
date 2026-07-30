@@ -24,6 +24,12 @@ public interface ICloudSyncClient
         CloudSyncCreateWorkspaceRequest request,
         CancellationToken cancellationToken);
 
+    Task<CloudSyncWorkspaceResponse> UpdateWorkspaceAsync(
+        CloudSyncConnection connection,
+        Guid workspaceId,
+        CloudSyncUpdateWorkspaceRequest request,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<CloudSyncTaskTemplateResponse>> ListTaskTemplatesAsync(
         CloudSyncConnection connection,
         CancellationToken cancellationToken);

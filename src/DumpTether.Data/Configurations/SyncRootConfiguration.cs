@@ -31,6 +31,21 @@ internal sealed class SyncRootConfiguration : IEntityTypeConfiguration<SyncRoot>
             .HasMaxLength(128)
             .IsRequired();
 
+        builder.Property(syncRoot => syncRoot.Origin)
+            .HasColumnName("origin")
+            .HasConversion<string>()
+            .HasMaxLength(40)
+            .IsRequired();
+
+        builder.Property(syncRoot => syncRoot.RemoteAccessKind)
+            .HasColumnName("remote_access_kind")
+            .HasMaxLength(40);
+
+        builder.Property(syncRoot => syncRoot.RemoteRole)
+            .HasColumnName("remote_role")
+            .HasConversion<string>()
+            .HasMaxLength(40);
+
         builder.Property(syncRoot => syncRoot.Status)
             .HasColumnName("status")
             .HasConversion<string>()

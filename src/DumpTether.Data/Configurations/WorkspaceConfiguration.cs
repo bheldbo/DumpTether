@@ -29,6 +29,10 @@ internal sealed class WorkspaceConfiguration : IEntityTypeConfiguration<Workspac
             .HasColumnName("created_at")
             .IsRequired();
 
+        builder.Property(workspace => workspace.UpdatedAt)
+            .HasColumnName("updated_at")
+            .IsRequired();
+
         builder.Ignore(workspace => workspace.Projects);
         builder.Ignore(workspace => workspace.ArchiveResolutions);
         builder.Ignore(workspace => workspace.SavedViews);

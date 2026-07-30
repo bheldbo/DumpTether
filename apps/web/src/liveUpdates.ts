@@ -26,6 +26,7 @@ export interface LiveUpdateSubscription {
 export function startLiveUpdates(
   onUpdate: (message: LiveUpdateMessage) => void,
   onConnectionLost: (error?: Error) => void,
+  onReconnected?: () => void,
 ): LiveUpdateSubscription {
   const apiBaseUrl = getApiBaseUrl();
   const url = `${apiBaseUrl}/api/live`;
@@ -43,6 +44,15 @@ export function startLiveUpdates(
 
   connection.on('LiveUpdate', onUpdate);
   connection.onreconnecting((error) => onConnectionLost(error));
+  const joinedWorkspaceIds = new Set<string>();
+  connection.onreconnected(() => {
+    void Promise.all(
+      [...joinedWorkspaceIds].map((workspaceId) =>
+        connection.invoke('JoinWorkspace', workspaceId)),
+    )
+      .then(() => onReconnected?.())
+      .catch((error: Error) => onConnectionLost(error));
+  });
   connection.onclose((error) => onConnectionLost(error));
   let stopWasRequested = false;
   const startPromise = connection.start().catch((error: Error) => {
@@ -56,6 +66,8 @@ export function startLiveUpdates(
       if (!workspaceId) {
         return;
       }
+
+      joinedWorkspaceIds.add(workspaceId);
 
       try {
         await startPromise;

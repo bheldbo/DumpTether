@@ -566,11 +566,6 @@
     overflow-y: visible;
   }
 
-  .board-refresh-overlay {
-    top: 10px;
-    right: 10px;
-  }
-
   .filter-bar > * {
     width: 100%;
     min-width: 0;
@@ -584,7 +579,7 @@
   }
 
   .color-option-picker {
-    min-width: 160px;
+    min-width: 0;
   }
 
   .reset-filters-button {

@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace DumpTether.Api.Tests;
@@ -87,6 +88,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
                 ["Auth:RequireAuthentication"] = _requireAuthentication.ToString(),
                 ["Auth:EnableDevelopmentLogin"] = _enableDevelopmentLogin.ToString(),
                 ["Database:ApplyMigrationsOnStartup"] = "false",
+                ["Desktop:CloudLiveRelayEnabled"] = "false",
                 ["Usage:MaxActiveTasksPerWorkspace"] = _maxActiveTasksPerWorkspace.ToString(),
                 ["Usage:MaxTotalTasksPerWorkspace"] = _maxTotalTasksPerWorkspace.ToString()
             };
@@ -101,6 +103,15 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
+            var cloudRelayRegistration = services.FirstOrDefault(descriptor =>
+                descriptor.ServiceType == typeof(IHostedService) &&
+                descriptor.ImplementationType?.Name ==
+                    "DesktopCloudLiveUpdateRelayHostedService");
+            if (cloudRelayRegistration is not null)
+            {
+                services.Remove(cloudRelayRegistration);
+            }
+
             services.RemoveAll<DbContextOptions<DumpTetherDbContext>>();
 
             _connection = new SqliteConnection("Data Source=:memory:");

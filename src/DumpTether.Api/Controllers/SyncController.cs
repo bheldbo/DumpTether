@@ -111,6 +111,34 @@ public sealed class SyncController : ControllerBase
         }
     }
 
+    [HttpPost("cloud-workspaces/reconcile")]
+    public async Task<ActionResult<ReconcileCloudWorkspacesResponse>> ReconcileCloudWorkspaces(
+        CancellationToken cancellationToken)
+    {
+        if (!IsDesktopEnvironment())
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var response = await _syncService.ReconcileCloudWorkspacesAsync(cancellationToken);
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return Unauthorized(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+
     [HttpPost("workspace-roots")]
     public async Task<ActionResult<SyncRootResponse>> EnsureWorkspaceRoot(
         EnsureWorkspaceSyncRootRequest request,

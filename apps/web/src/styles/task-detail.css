@@ -16,7 +16,9 @@
 }
 
 .task-grid {
+  position: relative;
   min-width: 0;
+  min-height: 210px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 14px;
@@ -107,6 +109,10 @@
   border-left-color: #2f8b7d;
 }
 
+.task-card[data-shows-workspace-source="true"] {
+  border-top: 4px solid var(--task-workspace-color, #184c48);
+}
+
 .task-card[data-expanded="true"] {
   grid-column: 1 / -1;
   min-height: calc(100vh - 32px);
@@ -195,6 +201,33 @@
 
 .task-card-button:hover {
   background: rgba(255, 255, 255, 0.16);
+}
+
+.task-card-workspace-source {
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: -8px -8px 0;
+  padding: 5px 8px 6px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--task-workspace-color, #184c48) 16%, transparent);
+  color: inherit;
+  font-size: 0.7rem;
+  font-weight: 760;
+  line-height: 1.2;
+  opacity: 0.82;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-card-workspace-source-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--task-workspace-color, #184c48);
 }
 
 .task-card-topline {
@@ -428,11 +461,28 @@ button.task-sync-indicator {
 }
 
 .task-card-detail {
+  position: relative;
   min-height: 0;
   padding: 18px 20px 20px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 251, 0.84));
   color: #17202c;
   overflow: auto;
+}
+
+.board-loading-indicator,
+.task-detail-loading-indicator {
+  position: absolute;
+  z-index: 18;
+  left: 12px;
+  bottom: 12px;
+  max-width: min(320px, calc(100% - 24px));
+  pointer-events: none;
+}
+
+.task-detail-loading-indicator {
+  min-height: 220px;
+  display: flex;
+  align-items: flex-end;
 }
 
 .task-detail {

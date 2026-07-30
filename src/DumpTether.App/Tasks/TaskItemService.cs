@@ -70,6 +70,38 @@ internal sealed class TaskItemService : ITaskItemService
         }
 
         EnsureCanWriteWorkspace(context);
+
+        if (request.ClientGeneratedId.HasValue)
+        {
+            if (request.ClientGeneratedId.Value == Guid.Empty)
+            {
+                throw new ValidationException("ClientGeneratedId cannot be empty.");
+            }
+
+            var existingTaskItem = await _taskItemRepository.GetByIdAsync(
+                request.ClientGeneratedId.Value,
+                context.WorkspaceId,
+                projectId: null,
+                trackChanges: false,
+                cancellationToken);
+
+            if (existingTaskItem is not null)
+            {
+                var existingTemplate = await ResolveTaskTemplateForDetailAsync(
+                    existingTaskItem,
+                    includeDeleted: true,
+                    cancellationToken);
+
+                return MapDetail(
+                    existingTaskItem,
+                    existingTemplate,
+                    await GetTaskSyncStateAsync(
+                        existingTaskItem.WorkspaceId,
+                        existingTaskItem.Id,
+                        cancellationToken));
+            }
+        }
+
         await EnsureTaskQuotaAsync(context.WorkspaceId, cancellationToken);
         var now = _clock.UtcNow;
         var taskTemplate = await ResolveTaskTemplateForCreateAsync(
@@ -79,12 +111,20 @@ internal sealed class TaskItemService : ITaskItemService
             context.WorkspaceId,
             request.ProjectId,
             cancellationToken);
-        var taskItem = TaskItem.Create(
-            context.WorkspaceId,
-            project?.Id,
-            request.Title,
-            now,
-            taskTemplate?.Id);
+        var taskItem = request.ClientGeneratedId.HasValue
+            ? TaskItem.Create(
+                request.ClientGeneratedId.Value,
+                context.WorkspaceId,
+                project?.Id,
+                request.Title,
+                now,
+                taskTemplate?.Id)
+            : TaskItem.Create(
+                context.WorkspaceId,
+                project?.Id,
+                request.Title,
+                now,
+                taskTemplate?.Id);
         var category = string.IsNullOrWhiteSpace(request.Category)
             ? request.ProjectId.HasValue ? project?.Name : null
             : request.Category;
@@ -654,7 +694,24 @@ internal sealed class TaskItemService : ITaskItemService
             includeDeleted: true,
             cancellationToken);
         ValidateTimelineEntryHasContent(request);
-        var entry = taskItem.AddNote(request.Note, now);
+        if (request.ClientGeneratedId.HasValue &&
+            request.ClientGeneratedId.Value == Guid.Empty)
+        {
+            throw new ValidationException("ClientGeneratedId cannot be empty.");
+        }
+
+        if (request.ClientGeneratedId.HasValue &&
+            taskItem.TimelineEntries.Any(entry => entry.Id == request.ClientGeneratedId.Value))
+        {
+            return MapDetail(
+                taskItem,
+                taskTemplate,
+                await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
+        }
+
+        var entry = request.ClientGeneratedId.HasValue
+            ? taskItem.AddNote(request.ClientGeneratedId.Value, request.Note, now)
+            : taskItem.AddNote(request.Note, now);
         ApplyTimelineEntryFieldValues(
             taskItem,
             entry.Id,

@@ -142,7 +142,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
                 LegacyDevelopmentWorkspaceName,
                 StringComparison.OrdinalIgnoreCase))
         {
-            workspace.Rename(DevelopmentWorkspaceName);
+            workspace.Rename(DevelopmentWorkspaceName, _clock.UtcNow);
         }
 
         var legacyDefaultProject = await _dbContext.Projects

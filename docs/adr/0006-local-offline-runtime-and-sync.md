@@ -172,7 +172,7 @@ When the user logs in to the hosted DumpTether service, the app should not silen
 5. create or choose the matching hosted board/task container
 6. store a local mapping such as `LocalWorkspaceId -> RemoteWorkspaceId`
 7. sync enrolled local-owned tasks using stable IDs and checkpoints
-8. fetch shared boards/tasks available to that cloud user
+8. reconcile cloud-owned and shared boards/tasks available to that cloud user
 9. show clear status: local-only, not synced, offline, connected, syncing, sync error
 
 The local session is not the sync relationship. Cloud login creates the cloud authority; sync maps local SQLite records to hosted PostgreSQL records deliberately.
@@ -260,8 +260,26 @@ The first implemented cloud sync pass is intentionally narrow:
 - New local tasks can push their first note/timeline entries and entry-level field values when they are first created in the cloud.
 - New remote tasks can pull their first note/timeline entries and entry-level field values when they are first created locally.
 - `SyncMapping` stores the remote task ID and remote version after successful sync.
+- New task and timeline-entry creates use stable client-generated IDs on both
+  sides. A retry after a lost cloud response therefore resolves the existing
+  remote entity instead of creating a duplicate.
+- Concurrent sync requests for one local board are serialized in the
+  application service. Different boards may still synchronize independently.
 - If both local and remote changed the same task header since the previous sync checkpoint, the mapping is marked `Conflict` and both records are left intact.
 - Failed task sync attempts are marked `SyncFailed` with a short user-visible error.
+
+The desktop catalog now imports cloud-visible boards as local SQLite cache
+containers with explicit `CloudImported` provenance, hosted access kind, and
+hosted role. It does not pretend that local cache ownership grants hosted
+ownership. Revoked cloud roots are hidden from the active desktop catalog after
+reconciliation.
+
+While a cloud account is connected, the desktop sidecar connects outbound to
+the hosted SignalR hub. Hosted events become local invalidation events and
+trigger the normal C# sync path. The protected cloud session remains in the
+sidecar and is never passed to React. A slower reconciliation loop remains
+because SignalR cannot recover every event missed while a device sleeps or is
+offline.
 
 Not included in the first pass:
 
@@ -269,7 +287,6 @@ Not included in the first pass:
 - updating already-mapped local templates from later cloud template edits
 - updating already-synced entry-level field values
 - archive/delete/tombstone sync
-- shared-board/task download
 - field-level merge UI
 
 This keeps the implementation honest while proving the core mapping path.

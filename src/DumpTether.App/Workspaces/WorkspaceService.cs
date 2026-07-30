@@ -99,7 +99,7 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         if (request.Color is not null)
         {
-            workspace.ChangeColor(request.Color);
+            workspace.ChangeColor(request.Color, _clock.UtcNow);
         }
 
         if (currentSession is not null)
@@ -112,6 +112,12 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         await _workspaceRepository.AddAsync(workspace, cancellationToken);
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventAsync(
+            LiveUpdateEvents.WorkspaceCreated,
+            workspace.Id,
+            currentSession?.UserId,
+            currentSession is null ? null : [currentSession.UserId],
+            cancellationToken);
 
         return MapWorkspace(workspace);
     }
@@ -138,15 +144,20 @@ internal sealed class WorkspaceService : IWorkspaceService
                 workspace.Id,
                 currentSession,
                 cancellationToken);
-            workspace.Rename(request.Name);
+            workspace.Rename(request.Name, _clock.UtcNow);
         }
 
         if (request.Color is not null)
         {
-            workspace.ChangeColor(request.Color);
+            workspace.ChangeColor(request.Color, _clock.UtcNow);
         }
 
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventForMembersAsync(
+            LiveUpdateEvents.WorkspaceUpdated,
+            workspace.Id,
+            currentSession?.UserId,
+            cancellationToken);
 
         return MapWorkspace(workspace);
     }
@@ -172,15 +183,20 @@ internal sealed class WorkspaceService : IWorkspaceService
                 workspace.Id,
                 currentSession,
                 cancellationToken);
-            workspace.Rename(request.Name);
+            workspace.Rename(request.Name, _clock.UtcNow);
         }
 
         if (request.Color is not null)
         {
-            workspace.ChangeColor(request.Color);
+            workspace.ChangeColor(request.Color, _clock.UtcNow);
         }
 
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventForMembersAsync(
+            LiveUpdateEvents.WorkspaceUpdated,
+            workspace.Id,
+            currentSession.UserId,
+            cancellationToken);
 
         return MapWorkspace(workspace);
     }
@@ -429,6 +445,12 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         _workspaceRepository.RemoveMembership(targetMembership);
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventAsync(
+            LiveUpdateEvents.WorkspaceAccessChanged,
+            workspace.Id,
+            currentSession.UserId,
+            [userId],
+            cancellationToken);
 
         return true;
     }
@@ -481,6 +503,12 @@ internal sealed class WorkspaceService : IWorkspaceService
         }
 
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventAsync(
+            LiveUpdateEvents.WorkspaceAccessChanged,
+            workspace.Id,
+            currentSession.UserId,
+            [userId],
+            cancellationToken);
 
         var members = await _workspaceRepository.ListMembersAsync(
             workspace.Id,
@@ -493,7 +521,7 @@ internal sealed class WorkspaceService : IWorkspaceService
 
     public async Task<bool> LeaveCurrentWorkspaceAsync(CancellationToken cancellationToken)
     {
-        var (workspace, _, membership) = await RequireCurrentMembershipAsync(
+        var (workspace, currentSession, membership) = await RequireCurrentMembershipAsync(
             requireOwner: false,
             trackChanges: true,
             cancellationToken);
@@ -505,13 +533,19 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         _workspaceRepository.RemoveMembership(membership);
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventAsync(
+            LiveUpdateEvents.WorkspaceAccessChanged,
+            workspace.Id,
+            currentSession.UserId,
+            [currentSession.UserId],
+            cancellationToken);
 
         return workspace.Id != Guid.Empty;
     }
 
     public async Task<bool> DeleteAsync(Guid workspaceId, CancellationToken cancellationToken)
     {
-        var (workspace, _, _) = await RequireWorkspaceMembershipAsync(
+        var (workspace, currentSession, _) = await RequireWorkspaceMembershipAsync(
             workspaceId,
             requireOwner: true,
             trackChanges: false,
@@ -522,6 +556,11 @@ internal sealed class WorkspaceService : IWorkspaceService
             throw new ValidationException("All tasks is a standard board and cannot be deleted.");
         }
 
+        var recipients = (await _workspaceRepository.ListMembersAsync(
+                workspaceId,
+                cancellationToken))
+            .Select(member => member.User.Id)
+            .ToArray();
         var deleted = await _workspaceRepository.DeleteAsync(workspaceId, cancellationToken);
 
         if (!deleted)
@@ -530,8 +569,56 @@ internal sealed class WorkspaceService : IWorkspaceService
         }
 
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventAsync(
+            LiveUpdateEvents.WorkspaceDeleted,
+            workspaceId,
+            currentSession.UserId,
+            recipients,
+            cancellationToken);
 
         return true;
+    }
+
+    private async Task PublishWorkspaceEventForMembersAsync(
+        string eventName,
+        Guid workspaceId,
+        Guid? actorUserId,
+        CancellationToken cancellationToken)
+    {
+        var recipients = (await _workspaceRepository.ListMembersAsync(
+                workspaceId,
+                cancellationToken))
+            .Select(member => member.User.Id)
+            .ToArray();
+
+        await PublishWorkspaceEventAsync(
+            eventName,
+            workspaceId,
+            actorUserId,
+            recipients,
+            cancellationToken);
+    }
+
+    private Task PublishWorkspaceEventAsync(
+        string eventName,
+        Guid workspaceId,
+        Guid? actorUserId,
+        IReadOnlyList<Guid>? recipientUserIds,
+        CancellationToken cancellationToken)
+    {
+        var now = _clock.UtcNow;
+
+        return _liveUpdatePublisher.PublishAsync(
+            new LiveUpdateMessage(
+                eventName,
+                workspaceId,
+                null,
+                null,
+                actorUserId,
+                now,
+                now,
+                recipientUserIds),
+            cancellationToken);
     }
 
     private static bool IsSystemAllTasksWorkspace(Workspace workspace)
@@ -769,7 +856,8 @@ internal sealed class WorkspaceService : IWorkspaceService
                 null,
                 currentSession.UserId,
                 now,
-                now),
+                now,
+                [currentSession.UserId]),
             cancellationToken);
 
         return MapInvitation(invitation, token: null);
@@ -781,7 +869,8 @@ internal sealed class WorkspaceService : IWorkspaceService
             workspace.Id,
             workspace.Name,
             workspace.Color,
-            workspace.CreatedAt);
+            workspace.CreatedAt,
+            UpdatedAt: workspace.UpdatedAt);
     }
 
     private static WorkspaceResponse MapWorkspace(UserWorkspaceMembership membership)
@@ -792,7 +881,9 @@ internal sealed class WorkspaceService : IWorkspaceService
             membership.Workspace.Color,
             membership.Workspace.CreatedAt,
             membership.AccessKind,
-            membership.SharedTaskCount);
+            membership.SharedTaskCount,
+            UpdatedAt: membership.Workspace.UpdatedAt,
+            Role: membership.Membership.Role);
     }
 
     private async Task<WorkspaceResponse> MapWorkspaceAsync(
@@ -823,7 +914,9 @@ internal sealed class WorkspaceService : IWorkspaceService
             invitations.Count(invitation =>
                 invitation.AcceptedAt is null &&
                 invitation.RevokedAt is null &&
-                invitation.ExpiresAt > now));
+                invitation.ExpiresAt > now),
+            membership.Workspace.UpdatedAt,
+            membership.Membership.Role);
     }
 
     private static WorkspaceMemberResponse MapMember(WorkspaceMember member)
