@@ -74,6 +74,24 @@ public sealed class TaskItem
         DateTimeOffset createdAt,
         Guid? taskTemplateId = null)
     {
+        return Create(
+            Guid.NewGuid(),
+            workspaceId,
+            projectId,
+            title,
+            createdAt,
+            taskTemplateId);
+    }
+
+    public static TaskItem Create(
+        Guid id,
+        Guid workspaceId,
+        Guid? projectId,
+        string title,
+        DateTimeOffset createdAt,
+        Guid? taskTemplateId = null)
+    {
+        DomainGuards.NotEmpty(id, nameof(id));
         DomainGuards.NotEmpty(workspaceId, nameof(workspaceId));
 
         if (projectId == Guid.Empty)
@@ -87,7 +105,7 @@ public sealed class TaskItem
         }
 
         return new TaskItem(
-            Guid.NewGuid(),
+            id,
             workspaceId,
             projectId,
             taskTemplateId,
@@ -154,6 +172,32 @@ public sealed class TaskItem
             "Note added",
             occurredAt,
             DomainGuards.OptionalTrimmed(note));
+    }
+
+    public TaskTimelineEntry AddNote(
+        Guid id,
+        string? note,
+        DateTimeOffset occurredAt)
+    {
+        DomainGuards.NotEmpty(id, nameof(id));
+
+        var existingEntry = _timelineEntries.FirstOrDefault(entry => entry.Id == id);
+        if (existingEntry is not null)
+        {
+            return existingEntry;
+        }
+
+        var entry = TaskTimelineEntry.Create(
+            id,
+            Id,
+            TaskTimelineEntryKind.NoteAdded,
+            "Note added",
+            occurredAt,
+            DomainGuards.OptionalTrimmed(note));
+        _timelineEntries.Add(entry);
+        LastTouchedAt = occurredAt;
+
+        return entry;
     }
 
     public void EditNote(Guid noteId, string note, DateTimeOffset occurredAt)

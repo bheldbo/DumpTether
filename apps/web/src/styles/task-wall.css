@@ -17,6 +17,7 @@
 
 .task-board {
   position: relative;
+  min-height: calc(100dvh - 24px);
 }
 
 .task-board[data-loading="true"] {

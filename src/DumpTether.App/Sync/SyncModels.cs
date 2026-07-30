@@ -132,6 +132,7 @@ public sealed record CloudSyncUpdateWorkspaceRequest(
     string? Color);
 
 public sealed record CloudSyncCreateTaskRequest(
+    Guid ClientGeneratedId,
     string Title,
     Guid? TaskTemplateId,
     string? Status,
@@ -162,6 +163,7 @@ public sealed record CloudSyncTimelineEntryResponse(
     IReadOnlyList<CloudSyncFieldValueResponse>? FieldValues = null);
 
 public sealed record CloudSyncTimelineEntryRequest(
+    Guid ClientGeneratedId,
     string? Note,
     IReadOnlyDictionary<Guid, string>? FieldValues = null);
 

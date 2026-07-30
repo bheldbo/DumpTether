@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using DumpTether.App.Auth;
@@ -11,6 +12,7 @@ namespace DumpTether.App.Sync;
 internal sealed class SyncService : ISyncService
 {
     private const string DefaultLocalDesktopDeviceId = "local-desktop";
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> WorkspaceSyncLocks = new();
 
     private readonly IAuthRepository _authRepository;
     private readonly ICloudSessionProtector _cloudSessionProtector;
@@ -466,6 +468,29 @@ internal sealed class SyncService : ISyncService
     }
 
     public async Task<SyncWorkspaceWithCloudResponse> SyncWorkspaceWithCloudAsync(
+        Guid workspaceId,
+        SyncWorkspaceWithCloudRequest request,
+        CancellationToken cancellationToken)
+    {
+        var workspaceSyncLock = WorkspaceSyncLocks.GetOrAdd(
+            workspaceId,
+            static _ => new SemaphoreSlim(1, 1));
+
+        await workspaceSyncLock.WaitAsync(cancellationToken);
+        try
+        {
+            return await SyncWorkspaceWithCloudCoreAsync(
+                workspaceId,
+                request,
+                cancellationToken);
+        }
+        finally
+        {
+            workspaceSyncLock.Release();
+        }
+    }
+
+    private async Task<SyncWorkspaceWithCloudResponse> SyncWorkspaceWithCloudCoreAsync(
         Guid workspaceId,
         SyncWorkspaceWithCloudRequest request,
         CancellationToken cancellationToken)
@@ -1027,6 +1052,7 @@ internal sealed class SyncService : ISyncService
                     connection,
                     remoteWorkspaceId,
                     new CloudSyncCreateTaskRequest(
+                        localTask.Id,
                         localTask.Title,
                         remoteTemplate.RemoteTemplateId,
                         localTask.Status,
@@ -1221,12 +1247,20 @@ internal sealed class SyncService : ISyncService
             remoteTask,
             messages,
             cancellationToken);
-        var localTask = TaskItem.Create(
+        var existingLocalTask = await _taskItemRepository.GetByIdAsync(
+            remoteTask.Id,
             localWorkspaceId,
             projectId: null,
-            remoteTask.Title,
-            _clock.UtcNow,
-            localTemplate.LocalTemplateId);
+            trackChanges: true,
+            cancellationToken);
+        var localTask = existingLocalTask ??
+            TaskItem.Create(
+                remoteTask.Id,
+                localWorkspaceId,
+                projectId: null,
+                remoteTask.Title,
+                _clock.UtcNow,
+                localTemplate.LocalTemplateId);
         ApplyRemoteHeaderToLocal(localTask, remoteTask, _clock.UtcNow);
         ApplyRemoteFieldValuesToLocal(
             localTask,
@@ -1238,17 +1272,27 @@ internal sealed class SyncService : ISyncService
             localTemplate,
             remoteTask);
 
-        await _taskItemRepository.AddAsync(localTask, cancellationToken);
-        var mapping = SyncMapping.CreateLocal(
-            root.Id,
-            SyncEntityType.TaskItem,
-            localTask.Id,
-            _clock.UtcNow);
+        if (existingLocalTask is null)
+        {
+            await _taskItemRepository.AddAsync(localTask, cancellationToken);
+        }
+
+        var mapping = mappings.TryGetValue(localTask.Id, out var existingMapping)
+            ? existingMapping
+            : SyncMapping.CreateLocal(
+                root.Id,
+                SyncEntityType.TaskItem,
+                localTask.Id,
+                _clock.UtcNow);
         mapping.LinkRemote(
             remoteTask.Id,
             CreateRemoteVersion(remoteTask),
             _clock.UtcNow);
-        await _syncRepository.AddMappingAsync(mapping, cancellationToken);
+        if (existingMapping is null)
+        {
+            await _syncRepository.AddMappingAsync(mapping, cancellationToken);
+        }
+
         mappings[localTask.Id] = mapping;
         stats.Pulled++;
     }
@@ -1264,6 +1308,7 @@ internal sealed class SyncService : ISyncService
                 (!string.IsNullOrWhiteSpace(entry.Details) || entry.FieldValues.Count > 0))
             .OrderBy(entry => entry.OccurredAt)
             .Select(entry => new CloudSyncTimelineEntryRequest(
+                entry.Id,
                 string.IsNullOrWhiteSpace(entry.Details) ? null : entry.Details,
                 CloudSyncTemplatePayloadMapper.BuildRemoteFieldValuePayload(
                     entry,
@@ -1278,22 +1323,28 @@ internal sealed class SyncService : ISyncService
         RemoteToLocalTaskTemplateProjection localTemplate,
         CloudSyncTaskResponse remoteTask)
     {
-        if (localTemplate.LocalTemplate is null ||
-            remoteTask.TimelineEntries is null ||
+        if (remoteTask.TimelineEntries is null ||
             remoteTask.TimelineEntries.Count == 0)
         {
             return false;
         }
 
-        var definitions = localTemplate.LocalTemplate.FieldDefinitions
+        var definitions = localTemplate.LocalTemplate?.FieldDefinitions
             .Where(field => field.IsActive && field.Scope == FieldDefinitionScope.Entry)
-            .ToDictionary(field => field.Id);
+            .ToDictionary(field => field.Id) ??
+            new Dictionary<Guid, FieldDefinition>();
         var changed = false;
 
         foreach (var remoteEntry in remoteTask.TimelineEntries
                      .OrderBy(entry => entry.OccurredAt))
         {
+            if (localTask.TimelineEntries.Any(entry => entry.Id == remoteEntry.Id))
+            {
+                continue;
+            }
+
             var localEntry = localTask.AddNote(
+                remoteEntry.Id,
                 string.IsNullOrWhiteSpace(remoteEntry.Details) ? null : remoteEntry.Details,
                 remoteEntry.OccurredAt);
             changed = true;

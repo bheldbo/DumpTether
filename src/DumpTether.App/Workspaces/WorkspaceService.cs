@@ -445,6 +445,12 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         _workspaceRepository.RemoveMembership(targetMembership);
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventAsync(
+            LiveUpdateEvents.WorkspaceAccessChanged,
+            workspace.Id,
+            currentSession.UserId,
+            [userId],
+            cancellationToken);
 
         return true;
     }
@@ -497,6 +503,12 @@ internal sealed class WorkspaceService : IWorkspaceService
         }
 
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventAsync(
+            LiveUpdateEvents.WorkspaceAccessChanged,
+            workspace.Id,
+            currentSession.UserId,
+            [userId],
+            cancellationToken);
 
         var members = await _workspaceRepository.ListMembersAsync(
             workspace.Id,
@@ -509,7 +521,7 @@ internal sealed class WorkspaceService : IWorkspaceService
 
     public async Task<bool> LeaveCurrentWorkspaceAsync(CancellationToken cancellationToken)
     {
-        var (workspace, _, membership) = await RequireCurrentMembershipAsync(
+        var (workspace, currentSession, membership) = await RequireCurrentMembershipAsync(
             requireOwner: false,
             trackChanges: true,
             cancellationToken);
@@ -521,6 +533,12 @@ internal sealed class WorkspaceService : IWorkspaceService
 
         _workspaceRepository.RemoveMembership(membership);
         await _workspaceRepository.SaveChangesAsync(cancellationToken);
+        await PublishWorkspaceEventAsync(
+            LiveUpdateEvents.WorkspaceAccessChanged,
+            workspace.Id,
+            currentSession.UserId,
+            [currentSession.UserId],
+            cancellationToken);
 
         return workspace.Id != Guid.Empty;
     }
@@ -838,7 +856,8 @@ internal sealed class WorkspaceService : IWorkspaceService
                 null,
                 currentSession.UserId,
                 now,
-                now),
+                now,
+                [currentSession.UserId]),
             cancellationToken);
 
         return MapInvitation(invitation, token: null);

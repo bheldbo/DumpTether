@@ -109,6 +109,10 @@
   border-left-color: #2f8b7d;
 }
 
+.task-card[data-shows-workspace-source="true"] {
+  border-top: 4px solid var(--task-workspace-color, #184c48);
+}
+
 .task-card[data-expanded="true"] {
   grid-column: 1 / -1;
   min-height: calc(100vh - 32px);
@@ -197,6 +201,33 @@
 
 .task-card-button:hover {
   background: rgba(255, 255, 255, 0.16);
+}
+
+.task-card-workspace-source {
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: -8px -8px 0;
+  padding: 5px 8px 6px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--task-workspace-color, #184c48) 16%, transparent);
+  color: inherit;
+  font-size: 0.7rem;
+  font-weight: 760;
+  line-height: 1.2;
+  opacity: 0.82;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-card-workspace-source-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--task-workspace-color, #184c48);
 }
 
 .task-card-topline {

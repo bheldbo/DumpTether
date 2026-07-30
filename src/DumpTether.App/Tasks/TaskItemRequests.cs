@@ -29,7 +29,8 @@ public sealed record CreateTaskItemRequest(
     Guid? TaskTemplateId = null,
     Dictionary<Guid, JsonElement>? FieldValues = null,
     Guid? ProjectId = null,
-    [MaxLength(120)] string? Category = null);
+    [MaxLength(120)] string? Category = null,
+    Guid? ClientGeneratedId = null);
 
 public sealed record UpdateTaskItemRequest(
     [MaxLength(500)] string? Title = null,
@@ -43,7 +44,8 @@ public sealed record UpdateTaskItemRequest(
 public sealed record AddTaskTimelineEntryRequest(
     [MaxLength(4000)]
     string? Note,
-    Dictionary<Guid, JsonElement>? FieldValues = null);
+    Dictionary<Guid, JsonElement>? FieldValues = null,
+    Guid? ClientGeneratedId = null);
 
 public sealed record UpdateTaskTimelineEntryRequest(
     [MaxLength(4000)]

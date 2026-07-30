@@ -228,9 +228,16 @@ function App() {
   const liveConnectionToastAtRef = useRef(0);
   const cloudSyncFailureToastAtRef = useRef(0);
   const cloudSyncInFlightRef = useRef<Set<string>>(new Set());
+  const cloudSyncPendingRef = useRef<Set<string>>(new Set());
   const cloudCatalogReconcileInFlightRef = useRef(false);
   const cloudSyncRetryAfterRef = useRef<Map<string, number>>(new Map());
   const syncRootsRef = useRef<SyncRootResponse[]>([]);
+  const performBackgroundCloudSyncRef = useRef<(workspaceId: string) => Promise<void>>(
+    async () => {},
+  );
+  const reconcileCloudWorkspaceCatalogRef = useRef<() => Promise<void>>(
+    async () => {},
+  );
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     getInitialWorkspaceId,
   );
@@ -701,7 +708,7 @@ function App() {
   }, [pingBackend]);
 
   useEffect(() => {
-    if (!currentUser || temporarySessionIsActive || !selectedWorkspaceId) {
+    if (!currentUser || temporarySessionIsActive) {
       return undefined;
     }
 
@@ -719,6 +726,24 @@ function App() {
     };
 
     const handleLiveUpdate = (message: LiveUpdateMessage) => {
+      if (message.eventName === 'CloudChangeAvailable') {
+        if (message.workspaceId) {
+          void performBackgroundCloudSyncRef.current(message.workspaceId);
+        }
+        return;
+      }
+
+      if (message.eventName === 'CloudCatalogChanged') {
+        void reconcileCloudWorkspaceCatalogRef.current()
+          .then(() => {
+            syncRootsRef.current
+              .filter((root) => Boolean(root.remoteWorkspaceId))
+              .forEach((root) =>
+                void performBackgroundCloudSyncRef.current(root.localWorkspaceId));
+          });
+        return;
+      }
+
       if (
         message.eventName === 'TaskShared' ||
         message.eventName === 'WorkspaceCreated' ||
@@ -799,11 +824,7 @@ function App() {
   const performBackgroundCloudSync = useCallback(async (workspaceId: string) => {
     if (
       !localDesktopSessionIsActive ||
-      !cloudSyncAccount?.isConnected ||
-      cloudSyncInFlightRef.current.has(workspaceId) ||
-      document.visibilityState === 'hidden' ||
-      !navigator.onLine ||
-      (cloudSyncRetryAfterRef.current.get(workspaceId) ?? 0) > Date.now()
+      !cloudSyncAccount?.isConnected
     ) {
       return;
     }
@@ -817,6 +838,17 @@ function App() {
       return;
     }
 
+    if (
+      cloudSyncInFlightRef.current.has(workspaceId) ||
+      document.visibilityState === 'hidden' ||
+      !navigator.onLine ||
+      (cloudSyncRetryAfterRef.current.get(workspaceId) ?? 0) > Date.now()
+    ) {
+      cloudSyncPendingRef.current.add(workspaceId);
+      return;
+    }
+
+    cloudSyncPendingRef.current.delete(workspaceId);
     cloudSyncInFlightRef.current.add(workspaceId);
     try {
       const response = await syncWorkspaceWithCloud(workspaceId, {
@@ -871,6 +903,7 @@ function App() {
       }
     } catch (error) {
       const now = Date.now();
+      cloudSyncPendingRef.current.add(workspaceId);
       cloudSyncRetryAfterRef.current.set(workspaceId, now + 30000);
       if (now - cloudSyncFailureToastAtRef.current > 60000) {
         cloudSyncFailureToastAtRef.current = now;
@@ -878,6 +911,17 @@ function App() {
       }
     } finally {
       cloudSyncInFlightRef.current.delete(workspaceId);
+      if (
+        cloudSyncPendingRef.current.has(workspaceId) &&
+        !document.hidden &&
+        navigator.onLine &&
+        (cloudSyncRetryAfterRef.current.get(workspaceId) ?? 0) <= Date.now()
+      ) {
+        window.setTimeout(
+          () => void performBackgroundCloudSyncRef.current(workspaceId),
+          0,
+        );
+      }
     }
   }, [
     cloudSyncAccount?.isConnected,
@@ -928,6 +972,8 @@ function App() {
     showToast,
     t,
   ]);
+  performBackgroundCloudSyncRef.current = performBackgroundCloudSync;
+  reconcileCloudWorkspaceCatalogRef.current = reconcileCloudWorkspaceCatalog;
 
   useEffect(() => {
     if (!localDesktopSessionIsActive || !cloudSyncAccount?.isConnected) {
@@ -947,18 +993,25 @@ function App() {
           (includeAll || root.localWorkspaceId === activeWorkspaceId))
         .forEach((root) => void performBackgroundCloudSync(root.localWorkspaceId));
     };
-    const resumeSync = () => syncLinkedWorkspaces(false);
+    const resumeSync = () => {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
+
+      void reconcileCloudWorkspaceCatalog()
+        .then(() => syncLinkedWorkspaces(false));
+    };
     const initialTimer = window.setTimeout(() => {
       void reconcileCloudWorkspaceCatalog()
         .then(() => syncLinkedWorkspaces(true));
     }, 750);
     const interval = window.setInterval(() => {
       intervalTick += 1;
-      if (intervalTick % 3 === 0) {
+      if (intervalTick % 5 === 0) {
         void reconcileCloudWorkspaceCatalog();
       }
-      syncLinkedWorkspaces(intervalTick % 4 === 0);
-    }, 5000);
+      syncLinkedWorkspaces(intervalTick % 5 === 0);
+    }, 60000);
     window.addEventListener('online', resumeSync);
     document.addEventListener('visibilitychange', resumeSync);
 

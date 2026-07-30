@@ -26,6 +26,8 @@
             "Sqlite",
             "--Database:ApplyMigrationsOnStartup",
             "true",
+            "--Desktop:CloudLiveRelayEnabled",
+            "true",
             "--Auth:RequireAuthentication",
             "true",
             "--Auth:AllowGuestSessions",

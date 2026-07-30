@@ -43,6 +43,10 @@ public interface ISyncRepository
         bool trackChanges,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<CloudSyncAccount>> ListConnectedCloudAccountsAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
     Task AddRootAsync(SyncRoot syncRoot, CancellationToken cancellationToken);
 
     Task AddMappingAsync(SyncMapping mapping, CancellationToken cancellationToken);

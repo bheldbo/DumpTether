@@ -310,7 +310,11 @@ export function Sidebar({
               !isSharedOnly &&
               !isSystemBoard,
             );
-            const canEdit = canDelete;
+            const canEdit = Boolean(
+              isOwner &&
+              !isSharedOnly &&
+              !isSystemBoard,
+            );
             const canLeave = !isCloudImported && (isSharedOnly || isSharedMembership);
             const isEditing = editingWorkspaceId === candidate.id;
             const leaveIsPending = pendingWorkspaceLeaveId === candidate.id;

@@ -71,6 +71,11 @@ internal static class DumpTetherApiSetup
                 "database",
                 tags: ["ready"]);
         services.AddHostedService<SessionCleanupHostedService>();
+        if (environment.IsEnvironment("Desktop") &&
+            configuration.GetValue<bool>("Desktop:CloudLiveRelayEnabled"))
+        {
+            services.AddHostedService<DesktopCloudLiveUpdateRelayHostedService>();
+        }
 
         if (runtimeSetup.TrustForwardedHeaders)
         {

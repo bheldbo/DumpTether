@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -14,6 +15,7 @@ import { type ToastTone } from '../../appTypes';
 import {
   formatFullDate,
   formatRelativeDate,
+  formatWorkspaceName,
   isOwnerRole,
   isReadOnlyRole,
   isSystemAllTasksWorkspace,
@@ -540,11 +542,6 @@ export function TaskBoard({
       ) : null}
 
       <div className="task-grid" aria-busy={isLoading}>
-        {(isLoading || isRefreshing) && !focusModeIsEnabled ? (
-          <div className="board-loading-indicator">
-            <BoardLoadingState compact t={t} />
-          </div>
-        ) : null}
         {!isLoading && displayedTaskItems.length === 0 ? (
           <p className="empty-copy board-empty">
             {!hasWorkspace
@@ -581,16 +578,23 @@ export function TaskBoard({
           const isExpanded = selectedTaskId === taskItem.id;
           const isSelectedForEdit = selectedTaskIds.includes(taskItem.id);
           const taskCategoryNames = splitTaskCategories(taskItem.category);
+          const sourceWorkspace = workspaceIsSystemAllTasks
+            ? workspaces.find((candidate) => candidate.id === taskItem.workspaceId) ?? null
+            : null;
 
           return (
             <article
               className="task-card"
+              data-shows-workspace-source={Boolean(sourceWorkspace)}
               data-expanded={isExpanded}
               data-edit-selected={isSelectedForEdit}
               data-edit-mode={editModeIsEnabled}
               data-state={getTaskState(taskItem)}
               key={taskItem.id}
-              style={getTaskCardStyle(taskItem.color)}
+              style={{
+                ...getTaskCardStyle(taskItem.color),
+                '--task-workspace-color': sourceWorkspace?.color ?? '#184c48',
+              } as CSSProperties}
             >
               {editModeIsEnabled && !isExpanded ? (
                 <span
@@ -629,6 +633,15 @@ export function TaskBoard({
                 title={isExpanded ? t('backToWall') : taskItem.title}
                 type="button"
               >
+                {sourceWorkspace ? (
+                  <span
+                    className="task-card-workspace-source"
+                    title={`${t('board')}: ${formatWorkspaceName(sourceWorkspace.name, t)}`}
+                  >
+                    <span aria-hidden="true" className="task-card-workspace-source-dot" />
+                    {formatWorkspaceName(sourceWorkspace.name, t)}
+                  </span>
+                ) : null}
                 <span className="task-card-topline">
                   <span className="task-card-title">{taskItem.title}</span>
                   {taskItem.noteCount > 0 ? (
@@ -756,6 +769,12 @@ export function TaskBoard({
           );
         })}
       </div>
+
+      {(isLoading || isRefreshing) && !focusModeIsEnabled ? (
+        <div className="board-loading-indicator">
+          <BoardLoadingState compact t={t} />
+        </div>
+      ) : null}
       {!isLoading &&
       (canCreateTask || (canUseBatchActions && visibleTaskItems.length > 0)) &&
       !focusModeIsEnabled ? (

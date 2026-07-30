@@ -27,6 +27,30 @@ public sealed class TaskItemsApiTests
     }
 
     [Fact]
+    public async Task PostTaskItems_WithSameClientGeneratedId_IsIdempotent()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var clientGeneratedId = Guid.NewGuid();
+        var request = new CreateTaskItemRequest(
+            "Retry-safe task",
+            ClientGeneratedId: clientGeneratedId);
+
+        var firstResponse = await client.PostAsJsonAsync("/api/tasks", request);
+        var secondResponse = await client.PostAsJsonAsync("/api/tasks", request);
+
+        firstResponse.EnsureSuccessStatusCode();
+        secondResponse.EnsureSuccessStatusCode();
+        var first = (await firstResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+        var second = (await secondResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+        var tasks = (await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks"))!;
+
+        Assert.Equal(clientGeneratedId, first.Id);
+        Assert.Equal(first.Id, second.Id);
+        Assert.Single(tasks, task => task.Id == clientGeneratedId);
+    }
+
+    [Fact]
     public async Task GetTaskItems_ListsTaskItems()
     {
         using var factory = new DumpTetherApiFactory();
@@ -154,6 +178,34 @@ public sealed class TaskItemsApiTests
         Assert.Equal("NoteAdded", entry.Kind);
         Assert.Equal("Note added", entry.Summary);
         Assert.Equal("Found the source note.", entry.Details);
+    }
+
+    [Fact]
+    public async Task PostTaskTimeline_WithSameClientGeneratedId_IsIdempotent()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateTaskItemAsync(client, "Retry-safe note");
+        var clientGeneratedId = Guid.NewGuid();
+        var request = new AddTaskTimelineEntryRequest(
+            "Only once.",
+            ClientGeneratedId: clientGeneratedId);
+
+        var firstResponse = await client.PostAsJsonAsync(
+            $"/api/tasks/{created.Id}/timeline",
+            request);
+        var secondResponse = await client.PostAsJsonAsync(
+            $"/api/tasks/{created.Id}/timeline",
+            request);
+
+        firstResponse.EnsureSuccessStatusCode();
+        secondResponse.EnsureSuccessStatusCode();
+        var detail = (await secondResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+
+        var note = Assert.Single(
+            detail.TimelineEntries,
+            entry => entry.Id == clientGeneratedId);
+        Assert.Equal("Only once.", note.Details);
     }
 
     [Fact]

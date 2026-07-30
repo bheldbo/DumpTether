@@ -146,6 +146,8 @@ fn build_sidecar_args(runtime: &DesktopRuntime) -> Vec<String> {
         "Sqlite",
         "--Database:ApplyMigrationsOnStartup",
         "true",
+        "--Desktop:CloudLiveRelayEnabled",
+        "true",
         "--Auth:RequireAuthentication",
         "true",
         "--Auth:AllowGuestSessions",

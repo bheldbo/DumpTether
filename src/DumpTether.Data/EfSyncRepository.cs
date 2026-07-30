@@ -139,6 +139,23 @@ internal sealed class EfSyncRepository : ISyncRepository
         return await query.SingleOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<CloudSyncAccount>> ListConnectedCloudAccountsAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await _dbContext.CloudSyncAccounts
+            .AsNoTracking()
+            .Where(account => account.DisconnectedAt == null)
+            .ToListAsync(cancellationToken);
+
+        // SQLite cannot order or compare DateTimeOffset values server-side.
+        return candidates
+            .Where(account =>
+                account.HasUsableSession(now) &&
+                !string.IsNullOrWhiteSpace(account.ProtectedSessionToken))
+            .ToList();
+    }
+
     public async Task AddRootAsync(
         SyncRoot syncRoot,
         CancellationToken cancellationToken)

@@ -300,7 +300,8 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                 request.TaskTemplateId,
                 BuildFieldValuePayload(request.FieldValues),
                 ProjectId: null,
-                request.Category),
+                request.Category,
+                request.ClientGeneratedId),
             cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(request.Status) ||
@@ -332,7 +333,8 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                 workspaceId,
                 new AddTaskTimelineEntryRequest(
                     timelineEntry.Note,
-                    BuildFieldValuePayload(timelineEntry.FieldValues)),
+                    BuildFieldValuePayload(timelineEntry.FieldValues),
+                    timelineEntry.ClientGeneratedId),
                 cancellationToken);
         }
 
