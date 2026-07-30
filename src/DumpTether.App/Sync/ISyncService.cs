@@ -17,6 +17,9 @@ public interface ISyncService
     Task<DisconnectCloudAccountResponse> DisconnectCloudAccountAsync(
         CancellationToken cancellationToken);
 
+    Task<ReconcileCloudWorkspacesResponse> ReconcileCloudWorkspacesAsync(
+        CancellationToken cancellationToken);
+
     Task<SyncRootResponse> EnsureWorkspaceRootAsync(
         EnsureWorkspaceSyncRootRequest request,
         CancellationToken cancellationToken);

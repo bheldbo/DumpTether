@@ -1,8 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     sync::Mutex,
+    thread,
+    time::{Duration, Instant},
 };
 use tauri::{
     Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
@@ -18,6 +20,7 @@ struct DesktopRuntime {
     api_base_url: String,
     bootstrap_token: String,
     cors_origin: &'static str,
+    port: u16,
 }
 
 fn main() {
@@ -34,6 +37,7 @@ fn main() {
                 .current_dir(resource_dir);
             let (mut receiver, child) = sidecar_command.spawn()?;
             app.manage(SidecarProcess(Mutex::new(Some(child))));
+            wait_for_sidecar(runtime.port, Duration::from_secs(30))?;
 
             let initialization_script = format!(
                 "Object.defineProperty(window, '__DUMPTETHER_DESKTOP_RUNTIME__', \
@@ -105,7 +109,29 @@ fn create_desktop_runtime() -> Result<DesktopRuntime, Box<dyn std::error::Error>
         api_base_url: format!("http://127.0.0.1:{port}"),
         bootstrap_token,
         cors_origin: desktop_web_origin(),
+        port,
     })
+}
+
+fn wait_for_sidecar(
+    port: u16,
+    timeout: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let deadline = Instant::now() + timeout;
+
+    while Instant::now() < deadline {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            return Ok(());
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    Err(format!(
+        "The local DumpTether API did not start on 127.0.0.1:{port} within {} seconds.",
+        timeout.as_secs(),
+    )
+    .into())
 }
 
 fn build_sidecar_args(runtime: &DesktopRuntime) -> Vec<String> {

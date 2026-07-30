@@ -34,9 +34,9 @@ export function TaskFilterBar({
   };
 
   return (
-    <div className="filter-bar" aria-label="Temporary task filters">
+    <div className="filter-bar" aria-label={t('filterWall')}>
       <label className="filter-search">
-        <span className="sr-only">Search tasks</span>
+        <span className="sr-only">{t('filterWall')}</span>
         <input
           onChange={(event) => updateFilter({ text: event.target.value })}
           placeholder={t('filterWall')}
@@ -46,7 +46,7 @@ export function TaskFilterBar({
       </label>
 
       <select
-        aria-label="Filter by status"
+        aria-label={t('anyStatus')}
         onChange={(event) => updateFilter({ status: event.target.value })}
         value={filters.status}
       >
@@ -68,7 +68,7 @@ export function TaskFilterBar({
       />
 
       <select
-        aria-label="Filter by follow-up"
+        aria-label={t('anyFollowUp')}
         onChange={(event) =>
           updateFilter({ followUp: event.target.value as '' | SavedViewFollowUpFilter })
         }
@@ -83,7 +83,7 @@ export function TaskFilterBar({
       </select>
 
       <input
-        aria-label="Not touched for days"
+        aria-label={t('notTouchedDays')}
         min={1}
         onChange={(event) => updateFilter({ notTouchedDays: event.target.value })}
         placeholder={t('notTouchedDays')}

@@ -10,7 +10,9 @@ public sealed record WorkspaceResponse(
     string AccessKind = "Membership",
     int SharedTaskCount = 0,
     int MemberCount = 1,
-    int PendingInvitationCount = 0);
+    int PendingInvitationCount = 0,
+    DateTimeOffset? UpdatedAt = null,
+    WorkspaceMembershipRole? Role = null);
 
 public sealed record WorkspaceMemberResponse(
     Guid UserId,

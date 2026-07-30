@@ -267,7 +267,8 @@
   color: #725514;
 }
 
-.shared-workspace-badge {
+.shared-workspace-badge,
+.cloud-workspace-badge {
   min-width: 24px;
   display: inline-flex;
   gap: 4px;
@@ -282,7 +283,8 @@
   font-weight: 760;
 }
 
-.shared-workspace-badge .icon {
+.shared-workspace-badge .icon,
+.cloud-workspace-badge .icon {
   width: 14px;
   height: 14px;
 }

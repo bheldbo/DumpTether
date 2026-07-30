@@ -86,6 +86,7 @@ import {
   reopenTaskItem,
   reopenTaskItems,
   registerUser,
+  reconcileCloudWorkspaces,
   removeWorkspaceMember,
   revokeAuthSession,
   revokeTaskShare,
@@ -227,6 +228,7 @@ function App() {
   const liveConnectionToastAtRef = useRef(0);
   const cloudSyncFailureToastAtRef = useRef(0);
   const cloudSyncInFlightRef = useRef<Set<string>>(new Set());
+  const cloudCatalogReconcileInFlightRef = useRef(false);
   const cloudSyncRetryAfterRef = useRef<Map<string, number>>(new Map());
   const syncRootsRef = useRef<SyncRootResponse[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
@@ -449,11 +451,34 @@ function App() {
         if (!isCurrentLoad()) {
           return;
         }
+        const catalogRoots = localDesktopSessionIsActive
+          ? await listWorkspaceSyncRoots({
+              signal: controller.signal,
+              workspaceId: null,
+            }).catch((error) => {
+              if (isAbortError(error)) {
+                throw error;
+              }
+
+              return [];
+            })
+          : [];
+        const revokedCloudWorkspaceIds = new Set(
+          catalogRoots
+            .filter((root) =>
+              root.status === 'AccessRevoked' &&
+              (root.origin === 'CloudImported' || root.origin === 2))
+            .map((root) => root.localWorkspaceId),
+        );
+        const visibleWorkspaceList = workspaceList.filter(
+          (candidate) => !revokedCloudWorkspaceIds.has(candidate.id),
+        );
 
         const effectiveWorkspaceId =
-          preferredWorkspaceId && workspaceList.some((candidate) => candidate.id === preferredWorkspaceId)
+          preferredWorkspaceId &&
+          visibleWorkspaceList.some((candidate) => candidate.id === preferredWorkspaceId)
             ? preferredWorkspaceId
-            : workspaceList[0]?.id ?? null;
+            : visibleWorkspaceList[0]?.id ?? null;
         const workspaceRequestOptions = {
           workspaceId: effectiveWorkspaceId,
           signal: controller.signal,
@@ -482,29 +507,19 @@ function App() {
           listTaskTemplates(workspaceRequestOptions),
           listWorkspaceMembers(workspaceRequestOptions).catch(() => []),
           listWorkspaceInvitations(workspaceRequestOptions).catch(() => []),
-          localDesktopSessionIsActive
-            ? listWorkspaceSyncRoots({
-                signal: controller.signal,
-                workspaceId: null,
-              }).catch((error) => {
-                if (isAbortError(error)) {
-                  throw error;
-                }
-
-                return [];
-              })
-            : Promise.resolve([]),
+          Promise.resolve(catalogRoots),
         ]);
         if (!isCurrentLoad()) {
           return;
         }
 
-        const resolvedWorkspaceList = workspaceList.some((candidate) => candidate.id === workspaceInfo.id)
-          ? workspaceList
-          : await listWorkspaces({
+        const resolvedWorkspaceList = visibleWorkspaceList.some(
+          (candidate) => candidate.id === workspaceInfo.id)
+          ? visibleWorkspaceList
+          : (await listWorkspaces({
               signal: controller.signal,
               workspaceId: null,
-            });
+            })).filter((candidate) => !revokedCloudWorkspaceIds.has(candidate.id));
         const selectedViewId = pickSavedViewId(views, preferredViewId);
         const selectedView = views.find((view) => view.id === selectedViewId) ?? null;
         const workspaceIsSystemAllTasks = isSystemAllTasksWorkspace(workspaceInfo);
@@ -704,12 +719,11 @@ function App() {
     };
 
     const handleLiveUpdate = (message: LiveUpdateMessage) => {
-      if (message.actorUserId === currentUser.user.id) {
-        return;
-      }
-
       if (
         message.eventName === 'TaskShared' ||
+        message.eventName === 'WorkspaceCreated' ||
+        message.eventName === 'WorkspaceUpdated' ||
+        message.eventName === 'WorkspaceDeleted' ||
         message.eventName === 'WorkspaceInviteAccepted'
       ) {
         void loadAuth();
@@ -750,6 +764,10 @@ function App() {
           liveConnectionToastAtRef.current = now;
           showToast(t('liveUpdatesDisconnected'), 'error');
         }
+      },
+      () => {
+        void loadAuth();
+        scheduleWorkspaceReload();
       },
     );
     if (selectedWorkspaceId) {
@@ -869,6 +887,48 @@ function App() {
     t,
   ]);
 
+  const reconcileCloudWorkspaceCatalog = useCallback(async () => {
+    if (
+      !localDesktopSessionIsActive ||
+      !cloudSyncAccount?.isConnected ||
+      cloudCatalogReconcileInFlightRef.current ||
+      document.visibilityState === 'hidden' ||
+      !navigator.onLine
+    ) {
+      return;
+    }
+
+    cloudCatalogReconcileInFlightRef.current = true;
+    try {
+      const response = await reconcileCloudWorkspaces({ workspaceId: null });
+      setSyncRoots(response.roots);
+      syncRootsRef.current = response.roots;
+
+      if (response.imported > 0 || response.accessRevoked > 0) {
+        await loadWorkspace(currentViewId, selectedWorkspaceId, {
+          force: true,
+          silent: true,
+        });
+      }
+    } catch (error) {
+      const now = Date.now();
+      if (now - cloudSyncFailureToastAtRef.current > 60000) {
+        cloudSyncFailureToastAtRef.current = now;
+        showToast(`${t('cloudSyncPaused')}: ${getErrorMessage(error)}`, 'warning');
+      }
+    } finally {
+      cloudCatalogReconcileInFlightRef.current = false;
+    }
+  }, [
+    cloudSyncAccount?.isConnected,
+    currentViewId,
+    loadWorkspace,
+    localDesktopSessionIsActive,
+    selectedWorkspaceId,
+    showToast,
+    t,
+  ]);
+
   useEffect(() => {
     if (!localDesktopSessionIsActive || !cloudSyncAccount?.isConnected) {
       return undefined;
@@ -888,11 +948,17 @@ function App() {
         .forEach((root) => void performBackgroundCloudSync(root.localWorkspaceId));
     };
     const resumeSync = () => syncLinkedWorkspaces(false);
-    const initialTimer = window.setTimeout(() => syncLinkedWorkspaces(true), 1500);
+    const initialTimer = window.setTimeout(() => {
+      void reconcileCloudWorkspaceCatalog()
+        .then(() => syncLinkedWorkspaces(true));
+    }, 750);
     const interval = window.setInterval(() => {
       intervalTick += 1;
+      if (intervalTick % 3 === 0) {
+        void reconcileCloudWorkspaceCatalog();
+      }
       syncLinkedWorkspaces(intervalTick % 4 === 0);
-    }, 15000);
+    }, 5000);
     window.addEventListener('online', resumeSync);
     document.addEventListener('visibilitychange', resumeSync);
 
@@ -906,6 +972,7 @@ function App() {
     cloudSyncAccount?.isConnected,
     localDesktopSessionIsActive,
     performBackgroundCloudSync,
+    reconcileCloudWorkspaceCatalog,
   ]);
 
   useEffect(() => {
@@ -1529,6 +1596,13 @@ function App() {
     try {
       const account = await connectCloudSyncAccount(requestBody);
       setCloudSyncAccount(account);
+      const reconciliation = await reconcileCloudWorkspaces({ workspaceId: null });
+      setSyncRoots(reconciliation.roots);
+      syncRootsRef.current = reconciliation.roots;
+      await loadWorkspace(currentViewId, selectedWorkspaceId, {
+        force: true,
+        silent: true,
+      });
       showToast(t('cloudAccountConnected'), 'info');
     } catch (error) {
       const message = getErrorMessage(error);
@@ -2095,6 +2169,7 @@ function App() {
           currentWorkspace.id === updated.id ? updated : currentWorkspace,
         ),
       );
+      void performBackgroundCloudSync(updated.id);
       setErrorMessage(null);
     } catch (error) {
       const message = getErrorMessage(error);
@@ -2118,6 +2193,7 @@ function App() {
       setWorkspace((currentWorkspace) =>
         currentWorkspace?.id === updated.id ? updated : currentWorkspace,
       );
+      void performBackgroundCloudSync(updated.id);
       await loadAuth();
       setErrorMessage(null);
     } catch (error) {
@@ -2204,6 +2280,7 @@ function App() {
         savedViews={savedViews}
         sidebarIsCollapsed={sidebarIsCollapsed}
         templateCount={templates.length}
+        syncRoots={syncRoots}
         localDesktopSessionIsActive={localDesktopSessionIsActive}
         temporarySessionIsActive={temporarySessionIsActive}
         t={t}

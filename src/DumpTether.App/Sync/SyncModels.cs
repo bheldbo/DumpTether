@@ -1,3 +1,4 @@
+using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.Domain;
 
@@ -57,7 +58,10 @@ public sealed record SyncRootResponse(
     SyncRootStatus Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    DateTimeOffset? LastSyncedAt);
+    DateTimeOffset? LastSyncedAt,
+    SyncRootOrigin Origin = SyncRootOrigin.LocalEnrolled,
+    string? RemoteAccessKind = null,
+    WorkspaceMembershipRole? RemoteRole = null);
 
 public sealed record MarkTaskItemSyncedRequest(
     Guid RemoteTaskItemId,
@@ -84,6 +88,12 @@ public sealed record SyncWorkspaceWithCloudResponse(
     int Failed,
     IReadOnlyList<string> Messages);
 
+public sealed record ReconcileCloudWorkspacesResponse(
+    IReadOnlyList<SyncRootResponse> Roots,
+    int Imported,
+    int Linked,
+    int AccessRevoked);
+
 public sealed record CloudSyncUserResponse(
     Guid Id,
     string Email,
@@ -92,7 +102,11 @@ public sealed record CloudSyncUserResponse(
 public sealed record CloudSyncWorkspaceResponse(
     Guid Id,
     string Name,
-    string? Color);
+    string? Color,
+    DateTimeOffset? CreatedAt = null,
+    DateTimeOffset? UpdatedAt = null,
+    WorkspaceMembershipRole Role = WorkspaceMembershipRole.Owner,
+    string AccessKind = WorkspaceAccessKinds.Membership);
 
 public sealed record CloudSyncTaskResponse(
     Guid Id,
@@ -111,6 +125,10 @@ public sealed record CloudSyncTaskResponse(
 
 public sealed record CloudSyncCreateWorkspaceRequest(
     string Name,
+    string? Color);
+
+public sealed record CloudSyncUpdateWorkspaceRequest(
+    string? Name,
     string? Color);
 
 public sealed record CloudSyncCreateTaskRequest(

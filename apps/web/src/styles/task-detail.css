@@ -16,7 +16,9 @@
 }
 
 .task-grid {
+  position: relative;
   min-width: 0;
+  min-height: 210px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 14px;
@@ -428,11 +430,28 @@ button.task-sync-indicator {
 }
 
 .task-card-detail {
+  position: relative;
   min-height: 0;
   padding: 18px 20px 20px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 251, 0.84));
   color: #17202c;
   overflow: auto;
+}
+
+.board-loading-indicator,
+.task-detail-loading-indicator {
+  position: absolute;
+  z-index: 18;
+  left: 12px;
+  bottom: 12px;
+  max-width: min(320px, calc(100% - 24px));
+  pointer-events: none;
+}
+
+.task-detail-loading-indicator {
+  min-height: 220px;
+  display: flex;
+  align-items: flex-end;
 }
 
 .task-detail {

@@ -597,6 +597,22 @@ namespace DumpTether.Data.Sqlite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("local_workspace_id");
 
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("origin");
+
+                    b.Property<string>("RemoteAccessKind")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("remote_access_kind");
+
+                    b.Property<string>("RemoteRole")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("remote_role");
+
                     b.Property<Guid?>("RemoteWorkspaceId")
                         .HasColumnType("TEXT")
                         .HasColumnName("remote_workspace_id");
@@ -997,6 +1013,10 @@ namespace DumpTether.Data.Sqlite.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("updated_at");
 
                     b.HasKey("Id");
 

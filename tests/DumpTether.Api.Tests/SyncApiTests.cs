@@ -238,6 +238,86 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task ReconcileCloudWorkspaces_ImportsCloudOnlyBoardAndPullsItsTasks()
+    {
+        var cloud = new FakeCloudSyncClient();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        await LoginDesktopAsync(client);
+        await ConnectCloudAccountAsync(client);
+        var remoteWorkspace = cloud.AddWorkspace("Cloud only", "#A7F3D0");
+        cloud.AddTask(
+            remoteWorkspace.Id,
+            "Visible after reconciliation",
+            lastTouchedAt: DateTimeOffset.UtcNow);
+
+        var reconcileResponse = await client.PostAsync(
+            "/api/sync/cloud-workspaces/reconcile",
+            content: null);
+
+        reconcileResponse.EnsureSuccessStatusCode();
+        var reconciliation =
+            (await reconcileResponse.Content.ReadFromJsonAsync<ReconcileCloudWorkspacesResponse>())!;
+        var importedRoot = Assert.Single(
+            reconciliation.Roots,
+            root => root.RemoteWorkspaceId == remoteWorkspace.Id);
+        Assert.Equal(1, reconciliation.Imported);
+        Assert.Equal(SyncRootOrigin.CloudImported, importedRoot.Origin);
+
+        var syncResponse = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{importedRoot.LocalWorkspaceId}/run",
+            new SyncWorkspaceWithCloudRequest(
+                PushLocalChanges: false,
+                PullRemoteChanges: true));
+        syncResponse.EnsureSuccessStatusCode();
+
+        using var workspaceRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/api/tasks");
+        workspaceRequest.Headers.Add(
+            "X-DumpTether-Workspace-Id",
+            importedRoot.LocalWorkspaceId.ToString());
+        var tasksResponse = await client.SendAsync(workspaceRequest);
+        tasksResponse.EnsureSuccessStatusCode();
+        var tasks = (await tasksResponse.Content.ReadFromJsonAsync<List<TaskItemSummaryResponse>>())!;
+
+        Assert.Contains(tasks, task => task.Title == "Visible after reconciliation");
+    }
+
+    [Fact]
+    public async Task ReconcileCloudWorkspaces_WhenRemoteAccessIsGone_MarksImportedRootRevoked()
+    {
+        var cloud = new FakeCloudSyncClient();
+        var remoteWorkspace = cloud.AddWorkspace("Temporary cloud access");
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        await LoginDesktopAsync(client);
+        await ConnectCloudAccountAsync(client);
+        cloud.Workspaces.Clear();
+        cloud.TasksByWorkspace.Remove(remoteWorkspace.Id);
+
+        var response = await client.PostAsync(
+            "/api/sync/cloud-workspaces/reconcile",
+            content: null);
+
+        response.EnsureSuccessStatusCode();
+        var reconciliation =
+            (await response.Content.ReadFromJsonAsync<ReconcileCloudWorkspacesResponse>())!;
+        var root = Assert.Single(
+            reconciliation.Roots,
+            candidate => candidate.RemoteWorkspaceId == remoteWorkspace.Id);
+
+        Assert.Equal(1, reconciliation.AccessRevoked);
+        Assert.Equal(SyncRootStatus.AccessRevoked, root.Status);
+    }
+
+    [Fact]
     public async Task DisconnectCloudAccount_RevokesRemoteSessionAndErasesLocalToken()
     {
         var cloud = new FakeCloudSyncClient();
@@ -930,6 +1010,30 @@ public sealed class SyncApiTests
             CancellationToken cancellationToken)
         {
             return Task.FromResult(AddWorkspace(request.Name, request.Color));
+        }
+
+        public Task<CloudSyncWorkspaceResponse> UpdateWorkspaceAsync(
+            CloudSyncConnection connection,
+            Guid workspaceId,
+            CloudSyncUpdateWorkspaceRequest request,
+            CancellationToken cancellationToken)
+        {
+            var index = Workspaces.FindIndex(workspace => workspace.Id == workspaceId);
+            if (index < 0)
+            {
+                throw new InvalidOperationException("Workspace was not found.");
+            }
+
+            var workspace = Workspaces[index];
+            var updated = workspace with
+            {
+                Name = request.Name ?? workspace.Name,
+                Color = request.Color,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            Workspaces[index] = updated;
+
+            return Task.FromResult(updated);
         }
 
         public Task<IReadOnlyList<CloudSyncTaskTemplateResponse>> ListTaskTemplatesAsync(

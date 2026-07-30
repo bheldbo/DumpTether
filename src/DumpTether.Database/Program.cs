@@ -184,7 +184,7 @@ static async Task<int> SeedTestDataAsync(IServiceProvider services, IConfigurati
     if (workspace is null)
     {
         workspace = Workspace.Create("Seed Board", now);
-        workspace.ChangeColor("#FFD86B");
+        workspace.ChangeColor("#FFD86B", now);
         await db.Workspaces.AddAsync(workspace);
     }
 

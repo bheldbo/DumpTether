@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Menu", "Help", "Db", "DbDown", "Mail", "Migrate", "Api", "Backend", "Web", "Frontend", "All", "Both", "LocalApi", "LocalBackend", "LocalAll", "LocalBoth")]
+    [ValidateSet("Menu", "Help", "Db", "DbDown", "Mail", "Migrate", "Api", "Backend", "Web", "Frontend", "Desktop", "All", "Both", "LocalApi", "LocalBackend", "LocalAll", "LocalBoth")]
     [string] $Target = "Menu",
     [switch] $OpenBrowser,
     [string] $WindowTitle = ""
@@ -9,13 +9,39 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $webRoot = Join-Path $repoRoot "apps\web"
 $apiProject = Join-Path $repoRoot "src\DumpTether.Api\DumpTether.Api.csproj"
+$desktopScript = Join-Path $PSScriptRoot "desktop.ps1"
 $webUrl = "http://127.0.0.1:5173"
+$mailpitUrl = "http://127.0.0.1:8025"
+$postgresContainerName = "dumptether-postgres"
 $envFilePaths = @(
     (Join-Path $repoRoot ".env"),
     (Join-Path $repoRoot ".env.local")
 )
 
 Import-Module (Join-Path $PSScriptRoot "DumpTether.DevTools.psm1") -Force
+
+function Repair-ProcessPathEnvironment {
+    $processVariables = [Environment]::GetEnvironmentVariables(
+        [EnvironmentVariableTarget]::Process)
+    $hasPath = $processVariables.Contains("Path")
+    $hasUpperPath = $processVariables.Contains("PATH")
+
+    if (-not ($hasPath -and $hasUpperPath)) {
+        return
+    }
+
+    $pathValue = [string] $processVariables["Path"]
+    [Environment]::SetEnvironmentVariable(
+        "PATH",
+        $null,
+        [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable(
+        "Path",
+        $pathValue,
+        [EnvironmentVariableTarget]::Process)
+}
+
+Repair-ProcessPathEnvironment
 
 function Get-EnvValue {
     param(
@@ -96,13 +122,68 @@ function Invoke-AtRepoRoot {
     Invoke-DumpTetherAtRepoRoot -RepoRoot $repoRoot -Command $Command
 }
 
+function Assert-DockerEngine {
+    $docker = Get-DockerCommand
+    $serverVersion = & $docker info --format "{{.ServerVersion}}" 2>&1
+
+    if ($LASTEXITCODE -ne 0) {
+        $detail = ($serverVersion | Out-String).Trim()
+        throw @"
+Docker CLI was found, but the Docker engine is not available.
+Start Docker Desktop and wait until the engine reports that it is running.
+Docker response: $detail
+"@
+    }
+
+    Write-Host "Docker engine: $serverVersion" -ForegroundColor DarkGray
+    return $docker
+}
+
+function Wait-ForPostgres {
+    param([int] $TimeoutSeconds = 60)
+
+    $docker = Get-DockerCommand
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastStatus = "not found"
+
+    while ((Get-Date) -lt $deadline) {
+        $containerId = & $docker compose ps -q postgres 2>$null
+
+        if (-not [string]::IsNullOrWhiteSpace($containerId)) {
+            $lastStatus = (& $docker inspect `
+                --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" `
+                $containerId 2>$null | Select-Object -First 1).Trim()
+
+            if ($lastStatus -eq "healthy") {
+                Write-Host "PostgreSQL: healthy ($postgresContainerName)" -ForegroundColor Green
+                return
+            }
+
+            if ($lastStatus -eq "exited" -or $lastStatus -eq "dead") {
+                break
+            }
+        }
+
+        Start-Sleep -Seconds 1
+    }
+
+    throw @"
+PostgreSQL did not become healthy within $TimeoutSeconds seconds.
+Looked for Docker Compose service 'postgres' / container '$postgresContainerName'.
+Last container status: $lastStatus
+Inspect it with: docker compose logs postgres
+"@
+}
+
 function Start-Database {
     Invoke-AtRepoRoot {
-        $docker = Get-DockerCommand
-        & $docker compose up -d
+        $docker = Assert-DockerEngine
+        & $docker compose up -d postgres
         if ($LASTEXITCODE -ne 0) {
-            throw "docker compose up failed with exit code $LASTEXITCODE."
+            throw "docker compose could not start PostgreSQL (service 'postgres'). Exit code: $LASTEXITCODE."
         }
+
+        Wait-ForPostgres
     }
 }
 
@@ -153,9 +234,12 @@ function Stop-ExistingApiProcesses {
 function Invoke-Migrations {
     Invoke-AtRepoRoot {
         Set-DumpTetherRuntimeEnvironment
-        dotnet run --project src\DumpTether.Database\DumpTether.Database.csproj --no-launch-profile -- migrate
+        dotnet run --project src\DumpTether.Database\DumpTether.Database.csproj --no-launch-profile --no-restore -- migrate
         if ($LASTEXITCODE -ne 0) {
-            throw "DumpTether.Database migrate failed with exit code $LASTEXITCODE."
+            throw @"
+DumpTether.Database migrate failed with exit code $LASTEXITCODE.
+If this checkout has not been restored yet, run: dotnet restore DumpTether.sln
+"@
         }
     }
 }
@@ -163,18 +247,31 @@ function Invoke-Migrations {
 function Start-Api {
     Stop-ExistingApiProcesses
     Set-DumpTetherRuntimeEnvironment
-    dotnet run --project $apiProject --no-launch-profile
+    dotnet run --project $apiProject --no-launch-profile --no-restore
     if ($LASTEXITCODE -ne 0) {
-        throw "DumpTether API exited with code $LASTEXITCODE."
+        throw @"
+DumpTether API exited with code $LASTEXITCODE.
+If this checkout has not been restored yet, run: dotnet restore DumpTether.sln
+"@
     }
 }
 
 function Start-LocalApi {
     Stop-ExistingApiProcesses
     Set-DumpTetherLocalRuntimeEnvironment
-    dotnet run --project $apiProject --no-launch-profile
+    dotnet run --project $apiProject --no-launch-profile --no-restore
     if ($LASTEXITCODE -ne 0) {
-        throw "DumpTether local API exited with code $LASTEXITCODE."
+        throw @"
+DumpTether local API exited with code $LASTEXITCODE.
+If this checkout has not been restored yet, run: dotnet restore DumpTether.sln
+"@
+    }
+}
+
+function Start-Desktop {
+    & $desktopScript -Target Dev
+    if ($LASTEXITCODE -ne 0) {
+        throw "DumpTether desktop development shell exited with code $LASTEXITCODE."
     }
 }
 
@@ -257,6 +354,22 @@ function Wait-ForUrl {
     return $false
 }
 
+function Test-UrlReady {
+    param([string] $Url)
+
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2
+        return $response.StatusCode -ge 200 -and $response.StatusCode -lt 500
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-DesktopRunning {
+    return [bool] (Get-Process -Name "dumptether-desktop" -ErrorAction SilentlyContinue)
+}
+
 function Open-UrlWhenReady {
     param(
         [string] $Url,
@@ -302,15 +415,66 @@ function Start-BrowserWatcher {
 
 function Start-Mailpit {
     Invoke-AtRepoRoot {
-        $docker = Get-DockerCommand
+        $docker = Assert-DockerEngine
         & $docker compose --profile mail up -d mailpit
         if ($LASTEXITCODE -ne 0) {
             throw "Mailpit startup failed with exit code $LASTEXITCODE."
         }
 
-        Write-Host "Mailpit inbox: http://127.0.0.1:8025"
+        if (-not (Wait-ForUrl -Url $mailpitUrl -Name "Mailpit" -TimeoutSeconds 45)) {
+            throw "Mailpit container started, but its inbox did not become reachable. Inspect it with: docker compose logs mailpit"
+        }
+
+        Write-Host "Mailpit inbox: $mailpitUrl" -ForegroundColor Green
         Write-Host "Mailpit SMTP: 127.0.0.1:1025"
     }
+}
+
+function Start-AllDevelopmentServices {
+    Start-Database
+    Start-Mailpit
+
+    if (Test-UrlReady -Url $apiHealthUrl) {
+        Write-Host "Hosted API is already running: $apiHealthUrl" -ForegroundColor DarkGray
+    }
+    else {
+        Invoke-Migrations
+        Start-DevWindow "DumpTether Hosted API" "Api"
+
+        if (-not (Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether hosted API" -TimeoutSeconds 90)) {
+            throw @"
+The hosted API did not become ready.
+Review the 'DumpTether Hosted API' terminal for the startup exception.
+For configuration errors, check .env and any .env.local override.
+"@
+        }
+    }
+
+    if (Test-UrlReady -Url $webUrl) {
+        Write-Host "Vite is already running: $webUrl" -ForegroundColor DarkGray
+    }
+    else {
+        Start-DevWindow "DumpTether Web" "Web"
+
+        if (-not (Wait-ForUrl -Url $webUrl -Name "DumpTether Web" -TimeoutSeconds 90)) {
+            throw "Vite did not become ready. Review the 'DumpTether Web' terminal."
+        }
+    }
+
+    if (Test-DesktopRunning) {
+        Write-Host "Desktop development shell is already running." -ForegroundColor DarkGray
+    }
+    else {
+        Start-DevWindow "DumpTether Desktop" "Desktop"
+    }
+
+    Write-Host ""
+    Write-Host "DumpTether development services" -ForegroundColor Green
+    Write-Host "  Hosted API: $apiHealthUrl"
+    Write-Host "  Web client: $webUrl"
+    Write-Host "  Mailpit:    $mailpitUrl"
+    Write-Host "  PostgreSQL: Docker container $postgresContainerName"
+    Write-Host "  Desktop:    Tauri development window (local SQLite sidecar)"
 }
 
 function Show-Help {
@@ -321,10 +485,11 @@ function Show-Help {
     Write-Host "  .\scripts\dev.ps1 -Target <target> [-OpenBrowser]"
     Write-Host ""
     Write-Host "Common targets:"
-    Write-Host "  All / Both       Start PostgreSQL, apply migrations, run API and Vite in separate windows."
+    Write-Host "  All / Both       Start PostgreSQL, Mailpit, migrations, hosted API, Vite and desktop."
     Write-Host "  Backend          Start PostgreSQL, apply migrations and run only the hosted API."
     Write-Host "  Api              Run only the hosted API. Assumes PostgreSQL is already available."
     Write-Host "  Web / Frontend   Run only the Vite web client."
+    Write-Host "  Desktop          Run Tauri with its local SQLite API sidecar."
     Write-Host "  LocalAll         Run local SQLite API and Vite. No Docker/PostgreSQL."
     Write-Host "  LocalApi         Run only the local SQLite API."
     Write-Host "  Migrate          Start PostgreSQL and apply EF migrations."
@@ -342,7 +507,7 @@ function Show-Menu {
     while ($true) {
         Write-Host ""
         Write-Host "DumpTether development runner"
-        Write-Host "1. Web dev with PostgreSQL - DB, migrations, API and Vite"
+        Write-Host "1. Everything - PostgreSQL, Mailpit, API, Vite and desktop"
         Write-Host "2. Offline-style web dev - local SQLite API and Vite"
         Write-Host "3. Hosted backend only - DB, migrations and API"
         Write-Host "4. Hosted API only"
@@ -365,7 +530,7 @@ function Show-Menu {
         }
 
         switch ($choice.ToUpperInvariant()) {
-            "1" { Start-Database; Invoke-Migrations; Start-DevWindow "DumpTether API" "Api"; Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether API" -TimeoutSeconds 90 | Out-Null; Start-DevWindow "DumpTether Web" "Web"; Write-Host "DumpTether API: $apiHealthUrl"; Write-Host "DumpTether Web: $webUrl" }
+            "1" { Start-AllDevelopmentServices }
             "2" { Start-DevWindow "DumpTether Local API" "LocalApi"; Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether Local API" -TimeoutSeconds 90 | Out-Null; Start-DevWindow "DumpTether Web" "Web"; Write-Host "DumpTether Local API: $apiHealthUrl"; Write-Host "DumpTether Web: $webUrl" }
             "3" { Start-Database; Invoke-Migrations; Start-Api; return }
             "4" { Start-Api; return }
@@ -433,32 +598,23 @@ switch ($Target) {
 
         Start-Web
     }
+    "Desktop" {
+        Start-Desktop
+    }
     "All" {
-        Start-Database
-        Invoke-Migrations
-        Start-DevWindow "DumpTether API" "Api"
-        Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether API" -TimeoutSeconds 90 | Out-Null
-        Start-DevWindow "DumpTether Web" "Web"
-
-        Write-Host "DumpTether API: $apiHealthUrl"
-        Write-Host "DumpTether Web: $webUrl"
+        Start-AllDevelopmentServices
 
         if ($OpenBrowser) {
             Open-UrlWhenReady -Url $webUrl -Name "DumpTether Web"
+            Open-UrlWhenReady -Url $mailpitUrl -Name "Mailpit"
         }
     }
     "Both" {
-        Start-Database
-        Invoke-Migrations
-        Start-DevWindow "DumpTether API" "Api"
-        Wait-ForUrl -Url $apiHealthUrl -Name "DumpTether API" -TimeoutSeconds 90 | Out-Null
-        Start-DevWindow "DumpTether Web" "Web"
-
-        Write-Host "DumpTether API: $apiHealthUrl"
-        Write-Host "DumpTether Web: $webUrl"
+        Start-AllDevelopmentServices
 
         if ($OpenBrowser) {
             Open-UrlWhenReady -Url $webUrl -Name "DumpTether Web"
+            Open-UrlWhenReady -Url $mailpitUrl -Name "Mailpit"
         }
     }
     "LocalApi" {

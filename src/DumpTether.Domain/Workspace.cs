@@ -16,6 +16,7 @@ public sealed class Workspace
         Id = id;
         Name = name;
         CreatedAt = createdAt;
+        UpdatedAt = createdAt;
     }
 
     public Guid Id { get; private set; }
@@ -25,6 +26,8 @@ public sealed class Workspace
     public string? Color { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    public DateTimeOffset UpdatedAt { get; private set; }
 
     public IReadOnlyCollection<Project> Projects => _projects.AsReadOnly();
 
@@ -42,14 +45,26 @@ public sealed class Workspace
             createdAt);
     }
 
-    public void Rename(string name)
+    public void Rename(string name, DateTimeOffset updatedAt)
     {
         Name = DomainGuards.NotBlank(name, nameof(name));
+        UpdatedAt = updatedAt;
     }
 
-    public void ChangeColor(string? color)
+    public void ChangeColor(string? color, DateTimeOffset updatedAt)
     {
         Color = DomainGuards.OptionalHexColor(color, nameof(color));
+        UpdatedAt = updatedAt;
+    }
+
+    public void ApplyRemoteSnapshot(
+        string name,
+        string? color,
+        DateTimeOffset updatedAt)
+    {
+        Name = DomainGuards.NotBlank(name, nameof(name));
+        Color = DomainGuards.OptionalHexColor(color, nameof(color));
+        UpdatedAt = updatedAt;
     }
 
     public WorkspaceMembership AddMembership(

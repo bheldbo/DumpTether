@@ -224,16 +224,23 @@ export function TaskBoard({
     ? workspaceMembers.find((member) =>
         member.email.toLowerCase() === currentUserEmail.toLowerCase())
     : null;
-  const currentUserOwnsWorkspace = currentWorkspaceMember
-    ? isOwnerRole(currentWorkspaceMember.role)
+  const workspaceIsCloudImported = syncRoot?.origin === 'CloudImported' ||
+    syncRoot?.origin === 2;
+  const effectiveWorkspaceRole = workspaceIsCloudImported
+    ? syncRoot?.remoteRole
+    : currentWorkspaceMember?.role;
+  const currentUserOwnsWorkspace = effectiveWorkspaceRole
+    ? isOwnerRole(effectiveWorkspaceRole)
     : !currentUserEmail;
-  const workspaceIsTaskShareOnly = isTaskShareWorkspace(workspace ?? { accessKind: 'Membership' });
-  const currentUserHasReadOnlyWorkspaceAccess = currentWorkspaceMember
-    ? isReadOnlyRole(currentWorkspaceMember.role)
-    : false;
+  const workspaceIsTaskShareOnly =
+    isTaskShareWorkspace(workspace ?? { accessKind: 'Membership' }) ||
+    syncRoot?.remoteAccessKind === 'TaskShare';
+  const currentUserHasReadOnlyWorkspaceAccess =
+    Boolean(effectiveWorkspaceRole && isReadOnlyRole(effectiveWorkspaceRole));
   const hasWorkspace = Boolean(workspace?.id);
   const workspaceIsSystemAllTasks = workspace ? isSystemAllTasksWorkspace(workspace) : false;
-  const canManageSharing = currentUserOwnsWorkspace &&
+  const canManageSharing = !workspaceIsCloudImported &&
+    currentUserOwnsWorkspace &&
     !workspaceIsTaskShareOnly &&
     !workspaceIsSystemAllTasks;
   const canManageWorkspaceMetadata = currentUserOwnsWorkspace &&
@@ -477,24 +484,12 @@ export function TaskBoard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [canUseBatchActions, closeEditMode, editModeIsEnabled, openCreateTask, visibleTaskItems.length]);
 
-  if (isLoading && !focusModeIsEnabled) {
-    return (
-      <section
-        className="task-board"
-        aria-busy="true"
-        aria-labelledby="task-board-title"
-        data-loading="true"
-      >
-        <BoardLoadingState t={t} />
-      </section>
-    );
-  }
-
   return (
     <section
       className="task-board"
       aria-labelledby="task-board-title"
       data-focus-mode={focusModeIsEnabled}
+      data-loading={isLoading && !focusModeIsEnabled}
       data-refreshing={isRefreshing && !focusModeIsEnabled}
     >
       {!focusModeIsEnabled ? (
@@ -544,14 +539,12 @@ export function TaskBoard({
         />
       ) : null}
 
-      {isRefreshing && !focusModeIsEnabled ? (
-        <div className="board-refresh-overlay">
-          <BoardLoadingState compact t={t} />
-        </div>
-      ) : null}
-
       <div className="task-grid" aria-busy={isLoading}>
-        {isLoading ? <p className="empty-copy">{t('loadingTasks')}</p> : null}
+        {(isLoading || isRefreshing) && !focusModeIsEnabled ? (
+          <div className="board-loading-indicator">
+            <BoardLoadingState compact t={t} />
+          </div>
+        ) : null}
         {!isLoading && displayedTaskItems.length === 0 ? (
           <p className="empty-copy board-empty">
             {!hasWorkspace
@@ -713,7 +706,9 @@ export function TaskBoard({
               {isExpanded ? (
                 <div className="task-card-detail">
                   {isLoadingDetail || !selectedTask ? (
-                    <p className="empty-copy">Opening task...</p>
+                    <div className="task-detail-loading-indicator">
+                      <BoardLoadingState compact t={t} />
+                    </div>
                   ) : (
                     <TaskDetail
                       archiveDialogIsOpen={archiveDialogIsOpen}

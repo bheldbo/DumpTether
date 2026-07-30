@@ -666,7 +666,7 @@ public sealed class SharingApiTests
             var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
             var workspace = await dbContext.Workspaces.SingleAsync(
                 candidate => candidate.Id == standardWorkspace.Id);
-            workspace.Rename("Old renamed board");
+            workspace.Rename("Old renamed board", DateTimeOffset.UtcNow);
             await dbContext.SaveChangesAsync();
         }
 

@@ -151,8 +151,45 @@ internal sealed class SyncService : ISyncService
         }
 
         await _syncRepository.SaveChangesAsync(cancellationToken);
+        await ReconcileCloudWorkspacesCoreAsync(
+            currentSession.UserId,
+            new CloudSyncConnection(normalizedCloudApiBaseUrl, login.SessionToken),
+            login.User,
+            now,
+            cancellationToken);
 
         return MapCloudAccount(account, now);
+    }
+
+    public async Task<ReconcileCloudWorkspacesResponse> ReconcileCloudWorkspacesAsync(
+        CancellationToken cancellationToken)
+    {
+        var currentSession = await RequireCurrentSessionAsync(cancellationToken);
+        if (!IsDesktopSession(currentSession))
+        {
+            throw new UnauthorizedAccessException("Desktop sync session is required.");
+        }
+
+        var preparedConnection = await CreateCloudConnectionAsync(
+            new SyncWorkspaceWithCloudRequest(),
+            currentSession.UserId,
+            cancellationToken);
+        var cloudUser = await _cloudSyncClient.GetCurrentUserAsync(
+            preparedConnection.Connection,
+            cancellationToken);
+        var now = _clock.UtcNow;
+        preparedConnection.Account?.MarkVerified(
+            cloudUser.Id,
+            cloudUser.Email,
+            cloudUser.DisplayName,
+            now);
+
+        return await ReconcileCloudWorkspacesCoreAsync(
+            currentSession.UserId,
+            preparedConnection.Connection,
+            cloudUser,
+            now,
+            cancellationToken);
     }
 
     public async Task<DisconnectCloudAccountResponse> DisconnectCloudAccountAsync(
@@ -465,6 +502,7 @@ internal sealed class SyncService : ISyncService
             workspaceId,
             DefaultLocalDesktopDeviceId,
             cancellationToken);
+        var workspaceSyncCheckpoint = root.LastSyncedAt ?? root.CreatedAt;
         var remoteWorkspace = await ResolveRemoteWorkspaceAsync(
             connection,
             localWorkspace,
@@ -472,6 +510,10 @@ internal sealed class SyncService : ISyncService
             request.RemoteWorkspaceId,
             cancellationToken);
         root.LinkRemote(remoteWorkspace.Id, cloudUser.Id, now);
+        root.UpdateRemoteAccess(
+            remoteWorkspace.AccessKind,
+            remoteWorkspace.Role,
+            now);
 
         var localTasks = await ListLocalTasksForSyncAsync(workspaceId, now, cancellationToken);
         var mappings = (await _syncRepository.ListMappingsForRootAsync(
@@ -492,8 +534,20 @@ internal sealed class SyncService : ISyncService
 
         var stats = new SyncWorkspaceStats();
         var messages = new List<string>();
+        remoteWorkspace = await SyncWorkspaceMetadataAsync(
+            connection,
+            localWorkspace,
+            remoteWorkspace,
+            root,
+            workspaceSyncCheckpoint,
+            request.PushLocalChanges,
+            request.PullRemoteChanges,
+            stats,
+            messages,
+            cancellationToken);
+        var canPushRemoteChanges = CanPushRemoteChanges(root);
 
-        if (request.PushLocalChanges)
+        if (request.PushLocalChanges && canPushRemoteChanges)
         {
             foreach (var localTask in localTasks)
             {
@@ -513,6 +567,10 @@ internal sealed class SyncService : ISyncService
                 .Where(mapping => mapping.RemoteId.HasValue)
                 .Select(mapping => mapping.RemoteId!.Value)
                 .ToHashSet();
+        }
+        else if (request.PushLocalChanges)
+        {
+            messages.Add("Cloud access is read-only; local changes were not pushed.");
         }
 
         if (request.PullRemoteChanges)
@@ -593,6 +651,126 @@ internal sealed class SyncService : ISyncService
             messages);
     }
 
+    private async Task<ReconcileCloudWorkspacesResponse> ReconcileCloudWorkspacesCoreAsync(
+        Guid localUserId,
+        CloudSyncConnection connection,
+        CloudSyncUserResponse cloudUser,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var remoteWorkspaces = await _cloudSyncClient.ListWorkspacesAsync(
+            connection,
+            cancellationToken);
+        var localMemberships = await _authRepository.ListWorkspacesForUserAsync(
+            localUserId,
+            cancellationToken);
+        var localWorkspaceIds = localMemberships
+            .Where(membership => membership.AccessKind == WorkspaceAccessKinds.Membership)
+            .Select(membership => membership.Workspace.Id)
+            .ToArray();
+        var roots = localWorkspaceIds.Length == 0
+            ? []
+            : (await _syncRepository.ListRootsForLocalWorkspacesAsync(
+                localWorkspaceIds,
+                cancellationToken)).ToList();
+        var rootsByRemoteWorkspaceId = roots
+            .Where(root =>
+                root.CloudUserId == cloudUser.Id &&
+                root.RemoteWorkspaceId.HasValue)
+            .ToDictionary(root => root.RemoteWorkspaceId!.Value);
+        var rootedLocalWorkspaceIds = roots
+            .Select(root => root.LocalWorkspaceId)
+            .ToHashSet();
+        var imported = 0;
+        var linked = 0;
+
+        foreach (var remoteWorkspace in remoteWorkspaces)
+        {
+            if (rootsByRemoteWorkspaceId.TryGetValue(remoteWorkspace.Id, out var existingRoot))
+            {
+                existingRoot.UpdateRemoteAccess(
+                    remoteWorkspace.AccessKind,
+                    remoteWorkspace.Role,
+                    now);
+                linked++;
+                continue;
+            }
+
+            var localWorkspace = IsSystemAllTasksWorkspace(remoteWorkspace)
+                ? localMemberships
+                    .Where(membership =>
+                        membership.AccessKind == WorkspaceAccessKinds.Membership &&
+                        !rootedLocalWorkspaceIds.Contains(membership.Workspace.Id))
+                    .Select(membership => membership.Workspace)
+                    .FirstOrDefault(IsSystemAllTasksWorkspace)
+                : null;
+            var rootOrigin = SyncRootOrigin.LocalEnrolled;
+
+            if (localWorkspace is null)
+            {
+                var remoteCreatedAt = remoteWorkspace.CreatedAt ?? now;
+                var remoteUpdatedAt = remoteWorkspace.UpdatedAt ?? remoteCreatedAt;
+                localWorkspace = Workspace.Create(remoteWorkspace.Name, remoteCreatedAt);
+                localWorkspace.ApplyRemoteSnapshot(
+                    remoteWorkspace.Name,
+                    remoteWorkspace.Color,
+                    remoteUpdatedAt);
+                localWorkspace.AddMembership(
+                    localUserId,
+                    WorkspaceMembershipRole.Owner,
+                    now);
+                await _workspaceRepository.AddAsync(localWorkspace, cancellationToken);
+                rootOrigin = SyncRootOrigin.CloudImported;
+                imported++;
+            }
+
+            var root = rootOrigin == SyncRootOrigin.CloudImported
+                ? SyncRoot.CreateCloudImported(
+                    localWorkspace.Id,
+                    DefaultLocalDesktopDeviceId,
+                    now)
+                : SyncRoot.CreateLocal(
+                    localWorkspace.Id,
+                    DefaultLocalDesktopDeviceId,
+                    now);
+            root.LinkRemote(remoteWorkspace.Id, cloudUser.Id, now);
+            root.UpdateRemoteAccess(
+                remoteWorkspace.AccessKind,
+                remoteWorkspace.Role,
+                now);
+            await _syncRepository.AddRootAsync(root, cancellationToken);
+            roots.Add(root);
+            rootsByRemoteWorkspaceId[remoteWorkspace.Id] = root;
+            rootedLocalWorkspaceIds.Add(localWorkspace.Id);
+            linked++;
+        }
+
+        var accessibleRemoteWorkspaceIds = remoteWorkspaces
+            .Select(workspace => workspace.Id)
+            .ToHashSet();
+        var accessRevoked = 0;
+
+        foreach (var root in roots.Where(root =>
+                     root.CloudUserId == cloudUser.Id &&
+                     root.RemoteWorkspaceId.HasValue &&
+                     !accessibleRemoteWorkspaceIds.Contains(root.RemoteWorkspaceId.Value)))
+        {
+            root.MarkAccessRevoked(now);
+            accessRevoked++;
+        }
+
+        await _syncRepository.SaveChangesAsync(cancellationToken);
+
+        return new ReconcileCloudWorkspacesResponse(
+            roots
+                .OrderBy(root => root.CreatedAt)
+                .Select(MapRoot)
+                .ToList(),
+            imported,
+            linked,
+            accessRevoked);
+    }
+
     private async Task<PreparedCloudConnection> CreateCloudConnectionAsync(
         SyncWorkspaceWithCloudRequest request,
         Guid userId,
@@ -643,6 +821,17 @@ internal sealed class SyncService : ISyncService
             account);
     }
 
+    private static bool IsSystemAllTasksWorkspace(CloudSyncWorkspaceResponse workspace)
+    {
+        return workspace.AccessKind == WorkspaceAccessKinds.Membership &&
+            string.Equals(workspace.Name.Trim(), "All Tasks", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSystemAllTasksWorkspace(Workspace workspace)
+    {
+        return string.Equals(workspace.Name.Trim(), "All Tasks", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static CloudSyncConnection CreateManualCloudConnection(SyncWorkspaceWithCloudRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.CloudApiBaseUrl))
@@ -667,6 +856,71 @@ internal sealed class SyncService : ISyncService
         return new CloudSyncConnection(
             cloudApiBaseUrl.AbsoluteUri.TrimEnd('/'),
             request.CloudSessionToken.Trim());
+    }
+
+    private async Task<CloudSyncWorkspaceResponse> SyncWorkspaceMetadataAsync(
+        CloudSyncConnection connection,
+        Workspace localWorkspace,
+        CloudSyncWorkspaceResponse remoteWorkspace,
+        SyncRoot root,
+        DateTimeOffset checkpoint,
+        bool pushLocalChanges,
+        bool pullRemoteChanges,
+        SyncWorkspaceStats stats,
+        List<string> messages,
+        CancellationToken cancellationToken)
+    {
+        var remoteUpdatedAt = remoteWorkspace.UpdatedAt ??
+            remoteWorkspace.CreatedAt ??
+            checkpoint;
+        var localChanged = localWorkspace.UpdatedAt > checkpoint;
+        var remoteChanged = remoteUpdatedAt > checkpoint;
+        var valuesDiffer =
+            !string.Equals(localWorkspace.Name, remoteWorkspace.Name, StringComparison.Ordinal) ||
+            !string.Equals(localWorkspace.Color, remoteWorkspace.Color, StringComparison.OrdinalIgnoreCase);
+
+        if (!valuesDiffer)
+        {
+            return remoteWorkspace;
+        }
+
+        if (localChanged && remoteChanged)
+        {
+            root.MarkConflict(_clock.UtcNow);
+            stats.Conflicts++;
+            messages.Add($"Board '{localWorkspace.Name}' changed both locally and in cloud.");
+            return remoteWorkspace;
+        }
+
+        if (localChanged && pushLocalChanges && CanPushRemoteChanges(root))
+        {
+            var updatedRemote = await _cloudSyncClient.UpdateWorkspaceAsync(
+                connection,
+                remoteWorkspace.Id,
+                new CloudSyncUpdateWorkspaceRequest(
+                    localWorkspace.Name,
+                    localWorkspace.Color),
+                cancellationToken);
+            stats.UpdatedRemote++;
+            return updatedRemote;
+        }
+
+        if (remoteChanged && pullRemoteChanges)
+        {
+            localWorkspace.ApplyRemoteSnapshot(
+                remoteWorkspace.Name,
+                remoteWorkspace.Color,
+                remoteUpdatedAt);
+            stats.UpdatedLocal++;
+        }
+
+        return remoteWorkspace;
+    }
+
+    private static bool CanPushRemoteChanges(SyncRoot root)
+    {
+        return root.RemoteAccessKind != WorkspaceAccessKinds.TaskShare &&
+            root.RemoteRole != WorkspaceMembershipRole.ReadOnly;
     }
 
     private async Task<CloudSyncWorkspaceResponse> ResolveRemoteWorkspaceAsync(
@@ -1585,7 +1839,10 @@ internal sealed class SyncService : ISyncService
             syncRoot.Status,
             syncRoot.CreatedAt,
             syncRoot.UpdatedAt,
-            syncRoot.LastSyncedAt);
+            syncRoot.LastSyncedAt,
+            syncRoot.Origin,
+            syncRoot.RemoteAccessKind,
+            syncRoot.RemoteRole);
     }
 
     private static CloudSyncAccountResponse MapCloudAccount(

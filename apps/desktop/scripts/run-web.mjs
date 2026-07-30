@@ -21,6 +21,22 @@ const childEnvironment = mode === 'dev'
       VITE_PROXY_TARGET: 'http://127.0.0.1:55869',
     }
   : process.env;
+
+if (mode === 'dev') {
+  try {
+    const response = await fetch('http://127.0.0.1:5173', {
+      signal: AbortSignal.timeout(1000),
+    });
+
+    if (response.ok) {
+      process.stdout.write('Reusing the DumpTether Vite server already running at http://127.0.0.1:5173.\n');
+      process.exit(0);
+    }
+  } catch {
+    // No reusable Vite process is ready, so Tauri starts one below.
+  }
+}
+
 const result = process.platform === 'win32'
   ? spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `${npmCommand} run ${mode}`], {
       cwd: webRoot,

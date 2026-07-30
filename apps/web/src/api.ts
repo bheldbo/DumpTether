@@ -27,6 +27,7 @@ import type {
   ProjectArchiveResponse,
   LoginUserRequest,
   LoginUserResponse,
+  ReconcileCloudWorkspacesResponse,
   ReopenTaskItemRequest,
   ReopenTaskItemsRequest,
   RegisterUserRequest,
@@ -71,7 +72,8 @@ export { isDesktopRuntime } from './clientRuntime';
 const desktopRuntimeConfiguration = getDesktopRuntimeConfiguration();
 const desktopLocalApiBaseUrl =
   desktopRuntimeConfiguration?.apiBaseUrl ?? 'http://127.0.0.1:55869';
-const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
+const configuredBaseUrlValue = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/$/, '');
+const configuredBaseUrl = configuredBaseUrlValue || undefined;
 const apiBaseUrl = configuredBaseUrl ?? getDefaultApiBaseUrl();
 const sessionTokenStorageKey = 'dumptether.sessionToken';
 const guestSessionTokenStorageKey = 'dumptether.guestSessionToken';
@@ -854,6 +856,16 @@ export function disconnectCloudSyncAccount(
   return request<DisconnectCloudAccountResponse>('/api/sync/cloud-account', {
     method: 'DELETE',
   }, options);
+}
+
+export function reconcileCloudWorkspaces(
+  options: ApiRequestOptions = {},
+): Promise<ReconcileCloudWorkspacesResponse> {
+  return request<ReconcileCloudWorkspacesResponse>(
+    '/api/sync/cloud-workspaces/reconcile',
+    { method: 'POST' },
+    options,
+  );
 }
 
 export function listWorkspaceSyncRoots(

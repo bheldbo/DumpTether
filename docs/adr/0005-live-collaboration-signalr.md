@@ -24,6 +24,9 @@ The initial event names should be:
 - `NoteEdited`
 - `NoteDeleted`
 - `TaskShared`
+- `WorkspaceCreated`
+- `WorkspaceUpdated`
+- `WorkspaceDeleted`
 - `WorkspaceInviteAccepted`
 
 Event payloads stay small and contain identifiers, timestamps, and future version hints rather than full business objects:
@@ -51,6 +54,17 @@ timeline entries where possible. SignalR is not the durable sync protocol.
 Shared tasks and shared workspaces are server/session-scoped. The offline desktop app should show local user-owned data without login, then after login check server status, sync the user's own cloud data, and fetch shared tasks/workspaces only when the server connection succeeds. Sync or server connection errors should be shown clearly to the user without blocking local use.
 
 SignalR events should not become the source of truth. If a desktop client is offline, it can miss events and still recover by syncing/refetching later.
+
+Hosted browser clients now treat events from the same user as valid
+invalidations. Two clients signed in as the same account are distinct clients;
+discarding an event only because `actorUserId` matches would leave the other
+client stale.
+
+The local desktop sidecar currently reconciles the cloud board catalog and
+polls linked roots as a durable fallback. A future remote SignalR relay should
+connect the sidecar to the hosted hub and trigger the same C# sync path, without
+exposing the protected hosted session token to React. Polling remains required
+for recovery after sleep, disconnection, or missed events.
 
 SignalR remains useful while a future Android or iOS app is active. Mobile
 operating systems suspend background connections, so background attention will

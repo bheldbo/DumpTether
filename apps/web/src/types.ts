@@ -49,7 +49,14 @@ export interface TaskSyncStateResponse {
   lastError: string | null;
 }
 
-export type SyncRootStatus = 'LocalOnly' | 'Linked' | 'Conflict' | string;
+export type SyncRootStatus =
+  | 'LocalOnly'
+  | 'Linked'
+  | 'Conflict'
+  | 'AccessRevoked'
+  | string;
+
+export type SyncRootOrigin = 'LocalEnrolled' | 'CloudImported' | 1 | 2;
 
 export interface SyncRootResponse {
   id: string;
@@ -61,6 +68,16 @@ export interface SyncRootResponse {
   createdAt: string;
   updatedAt: string;
   lastSyncedAt: string | null;
+  origin: SyncRootOrigin;
+  remoteAccessKind: WorkspaceAccessKind | null;
+  remoteRole: WorkspaceMembershipRole | null;
+}
+
+export interface ReconcileCloudWorkspacesResponse {
+  roots: SyncRootResponse[];
+  imported: number;
+  linked: number;
+  accessRevoked: number;
 }
 
 export interface CloudSyncAccountResponse {
@@ -171,6 +188,8 @@ export interface WorkspaceResponse {
   sharedTaskCount?: number;
   memberCount?: number;
   pendingInvitationCount?: number;
+  updatedAt?: string | null;
+  role?: WorkspaceMembershipRole | null;
 }
 
 export type WorkspaceMembershipRole = 'Owner' | 'Member' | 'ReadOnly' | 'Guest' | 1 | 2 | 3;
