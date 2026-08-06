@@ -113,6 +113,7 @@ import {
   SettingsPanel,
 } from './features/settings/AccountSettingsPanels';
 import { TemplatesPage } from './features/templates/TemplatesPage';
+import { ProductTourPage } from './features/tour/ProductTourPage';
 import { TaskBoard } from './features/task-wall/TaskBoard';
 import { type CreateTaskItemOptions } from './features/task-wall/taskWallTypes';
 import { startLiveUpdates, type LiveUpdateMessage } from './liveUpdates';
@@ -1540,6 +1541,21 @@ function App() {
     updateUrl(nextMode, nextMode === 'templates' ? null : currentViewId);
   };
 
+  const handleOpenTour = () => {
+    setMode('tour');
+    setSelectedTaskId(null);
+    setSelectedTaskWorkspaceId(null);
+    setSelectedTask(null);
+    setSettingsIsOpen(false);
+    setAccountIsOpen(false);
+    updateUrl('tour', null);
+  };
+
+  const handleCloseTour = () => {
+    setMode('tasks');
+    updateUrl('tasks', currentViewId);
+  };
+
   const handleToggleSettings = () => {
     if (!workspaceAccessIsEnabled) {
       return;
@@ -2350,6 +2366,7 @@ function App() {
         onOpenAccount={handleToggleAccount}
         onOpenSettings={handleToggleSettings}
         onOpenTemplates={handleOpenTemplates}
+        onOpenTour={handleOpenTour}
         onRefresh={() => void loadWorkspace(currentViewId, selectedWorkspaceId, { force: true })}
         onResizeStart={handleStartSidebarResize}
         onSelectWorkspace={handleSelectWorkspace}
@@ -2371,7 +2388,9 @@ function App() {
       />
 
       <section className="workspace" aria-label="Task workspace">
-        {isLoadingAuth ? (
+        {mode === 'tour' ? (
+          <ProductTourPage onClose={handleCloseTour} t={t} />
+        ) : isLoadingAuth ? (
           <section className="auth-gate" aria-label={t('account')}>
             <p className="detail-kicker">DumpTether</p>
             <h2>{t('loadingAccount')}</h2>
@@ -2384,6 +2403,7 @@ function App() {
             onDevelopmentLogin={handleDevelopmentLogin}
             onGuestLogin={handleGuestLogin}
             onLogin={handleLogin}
+            onOpenTour={handleOpenTour}
             onRegister={handleRegister}
             localDesktopSessionIsActive={localDesktopSessionIsActive}
             temporarySessionIsActive={temporarySessionIsActive}
@@ -2511,7 +2531,9 @@ function App() {
           t={t}
         />
       ) : null}
-      <ToastStack onDismiss={dismissToast} toasts={toasts} />
+      {mode === 'tour' ? null : (
+        <ToastStack onDismiss={dismissToast} toasts={toasts} />
+      )}
     </main>
   );
 }
