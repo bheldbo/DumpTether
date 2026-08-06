@@ -26,6 +26,7 @@ internal sealed class AuthService : IAuthService
     private readonly IEmailSender _emailSender;
     private readonly ILogger<AuthService> _logger;
     private readonly IPasswordHashService _passwordHashService;
+    private readonly IRegistrationTransaction _registrationTransaction;
     private readonly ISessionTokenService _sessionTokenService;
     private readonly IWorkspaceRepository _workspaceRepository;
 
@@ -40,6 +41,7 @@ internal sealed class AuthService : IAuthService
         IEmailSender emailSender,
         ILogger<AuthService> logger,
         IPasswordHashService passwordHashService,
+        IRegistrationTransaction registrationTransaction,
         ISessionTokenService sessionTokenService,
         IWorkspaceRepository workspaceRepository)
     {
@@ -53,6 +55,7 @@ internal sealed class AuthService : IAuthService
         _emailSender = emailSender;
         _logger = logger;
         _passwordHashService = passwordHashService;
+        _registrationTransaction = registrationTransaction;
         _sessionTokenService = sessionTokenService;
         _workspaceRepository = workspaceRepository;
     }
@@ -67,45 +70,56 @@ internal sealed class AuthService : IAuthService
         EnsureSignupIsAllowed(normalizedEmail, request.InviteCode, allowInviteCode: true);
         ValidateRequiredLegalAcceptance(request.LegalAcceptance);
 
-        var existingUser = await _authRepository.GetUserByNormalizedEmailAsync(
-            normalizedEmail,
-            trackChanges: false,
+        return await _registrationTransaction.ExecuteAsync(
+            async transactionCancellationToken =>
+            {
+                var existingUser = await _authRepository.GetUserByNormalizedEmailAsync(
+                    normalizedEmail,
+                    trackChanges: false,
+                    transactionCancellationToken);
+
+                if (existingUser is not null)
+                {
+                    throw new ValidationException("Email is already registered.");
+                }
+
+                var now = _clock.UtcNow;
+                var emailConfirmationIsEnabled = _emailConfirmationOptions.Value.Enabled;
+                var created = await CreateUserWithWorkspaceAsync(
+                    request.Email,
+                    request.DisplayName,
+                    _passwordHashService.HashPassword(request.Password),
+                    now,
+                    emailIsConfirmed: !emailConfirmationIsEnabled,
+                    transactionCancellationToken);
+                var legalAcceptances = CreateRequiredLegalAcceptances(
+                    created.User.Id,
+                    request.LegalAcceptance,
+                    now);
+                if (legalAcceptances.Count > 0)
+                {
+                    await _authRepository.AddLegalAcceptancesAsync(
+                        legalAcceptances,
+                        transactionCancellationToken);
+                }
+
+                if (emailConfirmationIsEnabled)
+                {
+                    await CreateAndSendEmailConfirmationAsync(
+                        created.User,
+                        transactionCancellationToken);
+                }
+                else
+                {
+                    await _authRepository.SaveChangesAsync(transactionCancellationToken);
+                }
+
+                return new RegisterUserResponse(
+                    MapUser(created.User),
+                    MapWorkspace(created.Workspace, created.Membership),
+                    emailConfirmationIsEnabled);
+            },
             cancellationToken);
-
-        if (existingUser is not null)
-        {
-            throw new ValidationException("Email is already registered.");
-        }
-
-        var now = _clock.UtcNow;
-        var emailConfirmationIsEnabled = _emailConfirmationOptions.Value.Enabled;
-        var created = await CreateUserWithWorkspaceAsync(
-            request.Email,
-            request.DisplayName,
-            _passwordHashService.HashPassword(request.Password),
-            now,
-            emailIsConfirmed: !emailConfirmationIsEnabled,
-            cancellationToken);
-        var legalAcceptances = CreateRequiredLegalAcceptances(
-            created.User.Id,
-            request.LegalAcceptance,
-            now);
-        if (legalAcceptances.Count > 0)
-        {
-            await _authRepository.AddLegalAcceptancesAsync(legalAcceptances, cancellationToken);
-        }
-
-        if (emailConfirmationIsEnabled)
-        {
-            await CreateAndSendEmailConfirmationAsync(created.User, cancellationToken);
-        }
-
-        await _authRepository.SaveChangesAsync(cancellationToken);
-
-        return new RegisterUserResponse(
-            MapUser(created.User),
-            MapWorkspace(created.Workspace, created.Membership),
-            emailConfirmationIsEnabled);
     }
 
     public async Task<LoginUserResponse> LoginAsync(

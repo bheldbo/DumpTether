@@ -1,5 +1,6 @@
 using DumpTether.App.LiveUpdates;
 using DumpTether.App.Auth;
+using DumpTether.App.Email;
 using DumpTether.App.Sync;
 using DumpTether.Data;
 using System.Text;
@@ -33,6 +34,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
     private readonly IReadOnlyDictionary<string, string?> _extraConfiguration;
     private readonly ICloudSyncClient? _cloudSyncClient;
     private readonly ILiveUpdatePublisher? _liveUpdatePublisher;
+    private readonly IEmailSender? _emailSender;
 
     public DumpTetherApiFactory(
         bool requireAuthentication = false,
@@ -42,7 +44,8 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         int maxTotalTasksPerWorkspace = 5000,
         IReadOnlyDictionary<string, string?>? extraConfiguration = null,
         ICloudSyncClient? cloudSyncClient = null,
-        ILiveUpdatePublisher? liveUpdatePublisher = null)
+        ILiveUpdatePublisher? liveUpdatePublisher = null,
+        IEmailSender? emailSender = null)
     {
         _requireAuthentication = requireAuthentication;
         _enableDevelopmentLogin = enableDevelopmentLogin;
@@ -52,6 +55,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         _extraConfiguration = extraConfiguration ?? new Dictionary<string, string?>();
         _cloudSyncClient = cloudSyncClient;
         _liveUpdatePublisher = liveUpdatePublisher;
+        _emailSender = emailSender;
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
         _previousApplyMigrationsOnStartup =
             Environment.GetEnvironmentVariable(ApplyMigrationsOnStartupKey);
@@ -130,6 +134,12 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
             {
                 services.RemoveAll<ICloudSyncClient>();
                 services.AddSingleton(_cloudSyncClient);
+            }
+
+            if (_emailSender is not null)
+            {
+                services.RemoveAll<IEmailSender>();
+                services.AddSingleton(_emailSender);
             }
 
             services.RemoveAll<ICloudSessionProtector>();

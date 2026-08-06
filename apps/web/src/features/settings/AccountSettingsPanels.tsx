@@ -178,6 +178,9 @@ export function AuthPanel({
     (mode !== 'register' || registrationIsAvailable) &&
     (!registrationNeedsInvite || inviteCode.trim().length > 0) &&
     (mode !== 'register' || !authOptions.legal.acceptanceRequired || legalAccepted);
+  const canStartOAuth = mode !== 'register' ||
+    (registrationIsAvailable &&
+      (!authOptions.legal.acceptanceRequired || legalAccepted));
 
   if (currentUser) {
     const displayName = localDesktopSessionIsActive
@@ -381,8 +384,7 @@ export function AuthPanel({
             {authOptions.oAuthProviders.map((provider) => (
               <button
                 className="oauth-provider-button"
-                disabled={isSubmitting || isLoading ||
-                  (mode === 'register' && !registrationIsAvailable)}
+                disabled={isSubmitting || isLoading || !canStartOAuth}
                 key={provider}
                 onClick={() => startOAuthLogin(provider)}
                 type="button"
