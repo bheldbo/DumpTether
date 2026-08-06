@@ -1,6 +1,8 @@
 # Docker Compose Production Deployment
 
-This document describes the intended production direction for the current DumpTether Docker setup. It is not automatic deployment yet.
+This document is the Compose reference for DumpTether's hosted runtime. For a
+step-by-step first Ubuntu VPS setup, including DNS, SSH, Cloudflare, backup and
+rollback, see `docs/deployment/ubuntu-vps-production.md`.
 
 ## Build the Production Images Locally
 
@@ -165,6 +167,11 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres 
 ```
 
 Keep backups outside the repository and protect them like production data.
+
+A backup kept only on the same VPS does not protect against loss of that VPS.
+Automate encrypted copies to a second server or object-storage account, keep a
+retention policy, and perform periodic restore drills. The Ubuntu production
+runbook includes a systemd timer example and an off-host copy checklist.
 
 ## Avoid Exposing PostgreSQL
 

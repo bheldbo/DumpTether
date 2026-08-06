@@ -60,6 +60,8 @@ jobs:
         run: |
           docker build \
             -f src/DumpTether.Api/Dockerfile \
+            --build-arg "IMAGE_VERSION=${IMAGE_TAG}" \
+            --build-arg "SOURCE_REVISION=${GITHUB_SHA}" \
             -t "${API_IMAGE}:${IMAGE_TAG}" \
             -t "${API_IMAGE}:${SHA_TAG}" \
             .
@@ -68,6 +70,8 @@ jobs:
         run: |
           docker build \
             -f apps/web/Dockerfile \
+            --build-arg "IMAGE_VERSION=${IMAGE_TAG}" \
+            --build-arg "SOURCE_REVISION=${GITHUB_SHA}" \
             -t "${WEB_IMAGE}:${IMAGE_TAG}" \
             -t "${WEB_IMAGE}:${SHA_TAG}" \
             .

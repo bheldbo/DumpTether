@@ -178,8 +178,9 @@
 
 .legal-notice-dialog {
   width: min(720px, calc(100vw - 32px));
-  max-height: min(760px, calc(100vh - 32px));
+  max-height: min(760px, calc(100dvh - 48px));
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 16px;
   overflow: hidden;
   padding: 20px;
@@ -196,10 +197,14 @@
 }
 
 .legal-notice-content {
+  min-height: 0;
   display: grid;
+  align-content: start;
   gap: 18px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: 8px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .legal-notice-content section {

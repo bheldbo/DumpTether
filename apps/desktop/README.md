@@ -71,13 +71,14 @@ The Tauri app identifier is `net.heldbo.dumptether`. This is a reverse-DNS-style
 stable application ID for the operating system, installer, app data identity and
 future signing/update flows. The bundle publisher is `bheldbo`.
 
-Client release metadata has one non-secret source target:
+Client release metadata comes from one selected non-secret target:
 
 ```text
-deploy/targets/standalone.json
+deploy/targets/standalone.json  # no default cloud server
+deploy/targets/public.json      # official public DumpTether server
 ```
 
-Edit that file for:
+Edit or add one target file for:
 
 - product name
 - desktop version
@@ -91,6 +92,10 @@ Then generate the client config:
 ```powershell
 node scripts/configure-client.mjs --target standalone
 ```
+
+Official GitHub desktop releases select `public` by default. A self-hosted
+distributor should select its own target through the
+`DESKTOP_DEPLOYMENT_TARGET` repository variable before publishing installers.
 
 or:
 

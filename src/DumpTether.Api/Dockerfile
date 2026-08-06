@@ -16,6 +16,17 @@ RUN dotnet publish src/DumpTether.Api/DumpTether.Api.csproj \
     --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+ARG IMAGE_VERSION=development
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.title="DumpTether API" \
+      org.opencontainers.image.description="DumpTether ASP.NET Core API and SignalR host" \
+      org.opencontainers.image.source="https://github.com/bheldbo/DumpTether" \
+      org.opencontainers.image.url="https://dumptether.bheldbo.dk" \
+      org.opencontainers.image.documentation="https://github.com/bheldbo/DumpTether/blob/main/README.md" \
+      org.opencontainers.image.licenses="NOASSERTION" \
+      org.opencontainers.image.vendor="bheldbo" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}"
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080

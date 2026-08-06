@@ -77,7 +77,7 @@ Use these docs as the repo grows instead of rediscovering the same decisions fro
 - Server operations/admin: `docs/adr/0009-server-operations-and-administration.md`
 - Legal/privacy: `docs/adr/0010-legal-privacy-foundation.md`, `docs/legal/terms-of-use.md`, `docs/legal/privacy-notice.md`, `docs/security/gdpr-readiness.md`
 - Live collaboration: `docs/adr/0005-live-collaboration-signalr.md`
-- Deployment: `docs/deployment/docker-compose-production.md`, `docs/deployment/microsoft-identity-and-mailpit.md`, `docs/deployment/postgresql-resilience.md`
+- Deployment: `docs/deployment/docker-compose-production.md`, `docs/deployment/ubuntu-vps-production.md`, `docs/deployment/microsoft-identity-and-mailpit.md`, `docs/deployment/postgresql-resilience.md`
 - Deferred cleanup: `docs/engineering/refactor-backlog.md`
 
 When a feature touches one of these areas, skim the matching docs first and update them when the decision changes.
