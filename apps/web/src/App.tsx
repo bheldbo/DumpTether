@@ -212,6 +212,7 @@ function App() {
     useState<WorkspaceInvitationInboxResponse[]>([]);
   const [incomingTaskShares, setIncomingTaskShares] = useState<TaskShareInboxResponse[]>([]);
   const processedWorkspaceInviteTokenRef = useRef<string | null>(null);
+  const processedOAuthErrorRef = useRef<string | null>(null);
   const [localDesktopSessionIsActive, setLocalDesktopSessionIsActive] = useState(false);
   const [cloudSyncAccount, setCloudSyncAccount] = useState<CloudSyncAccountResponse | null>(null);
   const [temporarySessionIsActive, setTemporarySessionIsActive] = useState(isTemporarySession);
@@ -1174,6 +1175,20 @@ function App() {
       throw error;
     }
   }, [loadAuth, loadWorkspace, selectedWorkspaceId, showToast, t]);
+
+  useEffect(() => {
+    const nextUrl = new URL(window.location.href);
+    const oauthError = nextUrl.searchParams.get('oauthError');
+    if (!oauthError || processedOAuthErrorRef.current === oauthError) {
+      return;
+    }
+
+    processedOAuthErrorRef.current = oauthError;
+    setAccountIsOpen(true);
+    showToast(t('microsoftSignInFailed'), 'error');
+    nextUrl.searchParams.delete('oauthError');
+    window.history.replaceState({}, '', nextUrl.toString());
+  }, [showToast, t]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);

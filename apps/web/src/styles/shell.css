@@ -53,6 +53,12 @@
   cursor: default;
 }
 
+.brand-mark img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
 .app-shell[data-sidebar-collapsed="true"] .brand-mark {
   cursor: pointer;
 }

@@ -206,13 +206,15 @@ public sealed class AuthController : ControllerBase
             return NotFound();
         }
 
+        var normalizedReturnUrl = NormalizeReturnUrl(returnUrl);
         var redirectUri = Url.Action(
             nameof(CompleteOAuth),
-            values: new { provider = scheme, returnUrl }) ?? "/api/auth/me";
+            values: new { provider = scheme, returnUrl = normalizedReturnUrl }) ?? "/api/auth/me";
         var properties = new AuthenticationProperties
         {
             RedirectUri = redirectUri
         };
+        properties.Items[AuthSchemes.OAuthReturnUrlItem] = normalizedReturnUrl;
         properties.Items["legal.termsAccepted"] = termsAccepted.ToString();
         properties.Items["legal.termsVersion"] = termsVersion ?? string.Empty;
         properties.Items["legal.privacyNoticeAcknowledged"] =
