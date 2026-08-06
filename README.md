@@ -4,7 +4,7 @@ DumpTether is a plain personal task wall for messy work notes.
 
 Everything is a task. A task can be a TODO, a note, a follow-up, a tiny case file, or a sticky reminder. Templates add structure when you need it; colors, categories, follow-up dates, statuses and filters help you find things again without turning the app into Jira.
 
-The current MVP is a web app backed by ASP.NET Core and PostgreSQL. The same API can also run locally against SQLite as the first step toward the desktop/offline app. The planned desktop shell should reuse the same React UI and C# domain/application logic.
+DumpTether runs in two connected shapes. The hosted website uses ASP.NET Core and PostgreSQL. The Windows/Linux desktop app uses the same React UI and C# domain/application logic against a local SQLite sidecar, then optionally signs in to a configured DumpTether server to synchronize selected boards.
 
 ## What It Does Today
 
@@ -23,7 +23,8 @@ The current MVP is a web app backed by ASP.NET Core and PostgreSQL. The same API
 - Use Owner, Member and Read-only/Guest-style access.
 - Use English or Danish UI text.
 - Run locally with Docker PostgreSQL, ASP.NET Core and Vite.
-- Run the API in local SQLite mode as an offline foundation.
+- Run the desktop app locally against SQLite without a cloud account.
+- Link selected local boards to a hosted account and synchronize them.
 - Run the API in Docker for server deployment.
 - Gate public signup with open, whitelist, invite-only or closed registration modes.
 
@@ -44,19 +45,19 @@ It should not become:
 - a generic notes app
 - an import/parser project
 
-Future goals:
+Further product goals:
 
-- desktop/local app using the same React UI
-- SQLite offline state
-- login and optional sync to a hosted server
-- OAuth login
-- email confirmation/MFA
+- broader synchronization coverage and conflict recovery
+- signed desktop installers and update feeds
+- mobile clients using the same API and offline model
+- additional identity-provider and organization support
+- tested email MFA
 - better live collaboration
 - image attachments
 - sharing hardening
 - backups/export as `.dumptether`
 
-AI, MCP, email scanning and calendar integrations are future extensions, not MVP behavior.
+AI, MCP, email scanning and calendar integrations are not part of the current product.
 
 ## Architecture
 
@@ -64,7 +65,7 @@ DumpTether is a modular monolith.
 
 ```text
 apps/web/                 React + TypeScript + Vite frontend
-apps/desktop/             Tauri desktop shell scaffold for the shared UI
+apps/desktop/             Tauri desktop app for the shared UI and local sidecar
 src/DumpTether.Api/       ASP.NET Core HTTP API
 src/DumpTether.App/       Application services and use cases
 src/DumpTether.Domain/    Domain model and business rules
@@ -82,14 +83,14 @@ Design principles:
 - Keep backend authorization authoritative.
 - Keep core concepts relational.
 - Use JSON only where flexibility makes sense, such as field values/layout config.
-- Prefer one API shape for web, hosted server and future desktop sidecar.
+- Prefer one API shape for web, hosted server and desktop sidecar.
 - Avoid duplicated business logic between web, server and future desktop.
 
 Current shortcomings:
 
 - Desktop/offline mode has the SQLite/API foundation, Tauri shell, local sync status metadata, cloud board-catalog discovery, and a first cloud push/pull pass for task headers, templates, header field values and newly-synced note/entry field values. Later edits/deletes to existing notes, archive/delete sync, a hosted SignalR relay, and full conflict recovery are still future work.
 - Email confirmation/OAuth plumbing exists, but provider setup is still rough.
-- Sharing works as an MVP flow, but permissions and notifications need more polish.
+- Sharing works, but permissions and notifications still need more multi-user hardening.
 - Live updates are early and should be hardened before real multi-user use.
 - Attachments/images are not implemented yet.
 - The frontend is being actively refactored out of the older giant `App.tsx`.
@@ -265,8 +266,10 @@ Select and generate a target with:
 node scripts/configure-client.mjs --target development
 ```
 
-Use `standalone` for an offline-first package with no default cloud, or copy
-`deploy/targets/public.example.json` to a real non-secret deployment target.
+Use `standalone` for an offline-first package with no default cloud. The
+committed `public` target points official preview desktop builds at
+`https://dumptether.bheldbo.dk`; self-hosters can copy
+`deploy/targets/public.example.json` to another non-secret target.
 The generator writes the public React target plus Tauri/npm/Cargo metadata.
 Desktop builds run it automatically, and CI checks generated files.
 
@@ -344,6 +347,20 @@ Docker Compose reads root `.env` automatically, but does not automatically read
 file should supply Compose values. Visual Studio launch profiles do not
 automatically import either file, so use launch settings, user secrets or local
 environment variables for F5-only runs.
+
+There is one source of truth per configuration scope, not one file for every
+scope:
+
+- local script/Docker secrets: root `.env`, optionally overlaid by `.env.local`
+- hosted server secrets and runtime switches: the server's real `.env.prod`
+- safe API defaults: committed `appsettings*.json`
+- public desktop identity and default cloud origin: one selected
+  `deploy/targets/*.json`
+
+ASP.NET does not read `.env` files by itself. DumpTether scripts or Docker
+Compose load them and map `DUMPTETHER_*` values to ASP.NET keys such as
+`Auth__SignupMode`. Environment variables override `appsettings`, so production
+secrets never need to be duplicated into JSON.
 
 Signup modes are server-side:
 
@@ -472,7 +489,19 @@ deploy/docker/docker-compose.prod.example.yml
 deploy/docker/.env.prod.example
 deploy/docker/Caddyfile.example
 docs/deployment/docker-compose-production.md
+docs/deployment/ubuntu-vps-production.md
 ```
+
+The two GHCR packages are server artifacts:
+
+- `ghcr.io/bheldbo/dumptether-api`: the ASP.NET Core API/SignalR host.
+- `ghcr.io/bheldbo/dumptether-web`: the compiled React client served by Caddy.
+
+The VPS pulls those images through Docker Compose. They are not desktop
+installers. Desktop `.exe`, AppImage, deb and rpm artifacts are built by the
+separate `Desktop Release` workflow and attached to a GitHub Release. The web
+image uses Caddy as its runtime server; DumpTether is not implemented in Go.
+OCI labels in the Dockerfile override Caddy's inherited package description.
 
 Production rules:
 
@@ -672,7 +701,7 @@ Current security posture:
 - Production PostgreSQL should stay private to the Docker network.
 - Real secrets are ignored and must not be committed.
 
-Before a real public MVP:
+Before opening registration broadly:
 
 - Confirm production cookies/session settings.
 - Confirm HTTPS at the reverse proxy.
@@ -738,7 +767,7 @@ to GHCR; no workflow deploys to a server.
 Release direction:
 
 1. Merge to `main`.
-2. Tag a release when the MVP state is worth preserving.
+2. Tag a release when the product state is worth preserving.
 3. GitHub builds/publishes versioned API and web images to GHCR.
 4. Server pulls both image tags.
 5. Run migrations intentionally.
@@ -762,6 +791,11 @@ Automatic deployment is intentionally not wired yet.
 Desktop release workflow:
 
 - `.github/workflows/desktop-release.yml` builds desktop installers and attaches them to a GitHub Release.
+- Official releases select `deploy/targets/public.json` and therefore offer
+  optional login/sync against `https://dumptether.bheldbo.dk`; local SQLite use
+  does not depend on that server being available.
+- Self-hosted distributors set the non-secret `DESKTOP_DEPLOYMENT_TARGET`
+  repository variable to their own committed target before building.
 - Tag pushes such as `v0.1.0` create/update a release from that tag.
 - Manual `workflow_dispatch` lets you create a draft/prerelease such as `v0.1.0-desktop-preview`.
 - Windows builds produce the NSIS `.exe` installer.
@@ -771,7 +805,7 @@ Desktop release workflow:
 
 ## AI Disclosure
 
-This repository is being developed with AI coding assistance. DumpTether itself does not currently include AI features in the MVP product.
+This repository is being developed with AI coding assistance. DumpTether itself does not currently include AI features.
 
 If AI summaries, daily digests or MCP integrations are added later, they should be explicit opt-in features with clear privacy boundaries.
 
@@ -783,7 +817,11 @@ Vite is running, but the ASP.NET API is not running or not reachable at the conf
 
 ### Do I use `appsettings` or `.env`?
 
-Use `appsettings` for committed non-secret defaults. Use `.env`, environment variables, user secrets or server secrets for local/prod secrets and runtime overrides.
+Use `appsettings` for committed non-secret defaults. Use root `.env`/`.env.local`
+for local script and Compose overrides. Use one real `.env.prod` on the server
+for production runtime values and secrets. Docker Compose maps those values into
+ASP.NET environment keys, which override JSON; do not maintain the same secret
+in both places.
 
 ### Can I inspect the database with pgAdmin?
 

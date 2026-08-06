@@ -463,6 +463,11 @@
     flex-direction: column;
   }
 
+  .legal-notice-dialog .dialog-header {
+    align-items: flex-start;
+    flex-direction: row;
+  }
+
   .board-actions,
   .dialog-actions {
     justify-content: stretch;

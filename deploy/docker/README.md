@@ -2,6 +2,9 @@
 
 This folder contains example production Docker Compose files. They are templates only.
 
+For the full reusable Ubuntu VPS, DNS, HTTPS, rollout, backup and restore path,
+see `docs/deployment/ubuntu-vps-production.md`.
+
 Real production files live on the server:
 
 - `.env.prod`
