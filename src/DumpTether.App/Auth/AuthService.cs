@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using DumpTether.App.Email;
@@ -853,19 +852,12 @@ internal sealed class AuthService : IAuthService
         await _authRepository.SaveChangesAsync(cancellationToken);
 
         var confirmationLink = BuildConfirmationLink(options, token);
-        var encodedLink = WebUtility.HtmlEncode(confirmationLink);
         await _emailSender.SendAsync(
-            new EmailMessage(
+            EmailConfirmationEmailBuilder.Build(
                 user.Email,
                 user.DisplayName,
-                "Confirm your DumpTether email",
-                $"""
-                <p>Welcome to DumpTether.</p>
-                <p>Please confirm your email:</p>
-                <p><a href="{encodedLink}">Confirm email</a></p>
-                <p>This link expires in {Math.Max(1, options.TokenHours)} hours.</p>
-                """,
-                $"Confirm your DumpTether email: {confirmationLink}"),
+                confirmationLink,
+                options.TokenHours),
             cancellationToken);
     }
 

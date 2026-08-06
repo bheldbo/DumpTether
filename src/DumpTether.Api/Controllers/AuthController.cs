@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using DumpTether.App.Auth;
@@ -172,21 +171,20 @@ public sealed class AuthController : ControllerBase
         {
             var response = await _authService.ConfirmEmailAsync(token ?? string.Empty, cancellationToken);
             return Content(
-                $"""
-                <!doctype html>
-                <html lang="en">
-                <head><meta charset="utf-8"><title>DumpTether email confirmed</title></head>
-                <body style="font-family: system-ui, sans-serif; padding: 2rem;">
-                  <h1>Email confirmed</h1>
-                  <p>{WebUtility.HtmlEncode(response.Email)} is ready to use with DumpTether.</p>
-                </body>
-                </html>
-                """,
+                EmailConfirmationPageRenderer.Success(
+                    response.Email,
+                    _emailConfirmationOptions.Value.PublicBaseUrl.TrimEnd('/')),
                 "text/html");
         }
-        catch (ValidationException exception)
+        catch (ValidationException)
         {
-            return BadRequest(new { error = exception.Message });
+            return new ContentResult
+            {
+                Content = EmailConfirmationPageRenderer.Failure(
+                    _emailConfirmationOptions.Value.PublicBaseUrl.TrimEnd('/')),
+                ContentType = "text/html",
+                StatusCode = StatusCodes.Status400BadRequest
+            };
         }
     }
 

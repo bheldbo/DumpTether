@@ -68,6 +68,7 @@ export function AuthPanel({
   const [inviteCode, setInviteCode] = useState('');
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentKind | null>(null);
+  const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -107,11 +108,12 @@ export function AuthPanel({
           inviteCode: registrationNeedsInvite ? inviteCode.trim() : null,
           legalAcceptance,
         });
-        setStatusMessage(
-          registered.emailConfirmationRequired
-            ? t('emailConfirmationSent')
-            : t('authRegistered'),
-        );
+        if (registered.emailConfirmationRequired) {
+          setPendingConfirmationEmail(email.trim());
+          setStatusMessage(null);
+        } else {
+          setStatusMessage(t('authRegistered'));
+        }
       } else {
         await onLogin({
           email: email.trim(),
@@ -255,6 +257,43 @@ export function AuthPanel({
             t={t}
           />
         ) : null}
+      </section>
+    );
+  }
+
+  if (pendingConfirmationEmail) {
+    return (
+      <section className={wrapperClassName} aria-label={t('account')}>
+        {variant === 'gate' ? (
+          <img
+            alt="DumpTether"
+            className="auth-product-logo"
+            src="/assets/dumptether-logo.png"
+          />
+        ) : null}
+        <div className="auth-confirmation-waiting" role="status">
+          <span className="auth-confirmation-icon" aria-hidden="true">
+            <Icon name="mail" />
+          </span>
+          <p className="detail-kicker">{t('emailConfirmationSent')}</p>
+          <h2>{t('checkEmailTitle')}</h2>
+          <p>{t('checkEmailBody')}</p>
+          <strong>{pendingConfirmationEmail}</strong>
+          <p className="form-help">{t('checkEmailDeliveryHelp')}</p>
+          <button
+            className="auth-submit-button auth-confirmation-login-button"
+            onClick={() => {
+              setPendingConfirmationEmail(null);
+              setMode('login');
+              setStatusMessage(null);
+              setFormError(null);
+            }}
+            type="button"
+          >
+            <Icon name="login" />
+            {t('backToLogin')}
+          </button>
+        </div>
       </section>
     );
   }

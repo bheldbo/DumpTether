@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed.
+Accepted for the current registration flow.
 
 ## Context
 
@@ -17,16 +17,20 @@ Transactional email remains a module inside the DumpTether modular monolith:
 
 ```text
 Auth use case
-  -> transactional email outbox
-  -> background dispatcher
   -> IEmailProvider
   -> Brevo API | SMTP | development capture
 ```
 
-Registration should persist the user, confirmation token, and outbox message in
-one database transaction. Delivery happens asynchronously. A temporary provider
-failure must not lose the confirmation request or roll back a valid
-registration.
+While email confirmation is required, registration creates the user, default
+board, membership, legal acceptance, and confirmation token inside one database
+transaction. The confirmation email is sent before that transaction commits.
+If delivery fails, the transaction rolls back so the address is immediately
+available for a clean retry and no half-created account remains.
+
+This synchronous boundary is deliberate for the current product because there
+is no resend-confirmation workflow or operational outbox yet. A transactional
+outbox may replace it later, but only together with retry observability and a
+user-facing resend flow.
 
 Configuration should select one provider:
 
@@ -46,9 +50,11 @@ uncommitted environment file, never pasted into chat or committed.
 ## Consequences
 
 - Email remains replaceable without becoming a microservice.
-- Failed delivery can be retried and observed.
-- A separate worker process may consume the same outbox later without moving
-  the module to another repository.
+- Failed delivery does not reserve the email address or leave partial account
+  data behind.
+- Provider latency is currently part of registration latency.
+- A future worker may consume a transactional outbox without moving the email
+  module to another repository, but that is not current behavior.
 - A separate email service is reconsidered only when multiple products,
   independent scaling, compliance, or organizational ownership creates a real
   boundary.
