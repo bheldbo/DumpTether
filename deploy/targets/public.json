@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "targetId": "public",
   "productName": "DumpTether",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "bheldbo",
   "identifier": "net.heldbo.dumptether",
   "windowTitle": "DumpTether",
