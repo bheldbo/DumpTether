@@ -147,6 +147,11 @@ function Set-DumpTetherAspNetConfigurationAliases {
         "DUMPTETHER_OAUTH_MICROSOFT_CLIENT_ID" = "OAuth__Microsoft__ClientId"
         "DUMPTETHER_OAUTH_MICROSOFT_CLIENT_SECRET" = "OAuth__Microsoft__ClientSecret"
         "DUMPTETHER_OAUTH_MICROSOFT_TENANT_ID" = "OAuth__Microsoft__TenantId"
+        "DUMPTETHER_LEGAL_REQUIRE_ACCEPTANCE" = "Legal__RequireAcceptance"
+        "DUMPTETHER_LEGAL_TERMS_VERSION" = "Legal__TermsVersion"
+        "DUMPTETHER_LEGAL_PRIVACY_NOTICE_VERSION" = "Legal__PrivacyNoticeVersion"
+        "DUMPTETHER_LEGAL_OPERATOR_NAME" = "Legal__OperatorName"
+        "DUMPTETHER_LEGAL_PRIVACY_CONTACT_EMAIL" = "Legal__PrivacyContactEmail"
         "DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE" = "Usage__MaxActiveTasksPerWorkspace"
         "DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE" = "Usage__MaxTotalTasksPerWorkspace"
     }

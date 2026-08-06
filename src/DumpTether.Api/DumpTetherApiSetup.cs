@@ -34,6 +34,7 @@ internal static class DumpTetherApiSetup
         services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.Configure<EmailConfirmationOptions>(configuration.GetSection("EmailConfirmation"));
         services.Configure<OAuthOptions>(configuration.GetSection("OAuth"));
+        services.Configure<LegalOptions>(configuration.GetSection("Legal"));
         services.Configure<UsageOptions>(configuration.GetSection("Usage"));
         services.PostConfigure<AuthOptions>(options =>
         {

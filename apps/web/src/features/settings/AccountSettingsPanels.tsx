@@ -6,6 +6,11 @@ import { Icon, type IconName } from '../../components/Icon';
 import { ModalFrame } from '../../components/ModalFrame';
 import { DeleteWorkspaceDialog } from '../../components/DeleteWorkspaceDialog';
 import {
+  LegalNoticeDialog,
+  MicrosoftMark,
+  type LegalDocumentKind,
+} from '../auth/LegalNoticeDialog';
+import {
   formatDateTime,
   formatOAuthProvider,
   formatWorkspaceRole,
@@ -61,12 +66,25 @@ export function AuthPanel({
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [legalAccepted, setLegalAccepted] = useState(false);
+  const [openLegalDocument, setOpenLegalDocument] = useState<LegalDocumentKind | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const signupMode = normalizeSignupMode(authOptions.signupMode);
   const registrationIsAvailable = signupMode !== 'Closed';
   const registrationNeedsInvite = signupMode === 'InviteOnly';
+  const legalNoticesAvailable = Boolean(
+    authOptions.legal.termsVersion && authOptions.legal.privacyNoticeVersion,
+  );
+  const legalAcceptance = authOptions.legal.acceptanceRequired
+    ? {
+        termsAccepted: legalAccepted,
+        termsVersion: authOptions.legal.termsVersion,
+        privacyNoticeAcknowledged: legalAccepted,
+        privacyNoticeVersion: authOptions.legal.privacyNoticeVersion,
+      }
+    : null;
 
   useEffect(() => {
     if (!registrationIsAvailable && mode === 'register') {
@@ -87,6 +105,7 @@ export function AuthPanel({
           password,
           displayName: displayName.trim() || null,
           inviteCode: registrationNeedsInvite ? inviteCode.trim() : null,
+          legalAcceptance,
         });
         setStatusMessage(
           registered.emailConfirmationRequired
@@ -140,13 +159,25 @@ export function AuthPanel({
     }
   };
 
+  const startOAuthLogin = (provider: string) => {
+    setFormError(null);
+
+    if (mode === 'register' && authOptions.legal.acceptanceRequired && !legalAccepted) {
+      setFormError(t('legalAcceptanceRequired'));
+      return;
+    }
+
+    beginOAuthLogin(provider, mode === 'register' ? legalAcceptance : null);
+  };
+
   const wrapperClassName = variant === 'gate'
     ? 'auth-gate'
     : 'settings-section auth-panel';
   const canSubmit = email.trim().length > 0 &&
     password.length >= 8 &&
     (mode !== 'register' || registrationIsAvailable) &&
-    (!registrationNeedsInvite || inviteCode.trim().length > 0);
+    (!registrationNeedsInvite || inviteCode.trim().length > 0) &&
+    (mode !== 'register' || !authOptions.legal.acceptanceRequired || legalAccepted);
 
   if (currentUser) {
     const displayName = localDesktopSessionIsActive
@@ -201,7 +232,26 @@ export function AuthPanel({
             {t('logout')}
           </button>
         ) : null}
+        {legalNoticesAvailable ? (
+          <nav aria-label={t('legalInformation')} className="auth-legal-links">
+            <button onClick={() => setOpenLegalDocument('terms')} type="button">
+              {t('termsOfUse')}
+            </button>
+            <span aria-hidden="true">·</span>
+            <button onClick={() => setOpenLegalDocument('privacy')} type="button">
+              {t('privacyNotice')}
+            </button>
+          </nav>
+        ) : null}
         {formError ? <p className="form-error">{formError}</p> : null}
+        {openLegalDocument ? (
+          <LegalNoticeDialog
+            kind={openLegalDocument}
+            legal={authOptions.legal}
+            onClose={() => setOpenLegalDocument(null)}
+            t={t}
+          />
+        ) : null}
       </section>
     );
   }
@@ -237,22 +287,6 @@ export function AuthPanel({
         <p className="form-help">{t('signupInviteOnlyHelp')}</p>
       ) : signupMode === 'Whitelist' ? (
         <p className="form-help">{t('signupWhitelistHelp')}</p>
-      ) : null}
-
-      {authOptions.oAuthProviders.length > 0 ? (
-        <div className="oauth-login-list">
-          {authOptions.oAuthProviders.map((provider) => (
-            <button
-              className="secondary-action"
-              disabled={isSubmitting || isLoading}
-              key={provider}
-              onClick={() => beginOAuthLogin(provider)}
-              type="button"
-            >
-              {formatOAuthProvider(provider, t)}
-            </button>
-          ))}
-        </div>
       ) : null}
 
       <form className="auth-form" onSubmit={(event) => void submitAuthForm(event)}>
@@ -307,6 +341,29 @@ export function AuthPanel({
           </label>
         ) : null}
 
+        {mode === 'register' && authOptions.legal.acceptanceRequired ? (
+          <div className="legal-acceptance-row">
+            <input
+              checked={legalAccepted}
+              id={`legal-acceptance-${variant}`}
+              onChange={(event) => setLegalAccepted(event.target.checked)}
+              type="checkbox"
+            />
+            <p>
+              <label htmlFor={`legal-acceptance-${variant}`}>
+                {t('legalAgreementPrefix')}{' '}
+              </label>
+              <button onClick={() => setOpenLegalDocument('terms')} type="button">
+                {t('termsOfUse')}
+              </button>
+              {' '}{t('legalAgreementJoin')}{' '}
+              <button onClick={() => setOpenLegalDocument('privacy')} type="button">
+                {t('privacyNotice')}
+              </button>.
+            </p>
+          </div>
+        ) : null}
+
         <button
           className="auth-submit-button"
           disabled={!canSubmit || isSubmitting || isLoading}
@@ -316,6 +373,40 @@ export function AuthPanel({
           {mode === 'register' ? t('registerButton') : t('loginButton')}
         </button>
       </form>
+
+      {authOptions.oAuthProviders.length > 0 ? (
+        <>
+          <div className="auth-divider"><span>{t('or')}</span></div>
+          <div className="oauth-login-list">
+            {authOptions.oAuthProviders.map((provider) => (
+              <button
+                className="oauth-provider-button"
+                disabled={isSubmitting || isLoading ||
+                  (mode === 'register' && !registrationIsAvailable)}
+                key={provider}
+                onClick={() => startOAuthLogin(provider)}
+                type="button"
+              >
+                {provider.toLowerCase() === 'microsoft' ? <MicrosoftMark /> : null}
+                {mode === 'register' ? t('registerWith') : t('continueWith')}{' '}
+                {formatOAuthProvider(provider)}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      {legalNoticesAvailable ? (
+        <nav aria-label={t('legalInformation')} className="auth-legal-links">
+          <button onClick={() => setOpenLegalDocument('terms')} type="button">
+            {t('termsOfUse')}
+          </button>
+          <span aria-hidden="true">·</span>
+          <button onClick={() => setOpenLegalDocument('privacy')} type="button">
+            {t('privacyNotice')}
+          </button>
+        </nav>
+      ) : null}
 
       {authOptions.developmentLoginEnabled ? (
         <div className="dev-login-panel">
@@ -348,6 +439,14 @@ export function AuthPanel({
 
       {statusMessage ? <p className="form-success">{statusMessage}</p> : null}
       {formError ? <p className="form-error">{formError}</p> : null}
+      {openLegalDocument ? (
+        <LegalNoticeDialog
+          kind={openLegalDocument}
+          legal={authOptions.legal}
+          onClose={() => setOpenLegalDocument(null)}
+          t={t}
+        />
+      ) : null}
     </section>
   );
 }

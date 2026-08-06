@@ -29,6 +29,8 @@ public sealed class DumpTetherDbContext : DbContext
 
     public DbSet<ExternalLogin> ExternalLogins => Set<ExternalLogin>();
 
+    public DbSet<LegalAcceptance> LegalAcceptances => Set<LegalAcceptance>();
+
     public DbSet<Project> Projects => Set<Project>();
 
     public DbSet<TaskItem> TaskItems => Set<TaskItem>();

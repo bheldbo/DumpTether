@@ -42,6 +42,7 @@ public static class RuntimeConfigurationValidator
         }
 
         AddMissingOAuthKeys(configuration, "Microsoft", missingKeys);
+        AddMissingLegalKeys(configuration, missingKeys);
 
         if (!isDevelopment &&
             GetBoolean(configuration, "Auth:EnableDevelopmentLogin"))
@@ -79,6 +80,21 @@ public static class RuntimeConfigurationValidator
         {
             missingKeys.Add("Auth:SignupWhitelistEmails or Auth:SignupWhitelistDomains");
         }
+    }
+
+    private static void AddMissingLegalKeys(
+        IConfiguration configuration,
+        List<string> missingKeys)
+    {
+        if (!GetBoolean(configuration, "Legal:RequireAcceptance"))
+        {
+            return;
+        }
+
+        AddIfMissing(configuration, "Legal:TermsVersion", missingKeys);
+        AddIfMissing(configuration, "Legal:PrivacyNoticeVersion", missingKeys);
+        AddIfMissing(configuration, "Legal:OperatorName", missingKeys);
+        AddIfMissing(configuration, "Legal:PrivacyContactEmail", missingKeys);
     }
 
     private static void AddMissingSmtpKeys(

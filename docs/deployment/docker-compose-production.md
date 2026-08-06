@@ -76,12 +76,22 @@ DUMPTETHER_ENABLE_DEVELOPMENT_LOGIN=false
 DUMPTETHER_MAX_ACTIVE_TASKS_PER_WORKSPACE=1000
 DUMPTETHER_MAX_TOTAL_TASKS_PER_WORKSPACE=5000
 DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com
+DUMPTETHER_LEGAL_REQUIRE_ACCEPTANCE=true
+DUMPTETHER_LEGAL_TERMS_VERSION=2026-08-06
+DUMPTETHER_LEGAL_PRIVACY_NOTICE_VERSION=2026-08-06
+DUMPTETHER_LEGAL_OPERATOR_NAME=<real legal operator name>
+DUMPTETHER_LEGAL_PRIVACY_CONTACT_EMAIL=<monitored privacy address>
 DUMPTETHER_DOMAIN=dumptether.example.com
 ```
 
 Production secrets are never committed. Real production files stay on the server or in a deployment secret store.
 
 Production compose is intended to use PostgreSQL. SQLite mode is for the local/offline runtime and future desktop app, not the hosted server.
+
+Do not switch `DUMPTETHER_SIGNUP_MODE` to `Open` merely because DNS and email
+credentials exist. First verify a real registration, Brevo delivery, confirmation
+link, login, logout, Microsoft callback, rate limiting, and legal document display
+through the public HTTPS origin. Keep guest sessions disabled on the hosted API.
 
 For early private hosting, keep registration invite-only or whitelist-based. The API supports `DUMPTETHER_SIGNUP_MODE=Open`, `Whitelist`, `InviteOnly`, or `Closed`. `Whitelist` uses `DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0` and/or `DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0`. `InviteOnly` uses `DUMPTETHER_SIGNUP_INVITE_CODE_0`. Do not commit real invite codes.
 

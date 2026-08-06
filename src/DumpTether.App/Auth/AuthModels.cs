@@ -6,7 +6,14 @@ public sealed record RegisterUserRequest(
     string Email,
     string Password,
     string? DisplayName = null,
-    string? InviteCode = null);
+    string? InviteCode = null,
+    LegalAcceptanceSubmission? LegalAcceptance = null);
+
+public sealed record LegalAcceptanceSubmission(
+    bool TermsAccepted,
+    string? TermsVersion,
+    bool PrivacyNoticeAcknowledged,
+    string? PrivacyNoticeVersion);
 
 public sealed record LoginUserRequest(
     string Email,
@@ -79,7 +86,15 @@ public sealed record AuthClientOptionsResponse(
     bool LocalDesktopLoginEnabled,
     bool EmailConfirmationEnabled,
     AuthSignupMode SignupMode,
-    IReadOnlyList<string> OAuthProviders);
+    IReadOnlyList<string> OAuthProviders,
+    LegalClientOptionsResponse Legal);
+
+public sealed record LegalClientOptionsResponse(
+    bool AcceptanceRequired,
+    string TermsVersion,
+    string PrivacyNoticeVersion,
+    string OperatorName,
+    string PrivacyContactEmail);
 
 public sealed record ConfirmEmailResponse(
     Guid UserId,
@@ -90,7 +105,8 @@ public sealed record ExternalLoginRequest(
     string Provider,
     string ProviderUserId,
     string Email,
-    string? DisplayName = null);
+    string? DisplayName = null,
+    LegalAcceptanceSubmission? LegalAcceptance = null);
 
 public sealed record TestEmailRequest(
     string Email);

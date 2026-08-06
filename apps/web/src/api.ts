@@ -27,6 +27,7 @@ import type {
   ProjectArchiveResponse,
   LoginUserRequest,
   LoginUserResponse,
+  LegalAcceptanceSubmission,
   ReconcileCloudWorkspacesResponse,
   ReopenTaskItemRequest,
   ReopenTaskItemsRequest,
@@ -282,9 +283,23 @@ export function getAuthOptions(): Promise<AuthClientOptionsResponse> {
   return request<AuthClientOptionsResponse>('/api/auth/options');
 }
 
-export function beginOAuthLogin(provider: string) {
-  const returnUrl = encodeURIComponent(window.location.href);
-  window.location.assign(`${apiBaseUrl}/api/auth/oauth/${provider}?returnUrl=${returnUrl}`);
+export function beginOAuthLogin(
+  provider: string,
+  legalAcceptance?: LegalAcceptanceSubmission | null,
+) {
+  const query = new URLSearchParams({ returnUrl: window.location.href });
+
+  if (legalAcceptance) {
+    query.set('termsAccepted', String(legalAcceptance.termsAccepted));
+    query.set('termsVersion', legalAcceptance.termsVersion);
+    query.set(
+      'privacyNoticeAcknowledged',
+      String(legalAcceptance.privacyNoticeAcknowledged),
+    );
+    query.set('privacyNoticeVersion', legalAcceptance.privacyNoticeVersion);
+  }
+
+  window.location.assign(`${apiBaseUrl}/api/auth/oauth/${provider}?${query.toString()}`);
 }
 
 export async function developmentLogin(): Promise<LoginUserResponse> {

@@ -419,6 +419,31 @@ http://localhost:55868/api/auth/oauth/microsoft/callback
 Use the matching HTTPS API origin in production. DumpTether requests sign-in
 identity only; Microsoft Graph group/role import is separate future work.
 
+### Terms, Privacy, And Public Signup
+
+Hosted deployments can require the current Terms of Use and Privacy Notice at
+password registration and first-time Microsoft account creation. The API records
+the accepted document versions; React only presents the choice.
+
+```text
+DUMPTETHER_LEGAL_REQUIRE_ACCEPTANCE=true
+DUMPTETHER_LEGAL_TERMS_VERSION=2026-08-06
+DUMPTETHER_LEGAL_PRIVACY_NOTICE_VERSION=2026-08-06
+DUMPTETHER_LEGAL_OPERATOR_NAME=<real legal operator name>
+DUMPTETHER_LEGAL_PRIVACY_CONTACT_EMAIL=<monitored privacy address>
+```
+
+Keep hosted signup `Closed`, `InviteOnly`, or `Whitelist` until the operator
+identity is public, Brevo confirmation and Microsoft callback flows pass an
+end-to-end production test, processor agreements and retention are documented,
+and abuse controls are enabled. Then `Auth__SignupMode=Open` is a deliberate
+deployment change, not a code release requirement.
+
+The hosted Terms of Use do not license the source repository. A root `LICENSE`
+file will be added only after the project owner chooses the intended source-code
+license. See `docs/legal/`, `docs/security/gdpr-readiness.md`, and
+`docs/adr/0010-legal-privacy-foundation.md`.
+
 CORS is configured only in the API. The server does not need CORS to "reach" clients. CORS only matters when browser or webview JavaScript calls an API on another origin.
 
 If the website and API are served from the same origin, CORS can stay empty and same-origin browser policy is enough. Normal Vite dev uses its proxy to reach the hosted dev API at `127.0.0.1:55868`. Tauri/webview calls and any direct `VITE_API_BASE_URL` browser calls are cross-origin, so local development uses exact allowed origins such as `Cors__AllowedOrigins__0=http://localhost:5173`, `Cors__AllowedOrigins__1=http://127.0.0.1:5173`, `Cors__AllowedOrigins__2=http://tauri.localhost` or `DUMPTETHER_CORS_ALLOWED_ORIGIN_0=https://dumptether.example.com`. Never use `*` with credentials.
@@ -655,6 +680,8 @@ Before a real public MVP:
 - Configure external monitoring for `/health/live` and `/health/ready`.
 - Review auth error logging so it helps debugging without leaking tokens.
 - Harden sharing and live update authorization paths.
+- Complete the checklist in `docs/security/gdpr-readiness.md` and publish the
+  real controller/operator identity and privacy contact.
 
 Server administration is deliberately separate from Owner/Member/Guest product
 roles. The planned first operator surface is a CLI used over SSH or a private

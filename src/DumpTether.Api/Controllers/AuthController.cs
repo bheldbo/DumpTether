@@ -25,6 +25,7 @@ public sealed class AuthController : ControllerBase
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<EmailConfirmationOptions> _emailConfirmationOptions;
     private readonly IOptions<OAuthOptions> _oauthOptions;
+    private readonly IOptions<LegalOptions> _legalOptions;
 
     public AuthController(
         IAuthService authService,
@@ -33,7 +34,8 @@ public sealed class AuthController : ControllerBase
         IConfiguration configuration,
         IOptions<AuthOptions> authOptions,
         IOptions<EmailConfirmationOptions> emailConfirmationOptions,
-        IOptions<OAuthOptions> oauthOptions)
+        IOptions<OAuthOptions> oauthOptions,
+        IOptions<LegalOptions> legalOptions)
     {
         _authService = authService;
         _emailSender = emailSender;
@@ -42,12 +44,14 @@ public sealed class AuthController : ControllerBase
         _authOptions = authOptions;
         _emailConfirmationOptions = emailConfirmationOptions;
         _oauthOptions = oauthOptions;
+        _legalOptions = legalOptions;
     }
 
     [HttpGet("options")]
     public ActionResult<AuthClientOptionsResponse> GetOptions()
     {
         var options = _authOptions.Value;
+        var legal = _legalOptions.Value;
         return Ok(new AuthClientOptionsResponse(
             options.RequireAuthentication,
             options.AllowGuestSessions,
@@ -55,7 +59,13 @@ public sealed class AuthController : ControllerBase
             LocalDesktopLoginIsEnabled(),
             _emailConfirmationOptions.Value.Enabled,
             options.SignupMode,
-            _oauthOptions.Value.EnabledProviders()));
+            _oauthOptions.Value.EnabledProviders(),
+            new LegalClientOptionsResponse(
+                legal.RequireAcceptance,
+                legal.TermsVersion,
+                legal.PrivacyNoticeVersion,
+                legal.OperatorName,
+                legal.PrivacyContactEmail)));
     }
 
     [EnableRateLimiting("auth")]
@@ -183,7 +193,11 @@ public sealed class AuthController : ControllerBase
     [HttpGet("oauth/{provider}")]
     public IActionResult BeginOAuth(
         string provider,
-        [FromQuery] string? returnUrl = null)
+        [FromQuery] string? returnUrl = null,
+        [FromQuery] bool termsAccepted = false,
+        [FromQuery] string? termsVersion = null,
+        [FromQuery] bool privacyNoticeAcknowledged = false,
+        [FromQuery] string? privacyNoticeVersion = null)
     {
         var scheme = NormalizeEnabledOAuthProvider(provider);
 
@@ -199,6 +213,11 @@ public sealed class AuthController : ControllerBase
         {
             RedirectUri = redirectUri
         };
+        properties.Items["legal.termsAccepted"] = termsAccepted.ToString();
+        properties.Items["legal.termsVersion"] = termsVersion ?? string.Empty;
+        properties.Items["legal.privacyNoticeAcknowledged"] =
+            privacyNoticeAcknowledged.ToString();
+        properties.Items["legal.privacyNoticeVersion"] = privacyNoticeVersion ?? string.Empty;
 
         return Challenge(properties, scheme);
     }
@@ -244,7 +263,8 @@ public sealed class AuthController : ControllerBase
                     providerUserId,
                     email,
                     result.Principal.FindFirstValue("name") ??
-                    result.Principal.FindFirstValue(ClaimTypes.Name)),
+                    result.Principal.FindFirstValue(ClaimTypes.Name),
+                    ReadLegalAcceptance(result.Properties)),
                 new AuthRequestMetadata(
                     Request.Headers.UserAgent.FirstOrDefault(),
                     HttpContext.Connection.RemoteIpAddress?.ToString()),
@@ -278,6 +298,33 @@ public sealed class AuthController : ControllerBase
         return principal.FindFirstValue("sub") ??
                principal.FindFirstValue(ClaimTypes.NameIdentifier);
     }
+
+    private static LegalAcceptanceSubmission? ReadLegalAcceptance(
+        AuthenticationProperties? properties)
+    {
+        if (properties is null)
+        {
+            return null;
+        }
+
+        var termsAccepted = bool.TryParse(
+            GetAuthenticationProperty(properties, "legal.termsAccepted"),
+            out var acceptedTerms) && acceptedTerms;
+        var privacyAcknowledged = bool.TryParse(
+            GetAuthenticationProperty(properties, "legal.privacyNoticeAcknowledged"),
+            out var acknowledgedPrivacy) && acknowledgedPrivacy;
+
+        return new LegalAcceptanceSubmission(
+            termsAccepted,
+            GetAuthenticationProperty(properties, "legal.termsVersion"),
+            privacyAcknowledged,
+            GetAuthenticationProperty(properties, "legal.privacyNoticeVersion"));
+    }
+
+    private static string? GetAuthenticationProperty(
+        AuthenticationProperties properties,
+        string key) =>
+        properties.Items.TryGetValue(key, out var value) ? value : null;
 
     [EnableRateLimiting("auth")]
     [HttpPost("development-login")]

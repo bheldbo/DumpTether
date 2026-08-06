@@ -235,6 +235,13 @@ internal sealed class EfAuthRepository : IAuthRepository
         await _dbContext.ExternalLogins.AddAsync(externalLogin, cancellationToken);
     }
 
+    public async Task AddLegalAcceptancesAsync(
+        IReadOnlyCollection<LegalAcceptance> acceptances,
+        CancellationToken cancellationToken)
+    {
+        await _dbContext.LegalAcceptances.AddRangeAsync(acceptances, cancellationToken);
+    }
+
     public async Task AddWorkspaceMembershipAsync(
         WorkspaceMembership membership,
         CancellationToken cancellationToken)
