@@ -215,10 +215,17 @@ Administrative actions are a separate server-operator boundary described in
 the `DumpTether.Admin` CLI at `/tools/admin`; it is reached through SSH/VPN and
 does not expose an Admin role or public HTTP endpoint.
 
+The step-by-step operator runbook, including backups, statistics, account
+locking, session revocation, deletion and current GDPR limitations, is in
+`docs/deployment/operator-administration.md`.
+
 From the production deployment directory, inspect users without exposing task
 or note content:
 
 ```bash
+sudo docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
+  dotnet /tools/admin/DumpTether.Admin.dll stats
+
 sudo docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
   dotnet /tools/admin/DumpTether.Admin.dll users list
 

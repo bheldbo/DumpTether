@@ -13,6 +13,24 @@ namespace DumpTether.Admin.Tests;
 public sealed class AdministrationServiceTests
 {
     [Fact]
+    public async Task Statistics_ReturnsAccountSessionBoardAndTaskCounts()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        await environment.SeedUserAsync("alice@example.com", "Alice", addSession: true);
+        await environment.SeedUserAsync("bob@example.com", "Bob");
+
+        var statistics = await environment.Service.GetStatisticsAsync(CancellationToken.None);
+
+        Assert.Equal(2, statistics.RegisteredUserCount);
+        Assert.Equal(2, statistics.ActiveUserCount);
+        Assert.Equal(1, statistics.ActiveSessionCount);
+        Assert.Equal(1, statistics.RecentlySeenSessionCount);
+        Assert.Equal(2, statistics.BoardCount);
+        Assert.Equal(0, statistics.ActiveTaskCount);
+        Assert.Equal(0, statistics.ArchivedTaskCount);
+    }
+
+    [Fact]
     public async Task ListUsers_ReturnsOperationalMetadataWithoutSecrets()
     {
         await using var environment = await TestEnvironment.CreateAsync();

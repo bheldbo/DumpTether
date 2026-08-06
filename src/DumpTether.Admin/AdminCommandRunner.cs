@@ -23,6 +23,7 @@ internal sealed class AdminCommandRunner
 
             return (args[0].ToLowerInvariant(), args.ElementAtOrDefault(1)?.ToLowerInvariant()) switch
             {
+                ("stats", null) => await ShowStatisticsAsync(cancellationToken),
                 ("users", "list") => await ListUsersAsync(args, cancellationToken),
                 ("users", "show") => await ShowUserAsync(args, cancellationToken),
                 ("users", "lock") => await LockUserAsync(args, cancellationToken),
@@ -42,6 +43,23 @@ internal sealed class AdminCommandRunner
             Console.Error.WriteLine($"Operation refused: {exception.Message}");
             return 3;
         }
+    }
+
+    private async Task<int> ShowStatisticsAsync(CancellationToken cancellationToken)
+    {
+        var statistics = await _service.GetStatisticsAsync(cancellationToken);
+        Console.WriteLine($"Generated: {statistics.GeneratedAt:u}");
+        Console.WriteLine($"Registered users: {statistics.RegisteredUserCount}");
+        Console.WriteLine($"Active users: {statistics.ActiveUserCount}");
+        Console.WriteLine($"Confirmed users: {statistics.ConfirmedUserCount}");
+        Console.WriteLine($"Active sessions: {statistics.ActiveSessionCount}");
+        Console.WriteLine($"Sessions seen in the last 15 minutes: {statistics.RecentlySeenSessionCount}");
+        Console.WriteLine($"Boards: {statistics.BoardCount}");
+        Console.WriteLine($"Active tasks: {statistics.ActiveTaskCount}");
+        Console.WriteLine($"Archived tasks: {statistics.ArchivedTaskCount}");
+        Console.WriteLine();
+        Console.WriteLine("Recent session activity is an approximation, not a live online-user count.");
+        return 0;
     }
 
     private async Task<int> ListUsersAsync(string[] args, CancellationToken cancellationToken)
@@ -218,6 +236,7 @@ internal sealed class AdminCommandRunner
         Console.WriteLine("DumpTether server administration");
         Console.WriteLine();
         Console.WriteLine("Read-only commands:");
+        Console.WriteLine("  stats");
         Console.WriteLine("  users list [--search text] [--limit 100]");
         Console.WriteLine("  users show <email>");
         Console.WriteLine();

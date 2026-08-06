@@ -1,42 +1,25 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import type { Translate } from '../../localization';
+import { GuidedTourOverlay } from './GuidedTourOverlay';
+import { TourTemplateStudio } from './TourTemplateStudio';
+import {
+  buildTourBoards,
+  buildTourGuideSteps,
+  type TourBoardId,
+  type TourColor,
+  type TourFollowUp,
+  type TourMember,
+  type TourSurface,
+  type TourTask,
+} from './tourData';
 
-type TourBoardId = 'work' | 'home' | 'vacation';
-type TourColor = 'yellow' | 'blue' | 'green' | 'pink';
-type TourFollowUp = 'none' | 'soon' | 'overdue';
+const guideDismissedKey = 'dumptether:tour-guide-dismissed:v1';
 
-interface TourTask {
-  id: string;
-  title: string;
-  note: string;
-  category: string;
-  status: string;
-  color: TourColor;
-  followUp: TourFollowUp;
-  followUpLabel: string;
-  updated: string;
-  template: string;
-  entries: string[];
-}
-
-interface TourBoard {
-  id: TourBoardId;
-  name: string;
-  story: string;
-  color: string;
-  categories: string[];
-  tasks: TourTask[];
-}
-
-export function ProductTourPage({
-  onClose,
-  t,
-}: {
-  onClose: () => void;
-  t: Translate;
-}) {
+export function ProductTourPage({ onClose, t }: { onClose: () => void; t: Translate }) {
   const boards = useMemo(() => buildTourBoards(t), [t]);
+  const guideSteps = useMemo(() => buildTourGuideSteps(t), [t]);
+  const [surface, setSurface] = useState<TourSurface>('wall');
   const [boardId, setBoardId] = useState<TourBoardId>('work');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
@@ -44,18 +27,46 @@ export function ProductTourPage({
   const [followUp, setFollowUp] = useState<'all' | Exclude<TourFollowUp, 'none'>>('all');
   const [category, setCategory] = useState('all');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [guideIndex, setGuideIndex] = useState<number | null>(() => {
+    try {
+      return window.localStorage.getItem(guideDismissedKey) === 'true' ? null : 0;
+    } catch {
+      return 0;
+    }
+  });
   const board = boards.find((candidate) => candidate.id === boardId) ?? boards[0];
+  const selectedTask = board.tasks.find((task) => task.id === selectedTaskId) ?? null;
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const visibleTasks = board.tasks.filter((task) =>
-    (normalizedSearch.length === 0 ||
-      `${task.title} ${task.note} ${task.category} ${task.status}`
-        .toLocaleLowerCase()
-        .includes(normalizedSearch)) &&
+    (normalizedSearch.length === 0 || `${task.title} ${task.note} ${task.description} ${task.category} ${task.status}`.toLocaleLowerCase().includes(normalizedSearch)) &&
     (status === 'all' || task.status === status) &&
     (color === 'all' || task.color === color) &&
     (followUp === 'all' || task.followUp === followUp) &&
     (category === 'all' || task.category === category));
-  const selectedTask = board.tasks.find((task) => task.id === selectedTaskId) ?? null;
+
+  useEffect(() => {
+    if (guideIndex === null) {
+      return;
+    }
+
+    const step = guideSteps[guideIndex];
+    setSurface(step.surface);
+    if (step.boardId) {
+      setBoardId(step.boardId);
+      setCategory('all');
+      setSearch('');
+    }
+    setSelectedTaskId(step.taskId ?? null);
+  }, [guideIndex, guideSteps]);
+
+  const dismissGuide = () => {
+    setGuideIndex(null);
+    try {
+      window.localStorage.setItem(guideDismissedKey, 'true');
+    } catch {
+      // The tour still works when storage is unavailable.
+    }
+  };
 
   const selectBoard = (nextBoardId: TourBoardId) => {
     setBoardId(nextBoardId);
@@ -77,242 +88,153 @@ export function ProductTourPage({
         </div>
         <div className="tour-intro-actions">
           <span><Icon name="shield" /> {t('tourExamplesOnly')}</span>
-          <button className="secondary-action" onClick={onClose} type="button">
-            <Icon name="back" />
-            {t('tourBackToApp')}
-          </button>
+          <button className="primary-action" onClick={() => setGuideIndex(0)} type="button"><Icon name="help" />{t('tourStartGuide')}</button>
+          <button className="secondary-action" onClick={onClose} type="button"><Icon name="back" />{t('tourBackToApp')}</button>
         </div>
       </header>
 
-      <div className="tour-concept-band" aria-label={t('tourConcepts')}>
-        <p><strong>{t('board')}</strong><span>{t('tourBoardConcept')}</span></p>
-        <p><strong>{t('templates')}</strong><span>{t('tourTemplateConcept')}</span></p>
-        <p><strong>{t('category')}</strong><span>{t('tourCategoryConcept')}</span></p>
-      </div>
+      <nav className="tour-surface-nav" aria-label={t('tourExploreTitle')}>
+        <TourNavButton active={surface === 'wall'} icon="list" label={t('tourNavWall')} onClick={() => setSurface('wall')} />
+        <TourNavButton active={surface === 'templates'} icon="templates" label={t('tourNavTemplates')} onClick={() => setSurface('templates')} />
+        <TourNavButton active={surface === 'settings'} icon="settings" label={t('tourNavSettings')} onClick={() => setSurface('settings')} />
+        <TourNavButton active={surface === 'account'} icon="user" label={t('tourNavAccount')} onClick={() => setSurface('account')} />
+      </nav>
 
-      <div className="tour-workbench">
-        <nav className="tour-board-switcher" aria-label={t('tourBoardsTitle')}>
-          {boards.map((candidate) => (
-            <button
-              aria-current={candidate.id === board.id ? 'page' : undefined}
-              key={candidate.id}
-              onClick={() => selectBoard(candidate.id)}
-              type="button"
-            >
-              <span style={{ backgroundColor: candidate.color }} />
-              <strong>{candidate.name}</strong>
-            </button>
-          ))}
-        </nav>
+      {surface === 'wall' ? (
+        <TourWall
+          board={board}
+          boards={boards}
+          category={category}
+          color={color}
+          followUp={followUp}
+          onBack={() => setSelectedTaskId(null)}
+          onCategory={setCategory}
+          onColor={setColor}
+          onFollowUp={setFollowUp}
+          onSearch={setSearch}
+          onSelectBoard={selectBoard}
+          onSelectTask={setSelectedTaskId}
+          onStatus={setStatus}
+          search={search}
+          selectedTask={selectedTask}
+          status={status}
+          t={t}
+          visibleTasks={visibleTasks}
+        />
+      ) : surface === 'templates' ? <TourTemplateStudio t={t} /> : surface === 'settings' ? <TourSettings t={t} /> : <TourAccount t={t} />}
 
-        <section className="tour-wall" style={{ '--tour-board-color': board.color } as React.CSSProperties}>
-          <header className="tour-wall-header">
-            <div>
-              <p className="detail-kicker">{t('tourExampleBoard')}</p>
-              <h2>{board.name}</h2>
-              <p>{board.story}</p>
-            </div>
-            <span className="tour-static-label">{t('tourInteractiveHint')}</span>
-          </header>
-
-          <div className="tour-category-row" aria-label={t('category')}>
-            <button
-              aria-pressed={category === 'all'}
-              onClick={() => setCategory('all')}
-              type="button"
-            >
-              {t('allProjects')}
-            </button>
-            {board.categories.map((candidate) => (
-              <button
-                aria-pressed={category === candidate}
-                key={candidate}
-                onClick={() => setCategory((current) => current === candidate ? 'all' : candidate)}
-                type="button"
-              >
-                <Icon name="tag" />
-                {candidate}
-              </button>
-            ))}
-          </div>
-
-          <div className="tour-filter-bar">
-            <label>
-              <span className="sr-only">{t('tourFilterPlaceholder')}</span>
-              <Icon name="search" />
-              <input
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t('tourFilterPlaceholder')}
-                type="search"
-                value={search}
-              />
-            </label>
-            <select aria-label={t('status')} onChange={(event) => setStatus(event.target.value)} value={status}>
-              <option value="all">{t('anyStatus')}</option>
-              {[...new Set(board.tasks.map((task) => task.status))].map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-            <div className="tour-color-filter" aria-label={t('color')}>
-              <button
-                aria-label={t('anyColor')}
-                aria-pressed={color === 'all'}
-                onClick={() => setColor('all')}
-                type="button"
-              >
-                <Icon name="filterOff" />
-              </button>
-              {(['yellow', 'blue', 'green', 'pink'] as const).map((option) => (
-                <button
-                  aria-label={t(`tourColor${capitalize(option)}` as Parameters<Translate>[0])}
-                  aria-pressed={color === option}
-                  data-color={option}
-                  key={option}
-                  onClick={() => setColor((current) => current === option ? 'all' : option)}
-                  type="button"
-                />
-              ))}
-            </div>
-            <select
-              aria-label={t('followUp')}
-              onChange={(event) => setFollowUp(event.target.value as typeof followUp)}
-              value={followUp}
-            >
-              <option value="all">{t('anyFollowUp')}</option>
-              <option value="soon">{t('tourDueSoon')}</option>
-              <option value="overdue">{t('tourOverdue')}</option>
-            </select>
-          </div>
-
-          {selectedTask ? (
-            <TourTaskDetail
-              onBack={() => setSelectedTaskId(null)}
-              task={selectedTask}
-              t={t}
-            />
-          ) : (
-            <div className="tour-task-grid">
-              {visibleTasks.map((task) => (
-                <button
-                  className="tour-task-card"
-                  data-color={task.color}
-                  key={task.id}
-                  onClick={() => setSelectedTaskId(task.id)}
-                  type="button"
-                >
-                  <span className="tour-task-topline">
-                    <strong>{task.title}</strong>
-                    <small>{task.updated}</small>
-                  </span>
-                  <span className="tour-task-note">{task.note}</span>
-                  <span className="tour-task-meta">
-                    <span><Icon name="status" />{task.status}</span>
-                    <span><Icon name="tag" />{task.category}</span>
-                    {task.followUp !== 'none' ? (
-                      <span data-overdue={task.followUp === 'overdue'}>
-                        <Icon name="calendarX" />{task.followUpLabel}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="tour-task-open">{t('tourOpenTask')} <Icon name="back" /></span>
-                </button>
-              ))}
-              {visibleTasks.length === 0 ? (
-                <p className="tour-empty-state">{t('tourNoResults')}</p>
-              ) : null}
-            </div>
-          )}
-        </section>
-      </div>
+      {guideIndex !== null ? (
+        <GuidedTourOverlay
+          currentIndex={guideIndex}
+          onClose={dismissGuide}
+          onNext={() => guideIndex === guideSteps.length - 1 ? dismissGuide() : setGuideIndex(guideIndex + 1)}
+          onPrevious={() => setGuideIndex(Math.max(0, guideIndex - 1))}
+          step={guideSteps[guideIndex]}
+          stepCount={guideSteps.length}
+          t={t}
+        />
+      ) : null}
     </section>
   );
 }
 
-function TourTaskDetail({
-  onBack,
-  task,
-  t,
-}: {
+function TourWall({ board, boards, category, color, followUp, onBack, onCategory, onColor, onFollowUp, onSearch, onSelectBoard, onSelectTask, onStatus, search, selectedTask, status, t, visibleTasks }: {
+  board: ReturnType<typeof buildTourBoards>[number];
+  boards: ReturnType<typeof buildTourBoards>;
+  category: string;
+  color: 'all' | TourColor;
+  followUp: 'all' | Exclude<TourFollowUp, 'none'>;
   onBack: () => void;
-  task: TourTask;
+  onCategory: (category: string) => void;
+  onColor: (color: 'all' | TourColor) => void;
+  onFollowUp: (followUp: 'all' | Exclude<TourFollowUp, 'none'>) => void;
+  onSearch: (search: string) => void;
+  onSelectBoard: (boardId: TourBoardId) => void;
+  onSelectTask: (taskId: string) => void;
+  onStatus: (status: string) => void;
+  search: string;
+  selectedTask: TourTask | null;
+  status: string;
   t: Translate;
+  visibleTasks: TourTask[];
 }) {
   return (
-    <section className="tour-task-detail" data-color={task.color}>
-      <header>
-        <button aria-label={t('backToWall')} onClick={onBack} type="button"><Icon name="back" /></button>
-        <div><p className="detail-kicker">{task.template}</p><h3>{task.title}</h3></div>
-      </header>
-      <div className="tour-task-detail-fields">
-        <span><small>{t('status')}</small><strong>{task.status}</strong></span>
-        <span><small>{t('category')}</small><strong>{task.category}</strong></span>
-        <span><small>{t('followUp')}</small><strong>{task.followUpLabel || t('noFollowUp')}</strong></span>
-      </div>
-      <div className="tour-task-detail-notes">
-        <h4>{t('notes')}</h4>
-        {task.entries.map((entry, index) => (
-          <p key={`${task.id}:${index}`}><time>{index === 0 ? t('tourToday') : t('tourYesterday')}</time><span>{entry}</span></p>
+    <div className="tour-workbench">
+      <nav className="tour-board-switcher" aria-label={t('tourBoardsTitle')}>
+        {boards.map((candidate) => (
+          <button aria-current={candidate.id === board.id ? 'page' : undefined} key={candidate.id} onClick={() => onSelectBoard(candidate.id)} type="button">
+            <span style={{ backgroundColor: candidate.color }} /><strong>{candidate.name}</strong>
+            {candidate.members.length > 1 ? <Icon name="users" /> : null}
+          </button>
         ))}
-      </div>
+      </nav>
+      <section className="tour-wall" style={{ '--tour-board-color': board.color } as React.CSSProperties}>
+        <header className="tour-wall-header">
+          <div><p className="detail-kicker">{t('tourExampleBoard')}</p><h2>{board.name}</h2><p>{board.story}</p></div>
+          <div className="tour-wall-member-column"><span className="tour-static-label">{t('tourInteractiveHint')}</span><TourMembers members={board.members} /></div>
+        </header>
+        <div className="tour-category-row" aria-label={t('category')}>
+          <button aria-pressed={category === 'all'} onClick={() => onCategory('all')} type="button">{t('allProjects')}</button>
+          {board.categories.map((candidate) => <button aria-pressed={category === candidate} key={candidate} onClick={() => onCategory(category === candidate ? 'all' : candidate)} type="button"><Icon name="tag" />{candidate}</button>)}
+        </div>
+        <div className="tour-filter-bar">
+          <label><span className="sr-only">{t('tourFilterPlaceholder')}</span><Icon name="search" /><input onChange={(event) => onSearch(event.target.value)} placeholder={t('tourFilterPlaceholder')} type="search" value={search} /></label>
+          <select aria-label={t('status')} onChange={(event) => onStatus(event.target.value)} value={status}><option value="all">{t('anyStatus')}</option>{[...new Set(board.tasks.map((task) => task.status))].map((option) => <option key={option} value={option}>{option}</option>)}</select>
+          <div className="tour-color-filter" aria-label={t('color')}>
+            <button aria-label={t('anyColor')} aria-pressed={color === 'all'} onClick={() => onColor('all')} type="button"><Icon name="filterOff" /></button>
+            {(['yellow', 'blue', 'green', 'pink'] as const).map((option) => <button aria-label={t(`tourColor${capitalize(option)}` as Parameters<Translate>[0])} aria-pressed={color === option} data-color={option} key={option} onClick={() => onColor(color === option ? 'all' : option)} type="button" />)}
+          </div>
+          <select aria-label={t('followUp')} onChange={(event) => onFollowUp(event.target.value as typeof followUp)} value={followUp}><option value="all">{t('anyFollowUp')}</option><option value="soon">{t('tourDueSoon')}</option><option value="overdue">{t('tourOverdue')}</option></select>
+        </div>
+        {selectedTask ? <TourTaskDetail onBack={onBack} task={selectedTask} t={t} /> : (
+          <div className="tour-task-grid">
+            {visibleTasks.map((task) => <TourTaskCard key={task.id} onOpen={() => onSelectTask(task.id)} task={task} t={t} />)}
+            {visibleTasks.length === 0 ? <p className="tour-empty-state">{t('tourNoResults')}</p> : null}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function TourTaskCard({ onOpen, task, t }: { onOpen: () => void; task: TourTask; t: Translate }) {
+  const completed = task.entries.filter((entry) => entry.done).length;
+  return (
+    <button className="tour-task-card" data-color={task.color} onClick={onOpen} type="button">
+      <span className="tour-task-topline"><strong>{task.title}</strong><small>{task.updated}</small></span>
+      <span className="tour-task-note">{task.note}</span>
+      {task.template === t('tourTodoTemplate') ? <span className="tour-task-checklist"><Icon name="check" />{completed}/{task.entries.length} {t('tourItemsDone')}</span> : null}
+      <span className="tour-task-meta"><span><Icon name="status" />{task.status}</span><span><Icon name="tag" />{task.category}</span>{task.followUp !== 'none' ? <span data-overdue={task.followUp === 'overdue'}><Icon name="calendarX" />{task.followUpLabel}</span> : null}</span>
+      <span className="tour-card-members"><TourMembers compact members={task.members} /><span className="tour-task-open">{t('tourOpenTask')} <Icon name="back" /></span></span>
+    </button>
+  );
+}
+
+function TourTaskDetail({ onBack, task, t }: { onBack: () => void; task: TourTask; t: Translate }) {
+  return (
+    <section className="tour-task-detail" data-color={task.color}>
+      <header><button aria-label={t('backToWall')} onClick={onBack} type="button"><Icon name="back" /></button><div><p className="detail-kicker">{task.template}</p><h3>{task.title}</h3></div><TourMembers members={task.members} /></header>
+      <div className="tour-task-description"><small>{t('tourDescriptionLabel')}</small><p>{task.description}</p></div>
+      <div className="tour-task-detail-fields"><span><small>{t('status')}</small><strong>{task.status}</strong></span><span><small>{t('category')}</small><strong>{task.category}</strong></span><span><small>{t('followUp')}</small><strong>{task.followUpLabel || t('noFollowUp')}</strong></span></div>
+      <div className="tour-task-detail-notes"><header><h4>{t('notes')}</h4><span>{task.entries.length} {t('tourItems')}</span></header>{task.entries.map((entry) => <div className="tour-entry-row" key={entry.id}><span className="tour-entry-check" data-done={entry.done}>{entry.done ? <Icon name="check" /> : null}</span><span><strong>{entry.text}</strong><small>{entry.author} · {entry.time}</small></span></div>)}</div>
     </section>
   );
 }
 
-function buildTourBoards(t: Translate): TourBoard[] {
-  return [
-    {
-      id: 'work',
-      name: t('tourWorkBoard'),
-      story: t('tourWorkStory'),
-      color: '#69c9bc',
-      categories: [t('tourConferenceCategory'), t('tourOperationsCategory')],
-      tasks: [
-        tourTask('poster', t('tourPosterTitle'), t('tourPosterNote'), t('tourConferenceCategory'), t('tourStatusWaiting'), 'blue', 'soon', t('tourFriday'), '2h', t('tourWorkTemplate'), [t('tourPosterEntryOne'), t('tourPosterEntryTwo')]),
-        tourTask('catering', t('tourCateringTitle'), t('tourCateringNote'), t('tourConferenceCategory'), t('tourStatusActive'), 'yellow', 'overdue', t('tourYesterday'), '5h', t('tourTodoTemplate'), [t('tourCateringEntryOne'), t('tourCateringEntryTwo')]),
-        tourTask('handover', t('tourHandoverTitle'), t('tourHandoverNote'), t('tourOperationsCategory'), t('tourStatusDone'), 'green', 'none', '', '1d', t('tourBasicTemplate'), [t('tourHandoverEntry')]),
-      ],
-    },
-    {
-      id: 'home',
-      name: t('tourHomeBoard'),
-      story: t('tourHomeStory'),
-      color: '#f2ca67',
-      categories: [t('tourHouseCategory'), t('tourShoppingCategory')],
-      tasks: [
-        tourTask('bulb', t('tourBulbTitle'), t('tourBulbNote'), t('tourHouseCategory'), t('tourStatusActive'), 'yellow', 'soon', t('tourSaturday'), '3h', t('tourTodoTemplate'), [t('tourBulbEntryOne'), t('tourBulbEntryTwo')]),
-        tourTask('reset', t('tourResetTitle'), t('tourResetNote'), t('tourHouseCategory'), t('tourStatusWaiting'), 'pink', 'none', '', '1d', t('tourTodoTemplate'), [t('tourResetEntryOne'), t('tourResetEntryTwo')]),
-      ],
-    },
-    {
-      id: 'vacation',
-      name: t('tourVacationBoard'),
-      story: t('tourVacationStory'),
-      color: '#8ebaf0',
-      categories: [t('tourTravelCategory'), t('tourPackingCategory')],
-      tasks: [
-        tourTask('train', t('tourTrainTitle'), t('tourTrainNote'), t('tourTravelCategory'), t('tourStatusBooked'), 'blue', 'none', '', '4h', t('tourBasicTemplate'), [t('tourTrainEntry')]),
-        tourTask('packing', t('tourPackingTitle'), t('tourPackingNote'), t('tourPackingCategory'), t('tourStatusActive'), 'green', 'soon', t('tourNextWeek'), '8h', t('tourTodoTemplate'), [t('tourPackingEntryOne'), t('tourPackingEntryTwo')]),
-      ],
-    },
-  ];
+function TourSettings({ t }: { t: Translate }) {
+  return <section className="tour-example-panel"><header><Icon name="settings" /><div><p className="detail-kicker">{t('tourNavSettings')}</p><h2>{t('tourSettingsTitle')}</h2><p>{t('tourSettingsIntro')}</p></div></header><div className="tour-setting-row"><div><strong>{t('tourStatusSettings')}</strong><p>{t('tourStatusSettingsHelp')}</p></div><span>{t('tourStatusActive')}</span><span>{t('tourStatusWaiting')}</span><span>{t('tourStatusDone')}</span></div><div className="tour-setting-row"><div><strong>{t('tourArchiveSettings')}</strong><p>{t('tourArchiveSettingsHelp')}</p></div><span>{t('tourArchiveCompleted')}</span><span>{t('tourArchiveDropped')}</span></div><p className="tour-example-note"><Icon name="shield" />{t('tourExamplesOnly')}</p></section>;
 }
 
-function tourTask(
-  id: string,
-  title: string,
-  note: string,
-  category: string,
-  status: string,
-  color: TourColor,
-  followUp: TourFollowUp,
-  followUpLabel: string,
-  updated: string,
-  template: string,
-  entries: string[],
-): TourTask {
-  return { id, title, note, category, status, color, followUp, followUpLabel, updated, template, entries };
+function TourAccount({ t }: { t: Translate }) {
+  return <section className="tour-example-panel"><header><Icon name="user" /><div><p className="detail-kicker">{t('tourNavAccount')}</p><h2>{t('tourAccountTitle')}</h2><p>{t('tourAccountIntro')}</p></div></header><div className="tour-account-status"><span className="tour-local-dot" /> <div><strong>{t('tourLocalFirst')}</strong><p>{t('tourLocalFirstHelp')}</p></div></div><div className="tour-account-status"><Icon name="cloud" /><div><strong>{t('tourCloudOptional')}</strong><p>{t('tourCloudOptionalHelp')}</p></div></div><div className="tour-account-status"><Icon name="users" /><div><strong>{t('tourSharingTitle')}</strong><p>{t('tourSharingHelp')}</p></div></div></section>;
 }
 
-function capitalize(value: string) {
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+function TourMembers({ compact = false, members }: { compact?: boolean; members: TourMember[] }) {
+  return <span className="tour-member-list" data-compact={compact}>{members.map((member) => <span key={member.id} title={`${member.name} · ${member.role}`}><Icon name={member.kind === 'group' ? 'users' : member.id === 'bjarke' ? 'crown' : 'user'} />{compact ? member.name.charAt(0) : member.name}</span>)}</span>;
 }
+
+function TourNavButton({ active, icon, label, onClick }: { active: boolean; icon: 'list' | 'templates' | 'settings' | 'user'; label: string; onClick: () => void }) {
+  return <button aria-current={active ? 'page' : undefined} onClick={onClick} type="button"><Icon name={icon} />{label}</button>;
+}
+
+function capitalize(value: string) { return `${value.charAt(0).toUpperCase()}${value.slice(1)}`; }
