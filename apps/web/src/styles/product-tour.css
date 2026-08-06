@@ -153,8 +153,9 @@
 .tour-wall-header h2,
 .tour-wall-header p { margin: 0; }
 .tour-wall-header h2 { margin-block: 3px 5px; font-size: 1.45rem; }
-.tour-wall-header > div > p:last-child { max-width: 720px; font-size: 0.82rem; line-height: 1.45; }
-.tour-wall-member-column { display: grid; gap: 8px; justify-items: end; }
+.tour-wall-header > .workspace-title-block { flex: 1; }
+.tour-wall-title-copy { flex-basis: 100%; }
+.tour-wall-title-copy > p:last-child { max-width: 720px; font-size: 0.82rem; line-height: 1.45; }
 
 .tour-static-label {
   padding: 6px 9px;
@@ -166,21 +167,8 @@
 }
 
 .tour-member-list { display: inline-flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-.tour-member-list > span {
-  min-height: 30px;
-  display: inline-flex;
-  gap: 5px;
-  align-items: center;
-  padding: 5px 9px;
-  border: 1px solid rgba(24, 33, 44, 0.13);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.68);
-  font-size: 0.72rem;
-  font-weight: 720;
-}
 .tour-member-list .icon { width: 14px; height: 14px; }
-.tour-member-list[data-compact="true"] > span { width: 27px; min-height: 27px; justify-content: center; padding: 0; }
-.tour-member-list[data-compact="true"] .icon { display: none; }
+.tour-shared-board-icon { display: grid; place-items: center; }
 
 .tour-category-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .tour-category-row button {
@@ -255,6 +243,9 @@
 .tour-task-topline { display: flex; gap: 8px; justify-content: space-between; }
 .tour-task-topline strong { font-size: 1rem; line-height: 1.25; }
 .tour-task-topline small { flex: 0 0 auto; color: rgba(24, 33, 44, 0.66); }
+.tour-task-indicators { display: inline-flex; gap: 5px; align-items: center; }
+.tour-task-indicators .note-count { min-width: 26px; min-height: 24px; display: inline-flex; gap: 3px; align-items: center; justify-content: center; border-radius: 999px; background: rgba(255, 255, 255, 0.58); }
+.tour-task-indicators .icon { width: 13px; height: 13px; }
 .tour-task-note { color: rgba(24, 33, 44, 0.74); font-size: 0.82rem; line-height: 1.45; }
 .tour-task-checklist { display: inline-flex; gap: 5px; align-items: center; justify-self: start; font-size: 0.72rem; font-weight: 750; }
 .tour-task-checklist .icon { width: 15px; height: 15px; }
@@ -262,7 +253,6 @@
 .tour-task-meta > span { display: inline-flex; gap: 4px; align-items: center; padding: 4px 7px; border: 1px solid rgba(24, 33, 44, 0.12); border-radius: 999px; background: rgba(255, 255, 255, 0.56); font-size: 0.7rem; font-weight: 720; }
 .tour-task-meta > span[data-overdue="true"] { border-color: rgba(163, 52, 44, 0.35); background: rgba(255, 225, 220, 0.82); color: #8f2c25; }
 .tour-task-meta .icon, .tour-task-open .icon { width: 13px; height: 13px; }
-.tour-card-members { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 .tour-task-open { display: inline-flex; gap: 5px; align-items: center; justify-self: end; font-size: 0.72rem; font-weight: 750; }
 .tour-task-open .icon { transform: rotate(180deg); }
 .tour-empty-state { grid-column: 1 / -1; margin: 0; padding: 28px; border: 1px dashed #c5d1d8; border-radius: 7px; background: #fff; color: #657586; }
@@ -314,7 +304,11 @@
 .tour-template-lines { height: 42px; display: block; border-radius: 4px; background: repeating-linear-gradient(to bottom, #dfe6ea 0 5px, transparent 5px 12px); }
 .tour-template-checkbox { width: 34px; height: 34px; display: grid; place-items: center; border: 2px solid #174f4b; border-radius: 5px; background: #174f4b; color: #fff; }
 .tour-template-checkbox .icon { width: 21px; height: 21px; }
-.tour-field-dialog { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, .8fr) minmax(160px, .8fr) auto; gap: 10px; align-items: end; padding: 14px; border: 1px solid #afc9c5; border-radius: 7px; background: #edf7f5; box-shadow: 0 12px 28px rgba(39, 55, 66, .12); }
+.tour-field-dialog-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 16px; background: rgba(17, 29, 39, 0.48); backdrop-filter: blur(3px); }
+.tour-field-dialog { width: min(520px, 100%); display: grid; gap: 13px; padding: 18px; border: 1px solid #afc9c5; border-radius: 8px; background: #fff; box-shadow: 0 24px 64px rgba(20, 36, 48, .26); }
+.tour-field-dialog > header { display: flex; gap: 12px; align-items: start; justify-content: space-between; }
+.tour-field-dialog > footer { display: flex; gap: 8px; justify-content: end; }
+.tour-field-dialog > footer button { min-width: 112px; display: inline-flex; gap: 6px; align-items: center; justify-content: center; white-space: nowrap; }
 .tour-field-dialog label { display: grid; gap: 5px; color: #435363; font-size: .75rem; font-weight: 720; }
 .tour-field-dialog input, .tour-field-dialog select { min-width: 0; min-height: 40px; border: 1px solid #bdcbd4; border-radius: 6px; background: #fff; }
 
@@ -349,7 +343,6 @@
 @media (max-width: 1099px) {
   .tour-workbench { grid-template-columns: minmax(0, 1fr); }
   .tour-board-switcher { grid-auto-columns: minmax(160px, 1fr); grid-auto-flow: column; overflow-x: auto; }
-  .tour-field-dialog { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 
 @media (max-width: 720px) {
@@ -358,7 +351,6 @@
   .tour-intro-actions { width: 100%; justify-content: stretch; }
   .tour-intro-actions > span { justify-content: center; }
   .tour-intro-actions button { flex: 1; }
-  .tour-wall-member-column { justify-items: start; }
   .tour-filter-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .tour-filter-bar > label { grid-column: 1 / -1; }
   .tour-color-filter { justify-content: center; }
@@ -367,7 +359,6 @@
   .tour-task-detail > header .tour-member-list { grid-column: 1 / -1; }
   .tour-template-row { min-height: 120px; }
   .tour-template-cell-wrap > button { padding: 12px 10px; }
-  .tour-field-dialog { grid-template-columns: minmax(0, 1fr); }
   .tour-template-canvas > header { align-items: start; flex-direction: column; }
   .tour-guide-bubble { right: 12px; bottom: 12px; width: calc(100vw - 24px); }
 }

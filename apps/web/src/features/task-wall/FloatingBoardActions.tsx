@@ -283,14 +283,6 @@ export function FloatingBoardActions({
                     </>
                   ) : null}
                 </div>
-                <button
-                  className="ghost-button"
-                  onClick={closeSelectionMode}
-                  type="button"
-                >
-                  <Icon name="check" />
-                  <span>{t('done')}</span>
-                </button>
               </>
             ) : (
               taskCount > 0 ? (

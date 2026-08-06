@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { isDesktopRuntime } from '../../clientRuntime';
 import { Icon } from '../../components/Icon';
 import type { Translate } from '../../localization';
 import { GuidedTourOverlay } from './GuidedTourOverlay';
@@ -18,7 +19,11 @@ const guideDismissedKey = 'dumptether:tour-guide-dismissed:v1';
 
 export function ProductTourPage({ onClose, t }: { onClose: () => void; t: Translate }) {
   const boards = useMemo(() => buildTourBoards(t), [t]);
-  const guideSteps = useMemo(() => buildTourGuideSteps(t), [t]);
+  const desktopRuntime = isDesktopRuntime();
+  const guideSteps = useMemo(
+    () => buildTourGuideSteps(t, desktopRuntime),
+    [desktopRuntime, t],
+  );
   const [surface, setSurface] = useState<TourSurface>('wall');
   const [boardId, setBoardId] = useState<TourBoardId>('work');
   const [search, setSearch] = useState('');
@@ -88,7 +93,9 @@ export function ProductTourPage({ onClose, t }: { onClose: () => void; t: Transl
         </div>
         <div className="tour-intro-actions">
           <span><Icon name="shield" /> {t('tourExamplesOnly')}</span>
-          <button className="primary-action" onClick={() => setGuideIndex(0)} type="button"><Icon name="help" />{t('tourStartGuide')}</button>
+          {guideIndex === null ? (
+            <button className="primary-action" onClick={() => setGuideIndex(0)} type="button"><Icon name="help" />{t('tourStartGuide')}</button>
+          ) : null}
           <button className="secondary-action" onClick={onClose} type="button"><Icon name="back" />{t('tourBackToApp')}</button>
         </div>
       </header>
@@ -164,14 +171,17 @@ function TourWall({ board, boards, category, color, followUp, onBack, onCategory
         {boards.map((candidate) => (
           <button aria-current={candidate.id === board.id ? 'page' : undefined} key={candidate.id} onClick={() => onSelectBoard(candidate.id)} type="button">
             <span style={{ backgroundColor: candidate.color }} /><strong>{candidate.name}</strong>
-            {candidate.members.length > 1 ? <Icon name="users" /> : null}
+            {candidate.members.length > 1 ? <span className="tour-shared-board-icon" title={t('tourSharedBoardTooltip')}><Icon name="users" /></span> : null}
           </button>
         ))}
       </nav>
       <section className="tour-wall" style={{ '--tour-board-color': board.color } as React.CSSProperties}>
         <header className="tour-wall-header">
-          <div><p className="detail-kicker">{t('tourExampleBoard')}</p><h2>{board.name}</h2><p>{board.story}</p></div>
-          <div className="tour-wall-member-column"><span className="tour-static-label">{t('tourInteractiveHint')}</span><TourMembers members={board.members} /></div>
+          <div className="workspace-title-block">
+            <div className="tour-wall-title-copy"><p className="detail-kicker">{t('tourExampleBoard')}</p><h2>{board.name}</h2><p>{board.story}</p></div>
+            <TourMembers members={board.members} />
+          </div>
+          <span className="tour-static-label">{t('tourInteractiveHint')}</span>
         </header>
         <div className="tour-category-row" aria-label={t('category')}>
           <button aria-pressed={category === 'all'} onClick={() => onCategory('all')} type="button">{t('allProjects')}</button>
@@ -201,11 +211,11 @@ function TourTaskCard({ onOpen, task, t }: { onOpen: () => void; task: TourTask;
   const completed = task.entries.filter((entry) => entry.done).length;
   return (
     <button className="tour-task-card" data-color={task.color} onClick={onOpen} type="button">
-      <span className="tour-task-topline"><strong>{task.title}</strong><small>{task.updated}</small></span>
+      <span className="tour-task-topline"><strong>{task.title}</strong><span className="tour-task-indicators">{task.members.length > 1 ? <small className="note-count" title={`${t('sharing')}: ${task.members.map((member) => member.name).join(', ')}`}><Icon name="users" />{task.members.length}</small> : null}<small>{task.updated}</small></span></span>
       <span className="tour-task-note">{task.note}</span>
       {task.template === t('tourTodoTemplate') ? <span className="tour-task-checklist"><Icon name="check" />{completed}/{task.entries.length} {t('tourItemsDone')}</span> : null}
       <span className="tour-task-meta"><span><Icon name="status" />{task.status}</span><span><Icon name="tag" />{task.category}</span>{task.followUp !== 'none' ? <span data-overdue={task.followUp === 'overdue'}><Icon name="calendarX" />{task.followUpLabel}</span> : null}</span>
-      <span className="tour-card-members"><TourMembers compact members={task.members} /><span className="tour-task-open">{t('tourOpenTask')} <Icon name="back" /></span></span>
+      <span className="tour-task-open">{t('tourOpenTask')} <Icon name="back" /></span>
     </button>
   );
 }
@@ -229,8 +239,8 @@ function TourAccount({ t }: { t: Translate }) {
   return <section className="tour-example-panel"><header><Icon name="user" /><div><p className="detail-kicker">{t('tourNavAccount')}</p><h2>{t('tourAccountTitle')}</h2><p>{t('tourAccountIntro')}</p></div></header><div className="tour-account-status"><span className="tour-local-dot" /> <div><strong>{t('tourLocalFirst')}</strong><p>{t('tourLocalFirstHelp')}</p></div></div><div className="tour-account-status"><Icon name="cloud" /><div><strong>{t('tourCloudOptional')}</strong><p>{t('tourCloudOptionalHelp')}</p></div></div><div className="tour-account-status"><Icon name="users" /><div><strong>{t('tourSharingTitle')}</strong><p>{t('tourSharingHelp')}</p></div></div></section>;
 }
 
-function TourMembers({ compact = false, members }: { compact?: boolean; members: TourMember[] }) {
-  return <span className="tour-member-list" data-compact={compact}>{members.map((member) => <span key={member.id} title={`${member.name} · ${member.role}`}><Icon name={member.kind === 'group' ? 'users' : member.id === 'bjarke' ? 'crown' : 'user'} />{compact ? member.name.charAt(0) : member.name}</span>)}</span>;
+function TourMembers({ members }: { members: TourMember[] }) {
+  return <span className="member-chip-strip tour-member-list">{members.map((member) => <span className={`member-chip ${member.id === 'bjarke' ? 'member-chip-owner' : ''}`} key={member.id} title={`${member.name} · ${member.role}`}><Icon name={member.kind === 'group' ? 'users' : member.id === 'bjarke' ? 'crown' : 'user'} />{member.name}</span>)}</span>;
 }
 
 function TourNavButton({ active, icon, label, onClick }: { active: boolean; icon: 'list' | 'templates' | 'settings' | 'user'; label: string; onClick: () => void }) {

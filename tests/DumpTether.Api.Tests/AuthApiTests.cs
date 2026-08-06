@@ -1196,6 +1196,29 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task CompleteOAuth_WhenExternalCookieIsMissing_RedirectsToFriendlyAppError()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["OAuth:Microsoft:Enabled"] = "true",
+                ["OAuth:Microsoft:ClientId"] = "test-client-id",
+                ["OAuth:Microsoft:ClientSecret"] = "test-client-secret",
+                ["OAuth:Microsoft:TenantId"] = "common"
+            });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync(
+            "/api/auth/oauth/microsoft/complete?returnUrl=%2F");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/?oauthError=external_login_failed", response.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
     public void MicrosoftOAuth_CommonTenant_UsesTenantAwareIssuerValidationAndMinimalScopes()
     {
         var options = new OpenIdConnectOptions();
