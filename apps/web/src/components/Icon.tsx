@@ -12,6 +12,7 @@ export type IconName =
   | 'crown'
   | 'edit'
   | 'filterOff'
+  | 'help'
   | 'inbox'
   | 'list'
   | 'login'
@@ -50,6 +51,7 @@ const iconPaths: Record<IconName, string> = {
   crown: 'M5 17h14l1-9-5 4-3-6-3 6-5-4 1 9Zm1 3h12',
   edit: 'M4 20h4l10-10-4-4L4 16v4Zm12-16 4 4',
   filterOff: 'M4 5h16l-6 7v4l-4 2v-6L4 5M3 3l18 18',
+  help: 'M9.5 9a2.75 2.75 0 1 1 4.7 1.94c-.85.86-2.2 1.26-2.2 2.56M12 17h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z',
   inbox: 'M4 5h16v10l-3 4H7l-3-4V5Zm0 10h5l1.5 2h3L15 15h5',
   list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
   login: 'M10 17l5-5-5-5M15 12H3M21 5v14a2 2 0 0 1-2 2h-5M14 3h5a2 2 0 0 1 2 2',

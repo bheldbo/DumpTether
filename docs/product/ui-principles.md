@@ -56,6 +56,14 @@ DumpTether should feel like a lightweight personal sticker wall backed by a stru
 - Template help should explain that fields add structure and can later be used by filters.
 - Useful examples include `People contains Jan`, `Status = Active and People contains Jan/Lars`, and `Not touched in 14 days`.
 
+## Product Tour
+
+- Signed-out users should be able to open a localized, client-only example tour without creating an account.
+- Example boards and tasks must remain static in browser memory and must never be written to the API or a user's account.
+- The tour should demonstrate boards, templates, categories, temporary filters, follow-ups, task colors, structured fields, and compact note history through realistic scenarios.
+- Tour controls should behave like the product where practical: board switching, filtering, and opening a task should be interactive.
+- The page must clearly label example data and provide a direct route back to login or the user's task wall.
+
 ## Intentionally Deferred
 
 - Organization-managed saved views.

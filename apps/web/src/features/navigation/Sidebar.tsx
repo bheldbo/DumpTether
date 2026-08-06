@@ -48,6 +48,7 @@ export function Sidebar({
   onOpenAccount,
   onOpenSettings,
   onOpenTemplates,
+  onOpenTour,
   onRefresh,
   onResizeStart,
   onSelectWorkspace,
@@ -79,6 +80,7 @@ export function Sidebar({
   onOpenAccount: () => void;
   onOpenSettings: () => void;
   onOpenTemplates: () => void;
+  onOpenTour: () => void;
   onRefresh: () => void;
   onResizeStart: (event: MouseEvent<HTMLButtonElement>) => void;
   onSelectWorkspace: (workspaceId: string) => void;
@@ -535,6 +537,15 @@ export function Sidebar({
         <div className="sidebar-separator sidebar-separator-actions" />
 
         <div className="sidebar-actions">
+          <button
+            aria-current={mode === 'tour' ? 'page' : undefined}
+            className="nav-item"
+            onClick={onOpenTour}
+            type="button"
+          >
+            <Icon name="help" />
+            <span className="nav-label">{t('tour')}</span>
+          </button>
           <button
             aria-current={mode === 'templates' ? 'page' : undefined}
             className="nav-item"

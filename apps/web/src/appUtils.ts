@@ -75,8 +75,9 @@ export function findViewId(views: SavedViewResponse[], name: string) {
 }
 
 export function getInitialMode(): WorkspaceMode {
-  return new URL(window.location.href).searchParams.get('view') === 'templates'
-    ? 'templates'
+  const requestedMode = new URL(window.location.href).searchParams.get('view');
+  return requestedMode === 'templates' || requestedMode === 'tour'
+    ? requestedMode
     : 'tasks';
 }
 
@@ -118,8 +119,8 @@ export function isAbortError(error: unknown) {
 export function updateUrl(mode: WorkspaceMode, viewId: string | null) {
   const url = new URL(window.location.href);
 
-  if (mode === 'templates') {
-    url.searchParams.set('view', 'templates');
+  if (mode === 'templates' || mode === 'tour') {
+    url.searchParams.set('view', mode);
     url.searchParams.delete('viewId');
   } else {
     url.searchParams.delete('view');

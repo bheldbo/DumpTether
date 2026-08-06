@@ -105,6 +105,26 @@
   margin-top: 8px;
 }
 
+.auth-tour-button {
+  min-height: 40px;
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  padding: 8px 14px;
+  border: 1px solid #bfd1d3;
+  border-radius: 999px;
+  background: #eef7f6;
+  color: #174f4b;
+  font-weight: 730;
+}
+
+.auth-tour-button .icon {
+  width: 17px;
+  height: 17px;
+}
+
 .auth-submit-button .icon,
 .auth-secondary-button .icon,
 .logout-button .icon {
@@ -1073,7 +1093,17 @@
 }
 
 .template-layout-split-guide::after {
-  display: none;
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  width: 3px;
+  height: 18px;
+  border-radius: 999px;
+  background: #246d66;
+  box-shadow: 0 0 0 4px rgba(36, 109, 102, 0.08);
+  opacity: 0;
+  transform: translateX(-50%);
 }
 
 .template-layout-split-guide:hover::before,
@@ -1081,6 +1111,29 @@
   border-left-color: rgba(24, 76, 72, 0.64);
   opacity: 1;
   box-shadow: 0 0 0 5px rgba(24, 76, 72, 0.05);
+}
+
+.template-layout-split-guide:hover::after,
+.template-layout-split-guide:focus-visible::after {
+  opacity: 0.82;
+  animation: templateSplitIncision 1.8s ease-in-out infinite;
+}
+
+@keyframes templateSplitIncision {
+  from {
+    top: 14px;
+  }
+
+  to {
+    top: calc(100% - 32px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .template-layout-split-guide:hover::after,
+  .template-layout-split-guide:focus-visible::after {
+    animation: none;
+  }
 }
 
 .template-layout-resize-handle {
