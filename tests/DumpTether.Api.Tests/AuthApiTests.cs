@@ -1041,6 +1041,23 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public void Startup_WhenEmailMfaEnabled_RejectsUnsupportedConfiguration()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Mfa:Email:Enabled"] = "true"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
+
+        Assert.Contains("Email MFA is not implemented yet", exception.Message);
+        Assert.Contains("Mfa:Email:Enabled", exception.Message);
+    }
+
+    [Fact]
     public void Startup_WhenMailpitStyleSmtpIsConfigured_DoesNotRequireCredentials()
     {
         var configuration = new ConfigurationBuilder()

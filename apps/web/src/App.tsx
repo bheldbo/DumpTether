@@ -256,6 +256,7 @@ function App() {
     [configuredStatuses, knownStatuses],
   );
   const accountNotificationCount = incomingWorkspaceInvitations.length + incomingTaskShares.length;
+  const workspaceAccessIsEnabled = !authOptions.requiresAuthentication || currentUser !== null;
 
   const applyTaskUpdate = useCallback((updated: TaskItemDetailResponse) => {
     setSelectedTask((currentTask) =>
@@ -1125,6 +1126,10 @@ function App() {
   };
 
   const handleCreateWorkspace = async (name: string) => {
+    if (!workspaceAccessIsEnabled) {
+      return;
+    }
+
     try {
       setCurrentWorkspaceId(null);
       const created = await createWorkspace({ name: name.trim() });
@@ -1508,6 +1513,10 @@ function App() {
   };
 
   const handleOpenTemplates = () => {
+    if (!workspaceAccessIsEnabled) {
+      return;
+    }
+
     const nextMode: WorkspaceMode = mode === 'templates' ? 'tasks' : 'templates';
 
     setMode(nextMode);
@@ -1517,6 +1526,10 @@ function App() {
   };
 
   const handleToggleSettings = () => {
+    if (!workspaceAccessIsEnabled) {
+      return;
+    }
+
     setAccountIsOpen(false);
     setSettingsIsOpen((isOpen) => !isOpen);
   };
@@ -2334,6 +2347,7 @@ function App() {
         sidebarIsCollapsed={sidebarIsCollapsed}
         templateCount={templates.length}
         syncRoots={syncRoots}
+        workspaceAccessIsEnabled={workspaceAccessIsEnabled}
         localDesktopSessionIsActive={localDesktopSessionIsActive}
         temporarySessionIsActive={temporarySessionIsActive}
         t={t}
@@ -2437,7 +2451,7 @@ function App() {
         )}
       </section>
 
-      {settingsIsOpen ? (
+      {settingsIsOpen && workspaceAccessIsEnabled ? (
         <SettingsPanel
           archiveResolutions={archiveResolutions}
           cleanupCloudLinkedWorkspaceIds={cloudLinkedWorkspaceIds}

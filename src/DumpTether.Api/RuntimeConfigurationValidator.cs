@@ -28,7 +28,9 @@ public static class RuntimeConfigurationValidator
 
         if (GetBoolean(configuration, "Mfa:Email:Enabled"))
         {
-            AddMissingEmailProviderKeys(configuration, emailProvider, missingKeys);
+            throw new InvalidOperationException(
+                "Email MFA is not implemented yet. Set Mfa:Email:Enabled to false. " +
+                "Email confirmation remains available independently.");
         }
 
         if (emailProvider == EmailProvider.Smtp)

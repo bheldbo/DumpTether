@@ -584,100 +584,74 @@ export function AccountPanel({
           </section>
         ) : null}
 
-        <section className="settings-section">
-          <h3>{t('notifications')}</h3>
-          {incomingWorkspaceInvitations.length === 0 && incomingTaskShares.length === 0 ? (
-            <p>{t('noIncomingNotifications')}</p>
-          ) : (
-            <div className="account-notification-list">
-              {incomingWorkspaceInvitations.map((invitation) => (
-                <article className="account-notification-card" key={invitation.id}>
-                  <span
-                    className="workspace-color-dot"
-                    style={{ backgroundColor: invitation.workspaceColor ?? '#184c48' }}
-                  />
-                  <div>
-                    <strong>{invitation.workspaceName}</strong>
-                    <p>
-                      {t('invitedBy')} {invitation.invitedByDisplayName || invitation.invitedByEmail}
-                      {' '}({formatWorkspaceRole(invitation.role, t)})
-                    </p>
-                  </div>
-                  <div className="notification-actions">
-                    <button
-                      className="secondary-action"
-                      onClick={() => void onAcceptIncomingWorkspaceInvitation(invitation.id)}
-                      type="button"
-                    >
-                      <Icon name="check" />
-                      {t('acceptInvite')}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      onClick={() => void onDeclineIncomingWorkspaceInvitation(invitation.id)}
-                      type="button"
-                    >
-                      {t('declineInvite')}
-                    </button>
-                  </div>
-                </article>
-              ))}
-              {incomingTaskShares.map((share) => (
-                <article className="account-notification-card" key={share.shareId}>
-                  <span
-                    className="workspace-color-dot"
-                    style={{ backgroundColor: share.workspaceColor ?? '#184c48' }}
-                  />
-                  <div>
-                    <strong>{share.taskTitle}</strong>
-                    <p>
-                      {t('sharedBy')} {share.sharedByDisplayName || share.sharedByEmail}
-                      {' '} - {share.workspaceName}
-                    </p>
-                  </div>
-                  <div className="notification-actions">
-                    <button
-                      className="ghost-button"
-                      onClick={() => void onLeaveTaskShare(share.shareId)}
-                      type="button"
-                    >
-                      {t('leaveTaskShare')}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+        {currentUser ? (
+          <section className="settings-section">
+            <h3>{t('notifications')}</h3>
+            {incomingWorkspaceInvitations.length === 0 && incomingTaskShares.length === 0 ? (
+              <p>{t('noIncomingNotifications')}</p>
+            ) : (
+              <div className="account-notification-list">
+                {incomingWorkspaceInvitations.map((invitation) => (
+                  <article className="account-notification-card" key={invitation.id}>
+                    <span
+                      className="workspace-color-dot"
+                      style={{ backgroundColor: invitation.workspaceColor ?? '#184c48' }}
+                    />
+                    <div>
+                      <strong>{invitation.workspaceName}</strong>
+                      <p>
+                        {t('invitedBy')} {invitation.invitedByDisplayName || invitation.invitedByEmail}
+                        {' '}({formatWorkspaceRole(invitation.role, t)})
+                      </p>
+                    </div>
+                    <div className="notification-actions">
+                      <button
+                        className="secondary-action"
+                        onClick={() => void onAcceptIncomingWorkspaceInvitation(invitation.id)}
+                        type="button"
+                      >
+                        <Icon name="check" />
+                        {t('acceptInvite')}
+                      </button>
+                      <button
+                        className="ghost-button"
+                        onClick={() => void onDeclineIncomingWorkspaceInvitation(invitation.id)}
+                        type="button"
+                      >
+                        {t('declineInvite')}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {incomingTaskShares.map((share) => (
+                  <article className="account-notification-card" key={share.shareId}>
+                    <span
+                      className="workspace-color-dot"
+                      style={{ backgroundColor: share.workspaceColor ?? '#184c48' }}
+                    />
+                    <div>
+                      <strong>{share.taskTitle}</strong>
+                      <p>
+                        {t('sharedBy')} {share.sharedByDisplayName || share.sharedByEmail}
+                        {' '} - {share.workspaceName}
+                      </p>
+                    </div>
+                    <div className="notification-actions">
+                      <button
+                        className="ghost-button"
+                        onClick={() => void onLeaveTaskShare(share.shareId)}
+                        type="button"
+                      >
+                        {t('leaveTaskShare')}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
 
-        <section className="settings-section">
-          <h3>{t('signInMethods')}</h3>
-          <div className="auth-method-list">
-            <div className="auth-method-card" data-state="ready">
-              <Icon name="mail" />
-              <div>
-                <strong>{t('emailPasswordLogin')}</strong>
-                <p>{t('emailPasswordLoginHelp')}</p>
-              </div>
-            </div>
-            <div className="auth-method-card">
-              <Icon name="cloud" />
-              <div>
-                <strong>{t('oauthLogin')}</strong>
-                <p>{t('oauthLoginHelp')}</p>
-              </div>
-              <span>{t('configRequired')}</span>
-            </div>
-            <div className="auth-method-card">
-              <Icon name="shield" />
-              <div>
-                <strong>{t('emailMfa')}</strong>
-                <p>{t('emailMfaHelp')}</p>
-              </div>
-              <span>{t('configRequired')}</span>
-            </div>
-          </div>
-        </section>
       </section>
     </ModalFrame>
   );
