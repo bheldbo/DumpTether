@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.ComponentModel.DataAnnotations;
 using DumpTether.Api;
 using DumpTether.App.Auth;
+using DumpTether.App.Email;
 using DumpTether.App.Tasks;
 using DumpTether.Data;
 using DumpTether.Domain;
@@ -152,6 +153,65 @@ public sealed class AuthApiTests
         using var scope = factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
         Assert.Empty(await dbContext.AppUsers.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PostRegister_WhenRequiredConfirmationEmailFails_RollsBackRegistration()
+    {
+        var emailSender = new ControllableEmailSender { FailDelivery = true };
+        var configuration = EmailConfirmationConfiguration();
+        foreach (var setting in RequiredLegalConfiguration())
+        {
+            configuration[setting.Key] = setting.Value;
+        }
+
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: configuration,
+            emailSender: emailSender);
+        using var client = factory.CreateClient();
+
+        var failed = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "retry-after-email-failure@example.com",
+                password = "correct horse battery",
+                legalAcceptance = ValidLegalAcceptance()
+            });
+
+        Assert.Equal(HttpStatusCode.BadGateway, failed.StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+            Assert.Empty(await dbContext.AppUsers.ToListAsync());
+            Assert.Empty(await dbContext.Workspaces.ToListAsync());
+            Assert.Empty(await dbContext.WorkspaceMemberships.ToListAsync());
+            Assert.Empty(await dbContext.EmailConfirmationTokens.ToListAsync());
+            Assert.Empty(await dbContext.LegalAcceptances.ToListAsync());
+        }
+
+        emailSender.FailDelivery = false;
+        var retried = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "retry-after-email-failure@example.com",
+                password = "correct horse battery",
+                legalAcceptance = ValidLegalAcceptance()
+            });
+
+        Assert.Equal(HttpStatusCode.Created, retried.StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+            Assert.Single(await dbContext.AppUsers.ToListAsync());
+            Assert.Single(await dbContext.Workspaces.ToListAsync());
+            Assert.Single(await dbContext.WorkspaceMemberships.ToListAsync());
+            Assert.Single(await dbContext.EmailConfirmationTokens.ToListAsync());
+            Assert.Equal(2, await dbContext.LegalAcceptances.CountAsync());
+        }
     }
 
     [Fact]
@@ -1185,6 +1245,28 @@ public sealed class AuthApiTests
             ["Legal:PrivacyContactEmail"] = "privacy@example.com"
         };
 
+    private static Dictionary<string, string?> EmailConfirmationConfiguration() =>
+        new()
+        {
+            ["EmailConfirmation:Enabled"] = "true",
+            ["EmailConfirmation:PublicBaseUrl"] = "http://localhost",
+            ["Email:Provider"] = "Smtp",
+            ["Email:FromEmail"] = "noreply@example.com",
+            ["Email:Smtp:Host"] = "localhost",
+            ["Email:Smtp:Port"] = "1025",
+            ["Email:Smtp:UseAuthentication"] = "false",
+            ["Email:Smtp:EnableSsl"] = "false"
+        };
+
+    private static object ValidLegalAcceptance() =>
+        new
+        {
+            termsAccepted = true,
+            termsVersion = "terms-2026-08",
+            privacyNoticeAcknowledged = true,
+            privacyNoticeVersion = "privacy-2026-08"
+        };
+
     private static Dictionary<string, string?> BuildDesktopConfigurationValues() =>
         new()
         {
@@ -1276,5 +1358,22 @@ public sealed class AuthApiTests
         var prefix = $"{cookieName}=";
         Assert.StartsWith(prefix, cookie, StringComparison.Ordinal);
         return WebUtility.UrlDecode(cookie[prefix.Length..]);
+    }
+
+    private sealed class ControllableEmailSender : IEmailSender
+    {
+        public bool FailDelivery { get; set; }
+
+        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(message);
+
+            if (FailDelivery)
+            {
+                throw new EmailDeliveryException("Simulated confirmation email failure.");
+            }
+
+            return Task.CompletedTask;
+        }
     }
 }

@@ -47,6 +47,7 @@ public static class DependencyInjection
 
         services.AddScoped<IArchiveResolutionRepository, EfArchiveResolutionRepository>();
         services.AddScoped<IAuthRepository, EfAuthRepository>();
+        services.AddScoped<IRegistrationTransaction, EfRegistrationTransaction>();
         services.AddScoped<IDevelopmentWorkspaceProvider, DevelopmentWorkspaceProvider>();
         services.AddScoped<IProjectRepository, EfProjectRepository>();
         services.AddScoped<ISavedViewRepository, EfSavedViewRepository>();
