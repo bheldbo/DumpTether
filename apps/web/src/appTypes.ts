@@ -43,6 +43,13 @@ export const defaultAuthOptions: AuthClientOptionsResponse = {
   emailConfirmationEnabled: false,
   signupMode: 'Open',
   oAuthProviders: [],
+  legal: {
+    acceptanceRequired: false,
+    termsVersion: '',
+    privacyNoticeVersion: '',
+    operatorName: '',
+    privacyContactEmail: '',
+  },
 };
 
 export type ConnectionStatus = 'checking' | 'online' | 'offline';

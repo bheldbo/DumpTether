@@ -218,6 +218,14 @@ export interface RegisterUserRequest {
   password: string;
   displayName?: string | null;
   inviteCode?: string | null;
+  legalAcceptance?: LegalAcceptanceSubmission | null;
+}
+
+export interface LegalAcceptanceSubmission {
+  termsAccepted: boolean;
+  termsVersion: string;
+  privacyNoticeAcknowledged: boolean;
+  privacyNoticeVersion: string;
 }
 
 export interface RegisterUserResponse {
@@ -286,6 +294,15 @@ export interface AuthClientOptionsResponse {
   emailConfirmationEnabled: boolean;
   signupMode: 'Open' | 'Whitelist' | 'InviteOnly' | 'Closed' | 1 | 2 | 3 | 4;
   oAuthProviders: string[];
+  legal: LegalClientOptionsResponse;
+}
+
+export interface LegalClientOptionsResponse {
+  acceptanceRequired: boolean;
+  termsVersion: string;
+  privacyNoticeVersion: string;
+  operatorName: string;
+  privacyContactEmail: string;
 }
 
 export interface UpdateWorkspaceRequest {

@@ -52,13 +52,11 @@ export function isSystemAllTasksWorkspace(workspace: Pick<WorkspaceResponse, 'na
     workspace.name.trim().toLowerCase() === 'all tasks';
 }
 
-export function formatOAuthProvider(provider: string, t: Translate) {
+export function formatOAuthProvider(provider: string) {
   const normalizedProvider = provider.toLowerCase();
-  const providerName = normalizedProvider === 'microsoft'
+  return normalizedProvider === 'microsoft'
     ? 'Microsoft'
     : provider;
-
-  return `${t('continueWith')} ${providerName}`;
 }
 
 export function pickSavedViewId(

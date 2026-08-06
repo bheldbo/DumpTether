@@ -59,6 +59,102 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task PostRegister_WhenLegalAcceptanceIsRequired_RejectsMissingAcceptance()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: RequiredLegalConfiguration());
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "missing-legal@example.com",
+                password = "correct horse battery"
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.AppUsers.ToListAsync());
+        Assert.Empty(await dbContext.LegalAcceptances.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PostRegister_WhenLegalAcceptanceIsRequired_RecordsCurrentVersions()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: RequiredLegalConfiguration());
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "accepted-legal@example.com",
+                password = "correct horse battery",
+                legalAcceptance = new
+                {
+                    termsAccepted = true,
+                    termsVersion = "terms-2026-08",
+                    privacyNoticeAcknowledged = true,
+                    privacyNoticeVersion = "privacy-2026-08"
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var acceptances = await dbContext.LegalAcceptances
+            .OrderBy(acceptance => acceptance.DocumentType)
+            .ToListAsync();
+
+        Assert.Collection(
+            acceptances,
+            acceptance =>
+            {
+                Assert.Equal(LegalDocumentType.TermsOfUse, acceptance.DocumentType);
+                Assert.Equal("terms-2026-08", acceptance.DocumentVersion);
+            },
+            acceptance =>
+            {
+                Assert.Equal(LegalDocumentType.PrivacyNotice, acceptance.DocumentType);
+                Assert.Equal("privacy-2026-08", acceptance.DocumentVersion);
+            });
+    }
+
+    [Fact]
+    public async Task PostRegister_WhenLegalVersionIsStale_RejectsWithoutCreatingUser()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: RequiredLegalConfiguration());
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "stale-legal@example.com",
+                password = "correct horse battery",
+                legalAcceptance = new
+                {
+                    termsAccepted = true,
+                    termsVersion = "old-terms",
+                    privacyNoticeAcknowledged = true,
+                    privacyNoticeVersion = "privacy-2026-08"
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.AppUsers.ToListAsync());
+    }
+
+    [Fact]
     public async Task PostRegister_WhenSignupClosed_Rejects()
     {
         using var factory = new DumpTetherApiFactory(
@@ -994,6 +1090,43 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task ExternalLogin_WhenCreatingUser_RecordsRequiredLegalAcceptance()
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: RequiredLegalConfiguration());
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        await authService.ExternalLoginAsync(
+            new ExternalLoginRequest(
+                "microsoft",
+                "tenant-id:new-object-id",
+                "external-legal@example.com",
+                "External legal user",
+                new LegalAcceptanceSubmission(
+                    true,
+                    "terms-2026-08",
+                    true,
+                    "privacy-2026-08")),
+            new AuthRequestMetadata("test", "127.0.0.1"),
+            CancellationToken.None);
+
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var acceptances = await dbContext.LegalAcceptances
+            .OrderBy(acceptance => acceptance.DocumentType)
+            .ToListAsync();
+
+        Assert.Collection(
+            acceptances,
+            acceptance => Assert.Equal(
+                LegalDocumentType.TermsOfUse,
+                acceptance.DocumentType),
+            acceptance => Assert.Equal(
+                LegalDocumentType.PrivacyNotice,
+                acceptance.DocumentType));
+    }
+
+    [Fact]
     public void Startup_WhenInviteOnlySignupHasNoInviteCodes_ThrowsHelpfulError()
     {
         var configuration = new ConfigurationBuilder()
@@ -1041,6 +1174,16 @@ public sealed class AuthApiTests
         new ConfigurationBuilder()
             .AddInMemoryCollection(BuildDesktopConfigurationValues())
             .Build();
+
+    private static Dictionary<string, string?> RequiredLegalConfiguration() =>
+        new()
+        {
+            ["Legal:RequireAcceptance"] = "true",
+            ["Legal:TermsVersion"] = "terms-2026-08",
+            ["Legal:PrivacyNoticeVersion"] = "privacy-2026-08",
+            ["Legal:OperatorName"] = "DumpTether test operator",
+            ["Legal:PrivacyContactEmail"] = "privacy@example.com"
+        };
 
     private static Dictionary<string, string?> BuildDesktopConfigurationValues() =>
         new()

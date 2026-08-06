@@ -58,6 +58,10 @@ public interface IAuthRepository
 
     Task AddExternalLoginAsync(ExternalLogin externalLogin, CancellationToken cancellationToken);
 
+    Task AddLegalAcceptancesAsync(
+        IReadOnlyCollection<LegalAcceptance> acceptances,
+        CancellationToken cancellationToken);
+
     Task AddWorkspaceMembershipAsync(
         WorkspaceMembership membership,
         CancellationToken cancellationToken);

@@ -22,6 +22,7 @@ internal sealed class AuthService : IAuthService
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<EmailConfirmationOptions> _emailConfirmationOptions;
+    private readonly IOptions<LegalOptions> _legalOptions;
     private readonly IEmailSender _emailSender;
     private readonly ILogger<AuthService> _logger;
     private readonly IPasswordHashService _passwordHashService;
@@ -35,6 +36,7 @@ internal sealed class AuthService : IAuthService
         ICurrentUserSessionProvider currentUserSessionProvider,
         IOptions<AuthOptions> authOptions,
         IOptions<EmailConfirmationOptions> emailConfirmationOptions,
+        IOptions<LegalOptions> legalOptions,
         IEmailSender emailSender,
         ILogger<AuthService> logger,
         IPasswordHashService passwordHashService,
@@ -47,6 +49,7 @@ internal sealed class AuthService : IAuthService
         _currentUserSessionProvider = currentUserSessionProvider;
         _authOptions = authOptions;
         _emailConfirmationOptions = emailConfirmationOptions;
+        _legalOptions = legalOptions;
         _emailSender = emailSender;
         _logger = logger;
         _passwordHashService = passwordHashService;
@@ -62,6 +65,7 @@ internal sealed class AuthService : IAuthService
 
         var normalizedEmail = AppUser.NormalizeEmail(request.Email);
         EnsureSignupIsAllowed(normalizedEmail, request.InviteCode, allowInviteCode: true);
+        ValidateRequiredLegalAcceptance(request.LegalAcceptance);
 
         var existingUser = await _authRepository.GetUserByNormalizedEmailAsync(
             normalizedEmail,
@@ -82,6 +86,14 @@ internal sealed class AuthService : IAuthService
             now,
             emailIsConfirmed: !emailConfirmationIsEnabled,
             cancellationToken);
+        var legalAcceptances = CreateRequiredLegalAcceptances(
+            created.User.Id,
+            request.LegalAcceptance,
+            now);
+        if (legalAcceptances.Count > 0)
+        {
+            await _authRepository.AddLegalAcceptancesAsync(legalAcceptances, cancellationToken);
+        }
 
         if (emailConfirmationIsEnabled)
         {
@@ -362,6 +374,7 @@ internal sealed class AuthService : IAuthService
                     AppUser.NormalizeEmail(request.Email),
                     inviteCode: null,
                     allowInviteCode: false);
+                ValidateRequiredLegalAcceptance(request.LegalAcceptance);
 
                 var created = await CreateUserWithWorkspaceAsync(
                     request.Email,
@@ -371,6 +384,16 @@ internal sealed class AuthService : IAuthService
                     emailIsConfirmed: true,
                     cancellationToken);
                 user = created.User;
+                var legalAcceptances = CreateRequiredLegalAcceptances(
+                    user.Id,
+                    request.LegalAcceptance,
+                    now);
+                if (legalAcceptances.Count > 0)
+                {
+                    await _authRepository.AddLegalAcceptancesAsync(
+                        legalAcceptances,
+                        cancellationToken);
+                }
             }
             else if (!user.IsActive)
             {
@@ -689,6 +712,64 @@ internal sealed class AuthService : IAuthService
             default:
                 LogSignupAuditEvent("signup_rejected_invalid_mode", normalizedEmail);
                 throw new ValidationException("Registration is not available.");
+        }
+    }
+
+    private IReadOnlyCollection<LegalAcceptance> CreateRequiredLegalAcceptances(
+        Guid userId,
+        LegalAcceptanceSubmission? submission,
+        DateTimeOffset acceptedAt)
+    {
+        var options = _legalOptions.Value;
+        if (!options.RequireAcceptance)
+        {
+            return [];
+        }
+
+        ValidateRequiredLegalAcceptance(submission);
+
+        return
+        [
+            LegalAcceptance.Create(
+                userId,
+                LegalDocumentType.TermsOfUse,
+                options.TermsVersion,
+                acceptedAt),
+            LegalAcceptance.Create(
+                userId,
+                LegalDocumentType.PrivacyNotice,
+                options.PrivacyNoticeVersion,
+                acceptedAt)
+        ];
+    }
+
+    private void ValidateRequiredLegalAcceptance(LegalAcceptanceSubmission? submission)
+    {
+        var options = _legalOptions.Value;
+        if (!options.RequireAcceptance)
+        {
+            return;
+        }
+
+        if (submission is null ||
+            !submission.TermsAccepted ||
+            !submission.PrivacyNoticeAcknowledged)
+        {
+            throw new ValidationException(
+                "The current Terms of Use must be accepted and the Privacy Notice acknowledged.");
+        }
+
+        if (!string.Equals(
+                submission.TermsVersion?.Trim(),
+                options.TermsVersion.Trim(),
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                submission.PrivacyNoticeVersion?.Trim(),
+                options.PrivacyNoticeVersion.Trim(),
+                StringComparison.Ordinal))
+        {
+            throw new ValidationException(
+                "The legal documents changed. Review the current versions before creating an account.");
         }
     }
 

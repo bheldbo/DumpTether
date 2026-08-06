@@ -392,6 +392,38 @@ namespace DumpTether.Data.Sqlite.Migrations
                     b.ToTable("field_values", (string)null);
                 });
 
+            modelBuilder.Entity("DumpTether.Domain.LegalAcceptance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AcceptedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<int>("DocumentType")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("document_type");
+
+                    b.Property<string>("DocumentVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("document_version");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "DocumentType", "DocumentVersion")
+                        .IsUnique();
+
+                    b.ToTable("legal_acceptances", (string)null);
+                });
+
             modelBuilder.Entity("DumpTether.Domain.Project", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1182,6 +1214,15 @@ namespace DumpTether.Data.Sqlite.Migrations
                         .WithMany("_fieldValues")
                         .HasForeignKey("TaskItemId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DumpTether.Domain.LegalAcceptance", b =>
+                {
+                    b.HasOne("DumpTether.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

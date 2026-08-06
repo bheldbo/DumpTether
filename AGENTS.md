@@ -75,6 +75,7 @@ Use these docs as the repo grows instead of rediscovering the same decisions fro
 - Archive policy: `docs/adr/0007-effective-archive-policy.md`
 - Transactional email: `docs/adr/0008-transactional-email-boundary.md`
 - Server operations/admin: `docs/adr/0009-server-operations-and-administration.md`
+- Legal/privacy: `docs/adr/0010-legal-privacy-foundation.md`, `docs/legal/terms-of-use.md`, `docs/legal/privacy-notice.md`, `docs/security/gdpr-readiness.md`
 - Live collaboration: `docs/adr/0005-live-collaboration-signalr.md`
 - Deployment: `docs/deployment/docker-compose-production.md`, `docs/deployment/microsoft-identity-and-mailpit.md`, `docs/deployment/postgresql-resilience.md`
 - Deferred cleanup: `docs/engineering/refactor-backlog.md`
