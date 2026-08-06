@@ -72,6 +72,7 @@ src/DumpTether.Domain/    Domain model and business rules
 src/DumpTether.Data/      EF Core persistence with PostgreSQL/SQLite provider selection
 src/DumpTether.Data.Sqlite/ SQLite provider-specific EF Core migrations
 src/DumpTether.Database/  Runnable database maintenance shell for migrations/local data chores
+src/DumpTether.Admin/     SSH-only server account/session administration CLI
 docs/                     ADRs, security notes, deployment notes
 deploy/docker/            Production Docker Compose examples
 ```
@@ -713,9 +714,13 @@ Before opening registration broadly:
   real controller/operator identity and privacy contact.
 
 Server administration is deliberately separate from Owner/Member/Guest product
-roles. The planned first operator surface is a CLI used over SSH or a private
-VPN, with metadata-only defaults and audited privileged actions. See
-`docs/adr/0009-server-operations-and-administration.md`.
+roles. `DumpTether.Admin` is packaged inside the API image and used over SSH or
+a private VPN. It lists account/session metadata, locks or unlocks users,
+revokes sessions, and performs exact-email-confirmed account deletion. Mutating
+commands require a named operator and reason and write an audit record. It has
+no public HTTP route and never prints passwords or tokens. See
+`docs/adr/0009-server-operations-and-administration.md` and the production
+deployment guide for commands.
 
 ## Testing
 

@@ -7,12 +7,18 @@ COPY src/DumpTether.App/DumpTether.App.csproj src/DumpTether.App/
 COPY src/DumpTether.Data/DumpTether.Data.csproj src/DumpTether.Data/
 COPY src/DumpTether.Data.Sqlite/DumpTether.Data.Sqlite.csproj src/DumpTether.Data.Sqlite/
 COPY src/DumpTether.Api/DumpTether.Api.csproj src/DumpTether.Api/
-RUN dotnet restore src/DumpTether.Api/DumpTether.Api.csproj
+COPY src/DumpTether.Admin/DumpTether.Admin.csproj src/DumpTether.Admin/
+RUN dotnet restore src/DumpTether.Api/DumpTether.Api.csproj \
+    && dotnet restore src/DumpTether.Admin/DumpTether.Admin.csproj
 
 COPY src/ src/
 RUN dotnet publish src/DumpTether.Api/DumpTether.Api.csproj \
     --configuration Release \
     --output /app/publish \
+    --no-restore \
+    && dotnet publish src/DumpTether.Admin/DumpTether.Admin.csproj \
+    --configuration Release \
+    --output /app/admin \
     --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
@@ -33,5 +39,6 @@ EXPOSE 8080
 RUN mkdir -p /home/app/.aspnet/DataProtection-Keys \
     && chown -R app:app /home/app/.aspnet
 COPY --from=build --chown=app:app /app/publish .
+COPY --from=build --chown=app:app /app/admin /tools/admin
 USER app
 ENTRYPOINT ["dotnet", "DumpTether.Api.dll"]

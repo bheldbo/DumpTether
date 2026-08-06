@@ -31,6 +31,8 @@ public sealed class DumpTetherDbContext : DbContext
 
     public DbSet<LegalAcceptance> LegalAcceptances => Set<LegalAcceptance>();
 
+    public DbSet<OperatorAuditEvent> OperatorAuditEvents => Set<OperatorAuditEvent>();
+
     public DbSet<Project> Projects => Set<Project>();
 
     public DbSet<TaskItem> TaskItems => Set<TaskItem>();
