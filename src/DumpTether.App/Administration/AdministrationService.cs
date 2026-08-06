@@ -7,6 +7,7 @@ namespace DumpTether.App.Administration;
 internal sealed class AdministrationService : IAdministrationService
 {
     private const int MaximumListSize = 500;
+    private static readonly TimeSpan RecentPresenceWindow = TimeSpan.FromMinutes(15);
     private readonly IAdministrationRepository _repository;
     private readonly IClock _clock;
 
@@ -14,6 +15,12 @@ internal sealed class AdministrationService : IAdministrationService
     {
         _repository = repository;
         _clock = clock;
+    }
+
+    public Task<AdministrationStatistics> GetStatisticsAsync(CancellationToken cancellationToken)
+    {
+        var now = _clock.UtcNow;
+        return _repository.GetStatisticsAsync(now, now - RecentPresenceWindow, cancellationToken);
     }
 
     public Task<IReadOnlyList<AdministrationUserSummary>> ListUsersAsync(

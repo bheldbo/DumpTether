@@ -2,6 +2,8 @@ namespace DumpTether.App.Administration;
 
 public interface IAdministrationService
 {
+    Task<AdministrationStatistics> GetStatisticsAsync(CancellationToken cancellationToken);
+
     Task<IReadOnlyList<AdministrationUserSummary>> ListUsersAsync(
         string? search,
         int limit,

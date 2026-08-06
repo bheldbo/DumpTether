@@ -34,3 +34,14 @@ public sealed record AccountDeletionResult(
     int DeletedShareCount,
     int DeletedTemplateCount,
     int PreservedTemplateCount);
+
+public sealed record AdministrationStatistics(
+    int RegisteredUserCount,
+    int ActiveUserCount,
+    int ConfirmedUserCount,
+    int ActiveSessionCount,
+    int RecentlySeenSessionCount,
+    int BoardCount,
+    int ActiveTaskCount,
+    int ArchivedTaskCount,
+    DateTimeOffset GeneratedAt);

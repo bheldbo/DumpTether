@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { ToastStack } from './components/ToastStack';
+import { Icon } from './components/Icon';
 import {
   defaultAuthOptions,
   maxSidebarWidth,
@@ -1542,6 +1543,11 @@ function App() {
   };
 
   const handleOpenTour = () => {
+    if (!localDesktopSessionIsActive) {
+      window.open('/?view=tour', '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     setMode('tour');
     setSelectedTaskId(null);
     setSelectedTaskWorkspaceId(null);
@@ -1552,6 +1558,11 @@ function App() {
   };
 
   const handleCloseTour = () => {
+    if (window.opener) {
+      window.close();
+      return;
+    }
+
     setMode('tasks');
     updateUrl('tasks', currentViewId);
   };
@@ -2396,20 +2407,25 @@ function App() {
             <h2>{t('loadingAccount')}</h2>
           </section>
         ) : authOptions.requiresAuthentication && !currentUser ? (
-          <AuthPanel
-            authOptions={authOptions}
-            currentUser={currentUser}
-            isLoading={isLoadingAuth}
-            onDevelopmentLogin={handleDevelopmentLogin}
-            onGuestLogin={handleGuestLogin}
-            onLogin={handleLogin}
-            onOpenTour={handleOpenTour}
-            onRegister={handleRegister}
-            localDesktopSessionIsActive={localDesktopSessionIsActive}
-            temporarySessionIsActive={temporarySessionIsActive}
-            t={t}
-            variant="gate"
-          />
+          <>
+            <AuthPanel
+              authOptions={authOptions}
+              currentUser={currentUser}
+              isLoading={isLoadingAuth}
+              onDevelopmentLogin={handleDevelopmentLogin}
+              onGuestLogin={handleGuestLogin}
+              onLogin={handleLogin}
+              onRegister={handleRegister}
+              localDesktopSessionIsActive={localDesktopSessionIsActive}
+              temporarySessionIsActive={temporarySessionIsActive}
+              t={t}
+              variant="gate"
+            />
+            <a className="signed-out-tour-launch" href="/?view=tour" rel="noopener noreferrer" target="_blank">
+              <Icon name="help" />
+              <span>{t('tourOpen')}</span>
+            </a>
+          </>
         ) : mode === 'templates' ? (
           <TemplatesPage
             isLoading={isLoadingWorkspace}

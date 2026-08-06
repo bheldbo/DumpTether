@@ -18,6 +18,38 @@ internal sealed class EfAdministrationRepository : IAdministrationRepository
         _workspaceRepository = workspaceRepository;
     }
 
+    public async Task<AdministrationStatistics> GetStatisticsAsync(
+        DateTimeOffset now,
+        DateTimeOffset recentlySeenSince,
+        CancellationToken cancellationToken)
+    {
+        var registeredUsers = await _dbContext.AppUsers.CountAsync(cancellationToken);
+        var activeUsers = await _dbContext.AppUsers.CountAsync(user => user.IsActive, cancellationToken);
+        var confirmedUsers = await _dbContext.AppUsers.CountAsync(user => user.EmailConfirmedAt != null, cancellationToken);
+        var unrevokedSessions = await _dbContext.UserSessions
+            .AsNoTracking()
+            .Where(session => session.RevokedAt == null)
+            .Select(session => new { session.ExpiresAt, session.LastSeenAt })
+            .ToListAsync(cancellationToken);
+        var activeSessions = unrevokedSessions.Count(session => session.ExpiresAt > now);
+        var recentlySeenSessions = unrevokedSessions.Count(session =>
+            session.ExpiresAt > now && session.LastSeenAt >= recentlySeenSince);
+        var boards = await _dbContext.Workspaces.CountAsync(cancellationToken);
+        var activeTasks = await _dbContext.TaskItems.CountAsync(taskItem => taskItem.ArchivedAt == null, cancellationToken);
+        var archivedTasks = await _dbContext.TaskItems.CountAsync(taskItem => taskItem.ArchivedAt != null, cancellationToken);
+
+        return new AdministrationStatistics(
+            registeredUsers,
+            activeUsers,
+            confirmedUsers,
+            activeSessions,
+            recentlySeenSessions,
+            boards,
+            activeTasks,
+            archivedTasks,
+            now);
+    }
+
     public async Task<IReadOnlyList<AdministrationUserSummary>> ListUsersAsync(
         string? search,
         int limit,

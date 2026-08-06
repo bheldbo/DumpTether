@@ -43,7 +43,6 @@ export function AuthPanel({
   onGuestLogin,
   onLogin,
   onLogout,
-  onOpenTour,
   onRegister,
   temporarySessionIsActive,
   t,
@@ -57,7 +56,6 @@ export function AuthPanel({
   onGuestLogin: () => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout?: () => Promise<void>;
-  onOpenTour?: () => void;
   onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
   temporarySessionIsActive: boolean;
   t: Translate;
@@ -314,13 +312,6 @@ export function AuthPanel({
         <h2>{variant === 'gate' ? t('authRequiredTitle') : t('notSignedIn')}</h2>
         <p>{variant === 'gate' ? t('authRequiredBody') : t('authSettingsHelp')}</p>
       </div>
-
-      {onOpenTour ? (
-        <button className="auth-tour-button" onClick={onOpenTour} type="button">
-          <Icon name="help" />
-          <span>{t('tourOpen')}</span>
-        </button>
-      ) : null}
 
       <div className="auth-mode-toggle" role="group" aria-label={t('account')}>
         <button

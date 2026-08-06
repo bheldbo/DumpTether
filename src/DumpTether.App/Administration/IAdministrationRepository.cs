@@ -4,6 +4,11 @@ namespace DumpTether.App.Administration;
 
 public interface IAdministrationRepository
 {
+    Task<AdministrationStatistics> GetStatisticsAsync(
+        DateTimeOffset now,
+        DateTimeOffset recentlySeenSince,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<AdministrationUserSummary>> ListUsersAsync(
         string? search,
         int limit,

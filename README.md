@@ -720,7 +720,8 @@ revokes sessions, and performs exact-email-confirmed account deletion. Mutating
 commands require a named operator and reason and write an audit record. It has
 no public HTTP route and never prints passwords or tokens. See
 `docs/adr/0009-server-operations-and-administration.md` and the production
-deployment guide for commands.
+deployment guide for commands. The practical walkthrough is in
+[`docs/deployment/operator-administration.md`](docs/deployment/operator-administration.md).
 
 ## Testing
 
