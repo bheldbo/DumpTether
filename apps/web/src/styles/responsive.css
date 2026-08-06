@@ -836,8 +836,7 @@
     grid-template-columns: 1fr;
   }
 
-  .settings-layout,
-  .auth-method-card {
+  .settings-layout {
     grid-template-columns: 1fr;
   }
 

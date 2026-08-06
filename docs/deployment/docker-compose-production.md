@@ -244,7 +244,7 @@ Deployment/runtime config:
 - email confirmation settings
 - SMTP/API email provider credentials
 - OAuth provider client IDs and secrets
-- email MFA settings
+- future email MFA settings (currently unsupported and disabled)
 - cookie settings
 - allowed origins/hosts
 - reverse proxy settings
@@ -268,9 +268,10 @@ Integration config:
 ## Config Validation
 
 The API validates feature config at startup. If email confirmation, the selected
-email provider, Microsoft login, or email MFA is enabled without its required
-settings, startup fails with `DumpTether configuration is incomplete` and lists
-the missing keys.
+email provider, or Microsoft login is enabled without its required settings,
+startup fails with `DumpTether configuration is incomplete` and lists the
+missing keys. Email MFA does not have a completed challenge flow yet;
+`DUMPTETHER_EMAIL_MFA_ENABLED` must remain `false` and startup rejects `true`.
 
 Brevo API values belong in the real server `.env.prod` only:
 

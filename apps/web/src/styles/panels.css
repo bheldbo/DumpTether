@@ -1342,50 +1342,6 @@
   border-top: 0;
 }
 
-.auth-method-list {
-  display: grid;
-  gap: 8px;
-}
-
-.auth-method-card {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: start;
-  padding: 11px;
-  border: 1px solid #dbe3eb;
-  border-radius: 8px;
-  background: #fbfcfd;
-}
-
-.auth-method-card[data-state="ready"] {
-  border-color: rgba(34, 160, 107, 0.24);
-  background: rgba(236, 253, 245, 0.62);
-}
-
-.auth-method-card strong,
-.auth-method-card p {
-  margin: 0;
-}
-
-.auth-method-card p {
-  margin-top: 3px;
-  color: #667586;
-  font-size: 0.84rem;
-  line-height: 1.35;
-}
-
-.auth-method-card > span {
-  align-self: center;
-  padding: 3px 7px;
-  border: 1px solid #d6dee6;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #607083;
-  font-size: 0.72rem;
-  font-weight: 760;
-}
-
 .account-notification-list {
   display: grid;
   gap: 8px;

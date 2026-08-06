@@ -60,6 +60,7 @@ export function Sidebar({
   temporarySessionIsActive,
   templateCount,
   syncRoots,
+  workspaceAccessIsEnabled,
   workspace,
   workspaces,
 }: {
@@ -93,6 +94,7 @@ export function Sidebar({
   temporarySessionIsActive: boolean;
   templateCount: number;
   syncRoots: SyncRootResponse[];
+  workspaceAccessIsEnabled: boolean;
   workspace: WorkspaceResponse | null;
   workspaces: WorkspaceResponse[];
 }) {
@@ -115,6 +117,15 @@ export function Sidebar({
     () => savedViews.filter((view) => ['all tasks', 'overview', 'archive'].includes(view.name.toLowerCase())),
     [savedViews],
   );
+
+  useEffect(() => {
+    if (!workspaceAccessIsEnabled) {
+      setWorkspaceCreateIsOpen(false);
+      setWorkspaceDraft('');
+      setEditingWorkspaceId(null);
+      setEditingWorkspaceName('');
+    }
+  }, [workspaceAccessIsEnabled]);
 
   useEffect(() => {
     if (workspaceCreateIsOpen) {
@@ -280,6 +291,7 @@ export function Sidebar({
           <span>{t('workspaces')}</span>
           <button
             className="tiny-icon-button"
+            disabled={!workspaceAccessIsEnabled}
             onClick={() => setWorkspaceCreateIsOpen((isOpen) => !isOpen)}
             ref={workspaceCreateToggleRef}
             title={t('newWorkspace')}
@@ -304,6 +316,7 @@ export function Sidebar({
             const isOwner = effectiveRole ? isOwnerRole(effectiveRole) : false;
             const isSharedMembership = Boolean(membership && !isOwnerRole(membership.role));
             const canDelete = Boolean(
+              workspaceAccessIsEnabled &&
               !isCloudImported &&
               membership &&
               isOwnerRole(membership.role) &&
@@ -311,11 +324,14 @@ export function Sidebar({
               !isSystemBoard,
             );
             const canEdit = Boolean(
+              workspaceAccessIsEnabled &&
               isOwner &&
               !isSharedOnly &&
               !isSystemBoard,
             );
-            const canLeave = !isCloudImported && (isSharedOnly || isSharedMembership);
+            const canLeave = workspaceAccessIsEnabled &&
+              !isCloudImported &&
+              (isSharedOnly || isSharedMembership);
             const isEditing = editingWorkspaceId === candidate.id;
             const leaveIsPending = pendingWorkspaceLeaveId === candidate.id;
             const isSharedAccess = isSharedOnly || isSharedMembership;
@@ -378,6 +394,7 @@ export function Sidebar({
                   <button
                     aria-current={workspace?.id === candidate.id ? 'page' : undefined}
                     className={`nav-item workspace-nav-item${isSharedAccess ? ' is-shared-access' : ''}`}
+                    disabled={!workspaceAccessIsEnabled}
                     onClick={() => onSelectWorkspace(candidate.id)}
                     title={isSharedAccess
                       ? `${formatWorkspaceName(candidate.name, t)} - ${t('sharedWorkspace')}`
@@ -501,6 +518,7 @@ export function Sidebar({
             <button
               aria-current={mode === 'tasks' && currentViewId === view.id ? 'page' : undefined}
               className="nav-item"
+              disabled={!workspaceAccessIsEnabled}
               key={view.id}
               onClick={() => onSelectView(view.id)}
               title={formatSavedViewName(view.name, t)}
@@ -519,6 +537,7 @@ export function Sidebar({
           <button
             aria-current={mode === 'templates' ? 'page' : undefined}
             className="nav-item"
+            disabled={!workspaceAccessIsEnabled}
             onClick={onOpenTemplates}
             type="button"
           >
@@ -526,7 +545,12 @@ export function Sidebar({
             <span className="nav-label">{t('templates')}</span>
             <span className="nav-count">{templateCount}</span>
           </button>
-          <button className="nav-item" onClick={onOpenSettings} type="button">
+          <button
+            className="nav-item"
+            disabled={!workspaceAccessIsEnabled}
+            onClick={onOpenSettings}
+            type="button"
+          >
             <Icon name="settings" />
             <span className="nav-label">{t('settings')}</span>
             <span className="nav-count">{language.toUpperCase()}</span>
@@ -542,7 +566,12 @@ export function Sidebar({
               <span className="nav-count local-nav-count">{t('localDesktopModeShort')}</span>
             ) : null}
           </button>
-          <button className="refresh-button" onClick={onRefresh} type="button">
+          <button
+            className="refresh-button"
+            disabled={!workspaceAccessIsEnabled}
+            onClick={onRefresh}
+            type="button"
+          >
             <Icon name="refresh" />
             <span className="nav-label">{t('refresh')}</span>
           </button>
