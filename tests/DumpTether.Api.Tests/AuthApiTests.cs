@@ -8,6 +8,7 @@ using DumpTether.App.Email;
 using DumpTether.App.Tasks;
 using DumpTether.Data;
 using DumpTether.Domain;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -1142,6 +1143,30 @@ public sealed class AuthApiTests
         var response = await client.GetAsync($"/api/auth/oauth/{provider}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public void MicrosoftOAuth_CommonTenant_UsesTenantAwareIssuerValidationAndMinimalScopes()
+    {
+        var options = new OpenIdConnectOptions();
+        MicrosoftOAuthConfiguration.Configure(
+            options,
+            new OAuthProviderOptions
+            {
+                ClientId = "test-client-id",
+                ClientSecret = "test-client-secret",
+                TenantId = "common"
+            },
+            isDevelopment: false);
+
+        Assert.Equal("https://login.microsoftonline.com/common/v2.0", options.Authority);
+        Assert.NotNull(options.TokenValidationParameters.IssuerValidator);
+        Assert.True(options.UsePkce);
+        Assert.False(options.SaveTokens);
+        Assert.Equal(
+            ["email", "openid", "profile"],
+            options.Scope.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain("offline_access", options.Scope, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

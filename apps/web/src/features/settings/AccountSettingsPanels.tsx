@@ -261,6 +261,13 @@ export function AuthPanel({
 
   return (
     <section className={wrapperClassName} aria-label={t('account')}>
+      {variant === 'gate' ? (
+        <img
+          alt="DumpTether"
+          className="auth-product-logo"
+          src="/assets/dumptether-logo.png"
+        />
+      ) : null}
       <div className="auth-heading">
         <p className="detail-kicker">{t('account')}</p>
         <h2>{variant === 'gate' ? t('authRequiredTitle') : t('notSignedIn')}</h2>

@@ -23,6 +23,13 @@
   gap: 12px;
 }
 
+.auth-product-logo {
+  justify-self: center;
+  width: min(210px, 55vw);
+  max-height: 190px;
+  object-fit: contain;
+}
+
 .auth-heading {
   display: grid;
   gap: 4px;

@@ -8,7 +8,6 @@ using DumpTether.App.Usage;
 using DumpTether.App.Workspaces;
 using DumpTether.Data;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -17,8 +16,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using Microsoft.IdentityModel.Tokens;
 
 namespace DumpTether.Api;
 
@@ -317,28 +314,12 @@ internal static class DumpTetherApiSetup
 
         if (oauthOptions.Microsoft.Enabled)
         {
-            authenticationBuilder.AddOpenIdConnect("microsoft", options =>
-            {
-                options.SignInScheme = AuthSchemes.ExternalCookie;
-                options.Authority =
-                    $"https://login.microsoftonline.com/{oauthOptions.Microsoft.TenantId}/v2.0";
-                options.ClientId = oauthOptions.Microsoft.ClientId;
-                options.ClientSecret = oauthOptions.Microsoft.ClientSecret;
-                options.CallbackPath = "/api/auth/oauth/microsoft/callback";
-                options.ResponseType = OpenIdConnectResponseType.Code;
-                options.UsePkce = true;
-                options.SaveTokens = false;
-                options.MapInboundClaims = false;
-                options.RequireHttpsMetadata = !environment.IsDevelopment();
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    NameClaimType = "name"
-                };
-                options.Scope.Clear();
-                options.Scope.Add("openid");
-                options.Scope.Add("profile");
-                options.Scope.Add("email");
-            });
+            authenticationBuilder.AddOpenIdConnect(
+                "microsoft",
+                options => MicrosoftOAuthConfiguration.Configure(
+                    options,
+                    oauthOptions.Microsoft,
+                    environment.IsDevelopment()));
         }
 
         return services;

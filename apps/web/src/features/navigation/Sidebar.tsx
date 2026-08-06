@@ -253,12 +253,13 @@ export function Sidebar({
       >
         <div className="brand" onClick={handleBrandClick}>
           <button
+            aria-label="DumpTether"
             className="brand-mark"
             onClick={sidebarIsCollapsed ? onToggleSidebar : undefined}
             title={sidebarIsCollapsed ? t('expandSidebar') : undefined}
             type="button"
           >
-            DT
+            <img alt="" aria-hidden="true" src="/assets/dumptether-mark.png" />
           </button>
           <div className="brand-copy">
             <p className="brand-name">DumpTether</p>
