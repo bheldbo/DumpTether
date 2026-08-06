@@ -98,6 +98,12 @@ public sealed class AppUser
         UpdatedAt = deactivatedAt;
     }
 
+    public void Activate(DateTimeOffset activatedAt)
+    {
+        IsActive = true;
+        UpdatedAt = activatedAt;
+    }
+
     private static string NormalizeEmailForStorage(string email)
     {
         var normalizedEmail = DomainGuards.NotBlank(email, nameof(email));

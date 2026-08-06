@@ -1,6 +1,6 @@
-using Microsoft.Extensions.DependencyInjection;
-using DumpTether.App.Auth;
+using DumpTether.App.Administration;
 using DumpTether.App.ArchiveResolutions;
+using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using DumpTether.App.LiveUpdates;
 using DumpTether.App.Projects;
@@ -9,6 +9,7 @@ using DumpTether.App.Tasks;
 using DumpTether.App.Templates;
 using DumpTether.App.Views;
 using DumpTether.App.Workspaces;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DumpTether.App;
 
@@ -23,6 +24,7 @@ public static class DependencyInjection
         services.AddSingleton<ILiveUpdatePublisher, NoOpLiveUpdatePublisher>();
         services.AddSingleton<ICloudSyncClient, NoOpCloudSyncClient>();
         services.AddSingleton<ICloudSessionProtector, NoOpCloudSessionProtector>();
+        services.AddScoped<IAdministrationService, AdministrationService>();
         services.AddScoped<IArchiveResolutionService, ArchiveResolutionService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserSessionProvider, CurrentUserSessionProvider>();

@@ -424,6 +424,53 @@ namespace DumpTether.Data.Sqlite.Migrations
                     b.ToTable("legal_acceptances", (string)null);
                 });
 
+            modelBuilder.Entity("DumpTether.Domain.OperatorAuditEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("action");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("TargetEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("target_email");
+
+                    b.Property<Guid>("TargetUserId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("target_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAt");
+
+                    b.HasIndex("TargetUserId");
+
+                    b.ToTable("operator_audit_events", (string)null);
+                });
+
             modelBuilder.Entity("DumpTether.Domain.Project", b =>
                 {
                     b.Property<Guid>("Id")

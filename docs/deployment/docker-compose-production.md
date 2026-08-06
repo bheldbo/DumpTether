@@ -211,8 +211,50 @@ external uptime monitor against both endpoints. A stopped API cannot email about
 its own failure.
 
 Administrative actions are a separate server-operator boundary described in
-`docs/adr/0009-server-operations-and-administration.md`. The future first
-surface is a CLI reached over SSH/VPN, not an Admin role in the public client.
+`docs/adr/0009-server-operations-and-administration.md`. The API image includes
+the `DumpTether.Admin` CLI at `/tools/admin`; it is reached through SSH/VPN and
+does not expose an Admin role or public HTTP endpoint.
+
+From the production deployment directory, inspect users without exposing task
+or note content:
+
+```bash
+sudo docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
+  dotnet /tools/admin/DumpTether.Admin.dll users list
+
+sudo docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
+  dotnet /tools/admin/DumpTether.Admin.dll users show person@example.com
+```
+
+Mutations require a named operator and a reason. Locking also revokes active
+sessions:
+
+```bash
+sudo docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
+  dotnet /tools/admin/DumpTether.Admin.dll users lock person@example.com \
+  --actor bjarke --reason "Account owner requested a lock"
+
+sudo docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
+  dotnet /tools/admin/DumpTether.Admin.dll sessions revoke person@example.com \
+  --actor bjarke --reason "Session reset requested"
+```
+
+Account deletion is irreversible. It requires the exact email twice, deletes
+the user's boards/history/sessions/shares, and preserves a template still
+referenced by surviving shared data without an owner:
+
+```bash
+sudo docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
+  dotnet /tools/admin/DumpTether.Admin.dll users delete person@example.com \
+  --confirm person@example.com --actor bjarke \
+  --reason "Verified account deletion request"
+```
+
+Back up PostgreSQL first. Apply the current EF migrations before using a newly
+deployed CLI version; operator mutations are written to
+`operator_audit_events`. Prefer this CLI over direct SQL. If pgAdmin is needed
+for diagnostics, connect from a local machine through an SSH tunnel instead of
+publishing PostgreSQL or installing a desktop environment on the VPS.
 
 ## GitHub Actions Direction
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted as the direction for future operator tooling.
+Accepted and initially implemented by `DumpTether.Admin`.
 
 ## Context
 
@@ -18,7 +18,7 @@ send its own alert.
 
 ## Decision
 
-The first administration surface will be a separate server-side operations CLI:
+The first administration surface is a separate server-side operations CLI:
 
 ```text
 SSH key or private VPN
@@ -40,9 +40,11 @@ authorization.
 
 Operators see account, session, usage and deployment metadata by default, not
 private task or note content. Locking an account revokes its sessions and live
-connections. Every privileged read or mutation is recorded in an append-only
-operator audit log with actor, action, target, time and outcome. Passwords,
-session tokens, secrets and unrestricted raw network history are never logged.
+connections. Every privileged mutation is recorded in an append-only operator
+audit log with actor, action, target, reason and time. Metadata reads remain
+visible to the restricted operating-system account and should be covered by
+SSH/system audit logs. Passwords, session tokens, secrets and unrestricted raw
+network history are never printed or logged.
 
 Service availability is monitored externally against `/health/live` and
 `/health/ready`. The external monitor may send email or another alert when the

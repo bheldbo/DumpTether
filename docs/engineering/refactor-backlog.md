@@ -6,6 +6,19 @@ Use it when a cleanup is real but not worth derailing the current task.
 
 ## Candidates
 
+### Repository-wide formatter baseline
+
+- Status: noted
+- Context: `dotnet format DumpTether.sln --verify-no-changes` currently reports
+  historical encoding, line-ending, import-order, and whitespace differences
+  across old migrations and configuration files.
+- Why it can wait: normalizing generated migration history and unrelated source
+  would create broad review noise in feature pull requests. New and touched C#
+  files can still be formatted with a scoped `--include` pass.
+- Future cleanup: establish one encoding and line-ending policy, normalize the
+  repository in a dedicated mechanical pull request, then add the formatter as
+  a CI gate.
+
 ### Shared clock lives under `DumpTether.App.Tasks`
 
 - Status: noted

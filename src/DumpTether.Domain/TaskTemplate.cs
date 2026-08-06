@@ -119,4 +119,10 @@ public sealed class TaskTemplate
         DeletedAt ??= deletedAt;
         UpdatedAt = deletedAt;
     }
+
+    public void ReleaseOwnership(DateTimeOffset updatedAt)
+    {
+        OwnerUserId = null;
+        UpdatedAt = updatedAt;
+    }
 }
