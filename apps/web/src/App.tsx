@@ -1187,7 +1187,12 @@ function App() {
 
     processedOAuthErrorRef.current = oauthError;
     setAccountIsOpen(true);
-    showToast(t('microsoftSignInFailed'), 'error');
+    showToast(
+      oauthError === 'legal_acceptance_required'
+        ? t('oauthLegalAcceptanceRequired')
+        : t('microsoftSignInFailed'),
+      'error',
+    );
     nextUrl.searchParams.delete('oauthError');
     window.history.replaceState({}, '', nextUrl.toString());
   }, [showToast, t]);
@@ -1543,11 +1548,6 @@ function App() {
   };
 
   const handleOpenTour = () => {
-    if (!localDesktopSessionIsActive) {
-      window.open('/?view=tour', '_blank', 'noopener,noreferrer');
-      return;
-    }
-
     setMode('tour');
     setSelectedTaskId(null);
     setSelectedTaskWorkspaceId(null);
@@ -1558,11 +1558,6 @@ function App() {
   };
 
   const handleCloseTour = () => {
-    if (window.opener) {
-      window.close();
-      return;
-    }
-
     setMode('tasks');
     updateUrl('tasks', currentViewId);
   };
@@ -2421,7 +2416,7 @@ function App() {
               t={t}
               variant="gate"
             />
-            <a className="signed-out-tour-launch" href="/?view=tour" rel="noopener noreferrer" target="_blank">
+            <a className="signed-out-tour-launch" href="/?view=tour">
               <Icon name="help" />
               <span>{t('tourOpen')}</span>
             </a>

@@ -86,6 +86,14 @@ export function AuthPanel({
         privacyNoticeVersion: authOptions.legal.privacyNoticeVersion,
       }
     : null;
+  const oAuthLegalAcceptance = authOptions.legal.acceptanceRequired
+    ? {
+        termsAccepted: true,
+        termsVersion: authOptions.legal.termsVersion,
+        privacyNoticeAcknowledged: true,
+        privacyNoticeVersion: authOptions.legal.privacyNoticeVersion,
+      }
+    : null;
 
   useEffect(() => {
     if (!registrationIsAvailable && mode === 'register') {
@@ -163,13 +171,7 @@ export function AuthPanel({
 
   const startOAuthLogin = (provider: string) => {
     setFormError(null);
-
-    if (mode === 'register' && authOptions.legal.acceptanceRequired && !legalAccepted) {
-      setFormError(t('legalAcceptanceRequired'));
-      return;
-    }
-
-    beginOAuthLogin(provider, mode === 'register' ? legalAcceptance : null);
+    beginOAuthLogin(provider, oAuthLegalAcceptance);
   };
 
   const wrapperClassName = variant === 'gate'
@@ -180,9 +182,7 @@ export function AuthPanel({
     (mode !== 'register' || registrationIsAvailable) &&
     (!registrationNeedsInvite || inviteCode.trim().length > 0) &&
     (mode !== 'register' || !authOptions.legal.acceptanceRequired || legalAccepted);
-  const canStartOAuth = mode !== 'register' ||
-    (registrationIsAvailable &&
-      (!authOptions.legal.acceptanceRequired || legalAccepted));
+  const canStartOAuth = mode !== 'register' || registrationIsAvailable;
 
   if (currentUser) {
     const displayName = localDesktopSessionIsActive
@@ -441,6 +441,18 @@ export function AuthPanel({
               </button>
             ))}
           </div>
+          {authOptions.legal.acceptanceRequired ? (
+            <p className="oauth-legal-disclosure">
+              {t('oauthLegalAgreementPrefix')}{' '}
+              <button onClick={() => setOpenLegalDocument('terms')} type="button">
+                {t('termsOfUse')}
+              </button>
+              {' '}{t('legalAgreementJoin')}{' '}
+              <button onClick={() => setOpenLegalDocument('privacy')} type="button">
+                {t('privacyNotice')}
+              </button>.
+            </p>
+          ) : null}
         </>
       ) : null}
 

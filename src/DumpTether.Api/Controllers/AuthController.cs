@@ -240,7 +240,7 @@ public sealed class AuthController : ControllerBase
 
         if (!result.Succeeded || result.Principal is null)
         {
-            return BadRequest(new { error = "External login did not complete." });
+            return RedirectWithOAuthError(returnUrl, "external_login_failed");
         }
 
         var providerUserId = GetExternalProviderUserId(scheme, result.Principal);
@@ -250,7 +250,7 @@ public sealed class AuthController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(providerUserId) || string.IsNullOrWhiteSpace(email))
         {
-            return BadRequest(new { error = "External login did not provide an email address." });
+            return RedirectWithOAuthError(returnUrl, "external_login_failed");
         }
 
         LoginUserResponse response;
@@ -272,7 +272,13 @@ public sealed class AuthController : ControllerBase
         }
         catch (ValidationException exception)
         {
-            return BadRequest(new { error = exception.Message });
+            var errorCode = exception.Message.Contains(
+                "Terms of Use",
+                StringComparison.OrdinalIgnoreCase)
+                ? "legal_acceptance_required"
+                : "external_login_failed";
+
+            return RedirectWithOAuthError(returnUrl, errorCode);
         }
 
         AppendSessionCookie(response);
@@ -541,6 +547,16 @@ public sealed class AuthController : ControllerBase
     private bool LocalDesktopLoginIsEnabled() =>
         _authOptions.Value.EnableLocalDesktopLogin &&
         DumpTetherDatabaseOptions.IsSqlite(DumpTetherDatabaseOptions.GetProvider(_configuration));
+
+    private IActionResult RedirectWithOAuthError(string? returnUrl, string errorCode)
+    {
+        var destination = QueryHelpers.AddQueryString(
+            NormalizeReturnUrl(returnUrl),
+            "oauthError",
+            errorCode);
+
+        return Redirect(destination);
+    }
 
     private string NormalizeReturnUrl(string? returnUrl)
     {

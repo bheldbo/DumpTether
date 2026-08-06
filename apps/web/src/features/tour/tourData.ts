@@ -126,7 +126,7 @@ export function buildTourBoards(t: Translate): TourBoard[] {
   ];
 }
 
-export function buildTourGuideSteps(t: Translate): TourGuideStep[] {
+export function buildTourGuideSteps(t: Translate, desktopRuntime: boolean): TourGuideStep[] {
   return [
     { id: 'welcome', surface: 'wall', boardId: 'work', title: t('tourStepWelcomeTitle'), body: t('tourStepWelcomeBody') },
     { id: 'boards', surface: 'wall', boardId: 'work', title: t('tourStepBoardsTitle'), body: t('tourStepBoardsBody') },
@@ -134,7 +134,12 @@ export function buildTourGuideSteps(t: Translate): TourGuideStep[] {
     { id: 'template', surface: 'templates', title: t('tourStepTemplateTitle'), body: t('tourStepTemplateBody') },
     { id: 'packing', surface: 'wall', boardId: 'vacation', taskId: 'packing-together', title: t('tourStepPackingTitle'), body: t('tourStepPackingBody') },
     { id: 'filters', surface: 'wall', boardId: 'work', title: t('tourStepFiltersTitle'), body: t('tourStepFiltersBody') },
-    { id: 'account', surface: 'account', title: t('tourStepAccountTitle'), body: t('tourStepAccountBody') },
+    {
+      id: 'account',
+      surface: 'account',
+      title: desktopRuntime ? t('tourStepAccountDesktopTitle') : t('tourStepAccountWebTitle'),
+      body: desktopRuntime ? t('tourStepAccountDesktopBody') : t('tourStepAccountWebBody'),
+    },
   ];
 }
 
