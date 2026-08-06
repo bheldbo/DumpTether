@@ -216,6 +216,56 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task EmailConfirmation_UsesBrandedMessage_ConfirmsLogin_AndRejectsReuse()
+    {
+        var emailSender = new ControllableEmailSender();
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: EmailConfirmationConfiguration(),
+            emailSender: emailSender);
+        using var client = factory.CreateClient();
+
+        var registration = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new
+            {
+                email = "confirm-me@example.com",
+                password = "correct horse battery",
+                displayName = "Confirm Me"
+            });
+
+        Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
+        var message = Assert.Single(emailSender.SentMessages);
+        Assert.Contains("Confirm your email", message.HtmlContent);
+        Assert.Contains("expires in 24 hours", message.HtmlContent);
+        Assert.Contains("Confirm Me", message.HtmlContent);
+
+        var confirmationUrl = message.TextContent!
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Last();
+        var confirmationPath = new Uri(confirmationUrl).PathAndQuery;
+        var confirmation = await client.GetAsync(confirmationPath);
+        var confirmationBody = await confirmation.Content.ReadAsStringAsync();
+
+        confirmation.EnsureSuccessStatusCode();
+        Assert.Contains("Email confirmed", confirmationBody);
+        Assert.Contains("Return to DumpTether login", confirmationBody);
+        Assert.Contains("http://localhost", confirmationBody);
+
+        var login = await LoginWithResponseAsync(
+            client,
+            "confirm-me@example.com",
+            "correct horse battery");
+        login.EnsureSuccessStatusCode();
+
+        var reused = await client.GetAsync(confirmationPath);
+        var reusedBody = await reused.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, reused.StatusCode);
+        Assert.Contains("This confirmation link is not valid", reusedBody);
+        Assert.Contains("Return to DumpTether login", reusedBody);
+    }
+
+    [Fact]
     public async Task PostRegister_WhenSignupClosed_Rejects()
     {
         using var factory = new DumpTetherApiFactory(
@@ -1406,6 +1456,8 @@ public sealed class AuthApiTests
     {
         public bool FailDelivery { get; set; }
 
+        public List<EmailMessage> SentMessages { get; } = [];
+
         public Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(message);
@@ -1414,6 +1466,8 @@ public sealed class AuthApiTests
             {
                 throw new EmailDeliveryException("Simulated confirmation email failure.");
             }
+
+            SentMessages.Add(message);
 
             return Task.CompletedTask;
         }
