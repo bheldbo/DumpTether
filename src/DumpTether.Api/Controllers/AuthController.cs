@@ -23,6 +23,8 @@ public sealed class AuthController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<EmailConfirmationOptions> _emailConfirmationOptions;
+    private readonly IOptions<PasswordRecoveryOptions> _passwordRecoveryOptions;
+    private readonly IOptions<AccountDeletionOptions> _accountDeletionOptions;
     private readonly IOptions<OAuthOptions> _oauthOptions;
     private readonly IOptions<LegalOptions> _legalOptions;
 
@@ -33,6 +35,8 @@ public sealed class AuthController : ControllerBase
         IConfiguration configuration,
         IOptions<AuthOptions> authOptions,
         IOptions<EmailConfirmationOptions> emailConfirmationOptions,
+        IOptions<PasswordRecoveryOptions> passwordRecoveryOptions,
+        IOptions<AccountDeletionOptions> accountDeletionOptions,
         IOptions<OAuthOptions> oauthOptions,
         IOptions<LegalOptions> legalOptions)
     {
@@ -42,6 +46,8 @@ public sealed class AuthController : ControllerBase
         _configuration = configuration;
         _authOptions = authOptions;
         _emailConfirmationOptions = emailConfirmationOptions;
+        _passwordRecoveryOptions = passwordRecoveryOptions;
+        _accountDeletionOptions = accountDeletionOptions;
         _oauthOptions = oauthOptions;
         _legalOptions = legalOptions;
     }
@@ -57,6 +63,8 @@ public sealed class AuthController : ControllerBase
             _environment.IsDevelopment() && options.EnableDevelopmentLogin,
             LocalDesktopLoginIsEnabled(),
             _emailConfirmationOptions.Value.Enabled,
+            _passwordRecoveryOptions.Value.Enabled,
+            _accountDeletionOptions.Value.Enabled,
             options.SignupMode,
             _oauthOptions.Value.EnabledProviders(),
             new LegalClientOptionsResponse(
@@ -126,6 +134,48 @@ public sealed class AuthController : ControllerBase
             return StatusCode(
                 StatusCodes.Status403Forbidden,
                 new { error = "Email confirmation is required." });
+        }
+    }
+
+    [EnableRateLimiting("account-recovery")]
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword(
+        ForgotPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _authService.RequestPasswordResetAsync(request, cancellationToken);
+        }
+        catch (ArgumentException)
+        {
+            // Keep the response indistinguishable from an unknown account.
+        }
+
+        return Accepted(new PasswordResetRequestAcceptedResponse(
+            "If the account can use password recovery, a reset link will be sent."));
+    }
+
+    [EnableRateLimiting("account-recovery")]
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword(
+        ResetPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _authService.ResetPasswordAsync(request, cancellationToken);
+            Response.Cookies.Delete(SessionCsrfProtectionMiddleware.SessionCookieName);
+            Response.Cookies.Delete(SessionCsrfProtectionMiddleware.CsrfCookieName);
+            return NoContent();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
         }
     }
 

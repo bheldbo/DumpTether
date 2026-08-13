@@ -45,6 +45,30 @@
   gap: 10px;
 }
 
+.auth-recovery-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-forgot-password-link {
+  justify-self: end;
+  min-height: 28px;
+  margin-top: -6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #155b61;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.auth-recovery-back-button {
+  justify-self: center;
+  width: fit-content;
+}
+
 .auth-form > label {
   display: grid;
   gap: 5px;
@@ -174,26 +198,6 @@
 .oauth-provider-button:hover:not(:disabled) {
   border-color: #7c919f;
   background: #f7fafc;
-}
-
-.oauth-legal-disclosure {
-  margin: 0;
-  color: #667586;
-  font-size: 0.72rem;
-  line-height: 1.45;
-  text-align: center;
-}
-
-.oauth-legal-disclosure button {
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #155b61;
-  font: inherit;
-  font-weight: 750;
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 .microsoft-mark {
@@ -1510,6 +1514,91 @@
   border: 1px solid #dbe3eb;
   border-radius: 8px;
   background: #fbfcfd;
+}
+
+.account-help-section > .secondary-action,
+.account-deletion-form > .danger-action {
+  justify-self: start;
+}
+
+.account-faq {
+  display: grid;
+  gap: 0;
+  margin-top: 4px;
+  border-top: 1px solid #e2e8ef;
+}
+
+.account-faq h4 {
+  margin: 0;
+  padding: 12px 0 6px;
+  font-size: 0.82rem;
+}
+
+.account-faq details {
+  padding: 9px 0;
+  border-bottom: 1px solid #e2e8ef;
+}
+
+.account-faq summary {
+  color: #304153;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 740;
+}
+
+.account-faq details p {
+  margin-top: 7px;
+  line-height: 1.45;
+}
+
+.account-danger-section {
+  border-top-color: #e5c5bf;
+}
+
+.account-danger-section .detail-kicker {
+  color: #9a3f32;
+}
+
+.account-deletion-form {
+  display: grid;
+  gap: 8px;
+}
+
+.account-deletion-schedule {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid #e4b5aa;
+  border-radius: 8px;
+  background: #fff8f6;
+}
+
+.account-deletion-schedule > .icon {
+  color: #9a3f32;
+}
+
+.account-deletion-schedule strong,
+.account-deletion-schedule p {
+  margin: 0;
+}
+
+.account-deletion-schedule small {
+  display: block;
+  margin-top: 4px;
+  color: #6d7886;
+}
+
+@media (max-width: 620px) {
+  .account-deletion-schedule {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  .account-deletion-schedule > button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
 }
 
 .account-notification-card strong,

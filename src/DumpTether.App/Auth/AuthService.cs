@@ -22,6 +22,8 @@ internal sealed class AuthService : IAuthService
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<EmailConfirmationOptions> _emailConfirmationOptions;
     private readonly IOptions<LegalOptions> _legalOptions;
+    private readonly IOptions<PasswordRecoveryOptions> _passwordRecoveryOptions;
+    private readonly IOptions<AccountDeletionOptions> _accountDeletionOptions;
     private readonly IEmailSender _emailSender;
     private readonly ILogger<AuthService> _logger;
     private readonly IPasswordHashService _passwordHashService;
@@ -37,6 +39,8 @@ internal sealed class AuthService : IAuthService
         IOptions<AuthOptions> authOptions,
         IOptions<EmailConfirmationOptions> emailConfirmationOptions,
         IOptions<LegalOptions> legalOptions,
+        IOptions<PasswordRecoveryOptions> passwordRecoveryOptions,
+        IOptions<AccountDeletionOptions> accountDeletionOptions,
         IEmailSender emailSender,
         ILogger<AuthService> logger,
         IPasswordHashService passwordHashService,
@@ -51,6 +55,8 @@ internal sealed class AuthService : IAuthService
         _authOptions = authOptions;
         _emailConfirmationOptions = emailConfirmationOptions;
         _legalOptions = legalOptions;
+        _passwordRecoveryOptions = passwordRecoveryOptions;
+        _accountDeletionOptions = accountDeletionOptions;
         _emailSender = emailSender;
         _logger = logger;
         _passwordHashService = passwordHashService;
@@ -90,7 +96,7 @@ internal sealed class AuthService : IAuthService
                     _passwordHashService.HashPassword(request.Password),
                     now,
                     emailIsConfirmed: !emailConfirmationIsEnabled,
-                    transactionCancellationToken);
+                    cancellationToken: transactionCancellationToken);
                 var legalAcceptances = CreateRequiredLegalAcceptances(
                     created.User.Id,
                     request.LegalAcceptance,
@@ -227,7 +233,7 @@ internal sealed class AuthService : IAuthService
                 _passwordHashService.HashPassword(options.DevelopmentPassword),
                 now,
                 emailIsConfirmed: true,
-                cancellationToken);
+                cancellationToken: cancellationToken);
             await _authRepository.SaveChangesAsync(cancellationToken);
         }
 
@@ -261,6 +267,7 @@ internal sealed class AuthService : IAuthService
                 _passwordHashService.HashPassword(_sessionTokenService.CreateSessionToken()),
                 now,
                 emailIsConfirmed: true,
+                hasPasswordCredential: false,
                 cancellationToken);
             user = created.User;
             createdLocalUser = true;
@@ -326,6 +333,7 @@ internal sealed class AuthService : IAuthService
             _passwordHashService.HashPassword(_sessionTokenService.CreateSessionToken()),
             now,
             emailIsConfirmed: true,
+            hasPasswordCredential: false,
             cancellationToken);
         var (sessionToken, session) = await CreateSessionAsync(
             created.User,
@@ -395,6 +403,7 @@ internal sealed class AuthService : IAuthService
                     _passwordHashService.HashPassword(_sessionTokenService.CreateSessionToken()),
                     now,
                     emailIsConfirmed: true,
+                    hasPasswordCredential: false,
                     cancellationToken);
                 user = created.User;
                 var legalAcceptances = CreateRequiredLegalAcceptances(
@@ -482,6 +491,273 @@ internal sealed class AuthService : IAuthService
         await _authRepository.SaveChangesAsync(cancellationToken);
 
         return new ConfirmEmailResponse(user.Id, user.Email, now);
+    }
+
+    public async Task RequestPasswordResetAsync(
+        ForgotPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var normalizedEmail = AppUser.NormalizeEmail(request.Email);
+        var user = await _authRepository.GetUserByNormalizedEmailAsync(
+            normalizedEmail,
+            trackChanges: false,
+            cancellationToken);
+
+        if (!_passwordRecoveryOptions.Value.Enabled ||
+            user is null ||
+            !user.IsActive ||
+            user.EmailConfirmedAt is null ||
+            !user.HasPasswordCredential)
+        {
+            _logger.LogInformation(
+                "Password reset request completed without delivery. EmailHash: {EmailHash}.",
+                _sessionTokenService.HashOptionalMetadata(normalizedEmail));
+            return;
+        }
+
+        try
+        {
+            await _registrationTransaction.ExecuteAsync(
+                async transactionCancellationToken =>
+                {
+                    await CreateAndSendPasswordResetAsync(user, transactionCancellationToken);
+                    return true;
+                },
+                cancellationToken);
+        }
+        catch (EmailDeliveryException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Password reset email delivery failed. UserId: {UserId}.",
+                user.Id);
+        }
+    }
+
+    public async Task SendPasswordResetForOperatorAsync(
+        string email,
+        string actor,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (!_passwordRecoveryOptions.Value.Enabled)
+        {
+            throw new ValidationException("Password recovery is not enabled.");
+        }
+
+        var user = await _authRepository.GetUserByNormalizedEmailAsync(
+            AppUser.NormalizeEmail(email),
+            trackChanges: false,
+            cancellationToken);
+        if (user is null ||
+            !user.IsActive ||
+            user.EmailConfirmedAt is null ||
+            !user.HasPasswordCredential)
+        {
+            throw new ValidationException("Account is not eligible for password recovery.");
+        }
+
+        var auditEvent = OperatorAuditEvent.Create(
+            actor,
+            "password_reset.requested",
+            user.Id,
+            user.Email,
+            reason,
+            _clock.UtcNow);
+        await _registrationTransaction.ExecuteAsync(
+            async transactionCancellationToken =>
+            {
+                await CreateAndSendPasswordResetAsync(
+                    user,
+                    transactionCancellationToken,
+                    auditEvent);
+                return true;
+            },
+            cancellationToken);
+    }
+
+    public async Task ResetPasswordAsync(
+        ResetPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.Token))
+        {
+            throw new ValidationException("Password reset token is invalid or expired.");
+        }
+
+        await _registrationTransaction.ExecuteAsync(
+            async transactionCancellationToken =>
+            {
+                var now = _clock.UtcNow;
+                var resetToken = await _authRepository.GetPasswordResetTokenByHashAsync(
+                    _sessionTokenService.HashToken(request.Token),
+                    trackChanges: false,
+                    transactionCancellationToken);
+                if (resetToken is null || !resetToken.IsUsable(now))
+                {
+                    throw new ValidationException("Password reset token is invalid or expired.");
+                }
+
+                var user = await _authRepository.GetUserByIdAsync(
+                    resetToken.UserId,
+                    trackChanges: true,
+                    transactionCancellationToken);
+                if (user is null || !user.IsActive || !user.HasPasswordCredential)
+                {
+                    throw new ValidationException("Password reset token is invalid or expired.");
+                }
+
+                var consumed = await _authRepository.TryConsumePasswordResetTokenAsync(
+                    resetToken.Id,
+                    now,
+                    transactionCancellationToken);
+                if (!consumed)
+                {
+                    throw new ValidationException("Password reset token is invalid or expired.");
+                }
+
+                await _authRepository.InvalidatePasswordResetTokensForUserAsync(
+                    user.Id,
+                    resetToken.Id,
+                    now,
+                    transactionCancellationToken);
+                user.ChangePassword(_passwordHashService.HashPassword(request.NewPassword), now);
+                await _authRepository.RevokeSessionsForUserAsync(
+                    user.Id,
+                    now,
+                    transactionCancellationToken);
+                await _authRepository.SaveChangesAsync(transactionCancellationToken);
+                _logger.LogInformation(
+                    "Password reset completed and existing sessions were revoked. UserId: {UserId}.",
+                    user.Id);
+                return true;
+            },
+            cancellationToken);
+    }
+
+    public async Task<AccountDeletionStatusResponse?> GetAccountDeletionStatusAsync(
+        CancellationToken cancellationToken)
+    {
+        var current = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken) ??
+            throw new UnauthorizedAccessException("Authentication is required.");
+        var deletionRequest = await _authRepository.GetAccountDeletionRequestForUserAsync(
+            current.UserId,
+            trackChanges: false,
+            cancellationToken);
+        return MapDeletionStatus(deletionRequest);
+    }
+
+    public async Task<AccountDeletionStatusResponse> RequestAccountDeletionAsync(
+        RequestAccountDeletionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!_accountDeletionOptions.Value.Enabled)
+        {
+            throw new ValidationException("Account deletion is not available.");
+        }
+
+        var current = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken) ??
+            throw new UnauthorizedAccessException("Authentication is required.");
+        if (current.SessionType == UserSessionType.DesktopLocal)
+        {
+            throw new ValidationException("The local desktop profile stays on this device and cannot be deleted here.");
+        }
+
+        var user = await _authRepository.GetUserByIdAsync(
+                current.UserId,
+                trackChanges: true,
+                cancellationToken) ??
+            throw new UnauthorizedAccessException("Authentication is required.");
+        if (!string.Equals(
+                user.NormalizedEmail,
+                AppUser.NormalizeEmail(request.ConfirmationEmail),
+                StringComparison.Ordinal))
+        {
+            throw new ValidationException("Enter the account email exactly to schedule deletion.");
+        }
+
+        if (user.HasPasswordCredential)
+        {
+            if (string.IsNullOrWhiteSpace(request.CurrentPassword) ||
+                !_passwordHashService.VerifyPassword(user.PasswordHash, request.CurrentPassword))
+            {
+                throw new ValidationException("Enter your current password to schedule account deletion.");
+            }
+        }
+        else
+        {
+            var recentAuthenticationWindow = TimeSpan.FromMinutes(
+                Math.Clamp(_accountDeletionOptions.Value.RecentAuthenticationMinutes, 1, 60));
+            if (current.CreatedAt < _clock.UtcNow.Subtract(recentAuthenticationWindow))
+            {
+                throw new ValidationException("Sign in again with Microsoft before scheduling account deletion.");
+            }
+        }
+
+        if (await _authRepository.HasOwnedWorkspaceSharedWithOthersAsync(user.Id, cancellationToken))
+        {
+            throw new ValidationException(
+                "Remove board members, pending invitations and task shares before deleting this account.");
+        }
+
+        var existingRequest = await _authRepository.GetAccountDeletionRequestForUserAsync(
+            user.Id,
+            trackChanges: false,
+            cancellationToken);
+        if (existingRequest is not null)
+        {
+            return MapDeletionStatus(existingRequest)!;
+        }
+
+        var now = _clock.UtcNow;
+        var graceHours = Math.Clamp(_accountDeletionOptions.Value.GraceHours, 24, 720);
+        var scheduledFor = now.AddHours(graceHours);
+        var reminderHoursBefore = Math.Clamp(
+            _accountDeletionOptions.Value.ReminderHoursBefore,
+            1,
+            graceHours - 1);
+        var deletionRequest = AccountDeletionRequest.Create(
+            user.Id,
+            now,
+            scheduledFor.AddHours(-reminderHoursBefore),
+            scheduledFor);
+        await _authRepository.AddAccountDeletionRequestAsync(deletionRequest, cancellationToken);
+        await _authRepository.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _emailSender.SendAsync(
+                AccountEmailBuilders.AccountDeletionScheduled(user.Email, user.DisplayName, scheduledFor),
+                cancellationToken);
+        }
+        catch (EmailDeliveryException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Account deletion schedule email delivery failed. UserId: {UserId}.",
+                user.Id);
+        }
+        return MapDeletionStatus(deletionRequest)!;
+    }
+
+    public async Task<bool> CancelAccountDeletionAsync(CancellationToken cancellationToken)
+    {
+        var current = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken) ??
+            throw new UnauthorizedAccessException("Authentication is required.");
+        var deletionRequest = await _authRepository.GetAccountDeletionRequestForUserAsync(
+            current.UserId,
+            trackChanges: true,
+            cancellationToken);
+        if (deletionRequest is null || deletionRequest.State != AccountDeletionRequestState.Pending)
+        {
+            return false;
+        }
+
+        _authRepository.RemoveAccountDeletionRequest(deletionRequest);
+        await _authRepository.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     public async Task<bool> LogoutAsync(CancellationToken cancellationToken)
@@ -609,7 +885,8 @@ internal sealed class AuthService : IAuthService
             user.DisplayName,
             user.CreatedAt,
             user.LastLoginAt,
-            user.EmailConfirmedAt);
+            user.EmailConfirmedAt,
+            user.HasPasswordCredential);
     }
 
     private static AuthWorkspaceResponse MapWorkspace(UserWorkspaceMembership membership)
@@ -669,6 +946,7 @@ internal sealed class AuthService : IAuthService
             string passwordHash,
             DateTimeOffset now,
             bool emailIsConfirmed,
+            bool hasPasswordCredential = true,
             CancellationToken cancellationToken = default)
     {
         var user = AppUser.Create(
@@ -676,7 +954,8 @@ internal sealed class AuthService : IAuthService
             displayName,
             passwordHash,
             now,
-            emailIsConfirmed);
+            emailIsConfirmed,
+            hasPasswordCredential);
         var workspace = Workspace.Create("All Tasks", now);
         var membership = WorkspaceMembership.Create(
             workspace.Id,
@@ -860,6 +1139,69 @@ internal sealed class AuthService : IAuthService
                 options.TokenHours),
             cancellationToken);
     }
+
+    private async Task CreateAndSendPasswordResetAsync(
+        AppUser user,
+        CancellationToken cancellationToken,
+        OperatorAuditEvent? auditEvent = null)
+    {
+        var options = _passwordRecoveryOptions.Value;
+        var rawToken = _sessionTokenService.CreateSessionToken();
+        var now = _clock.UtcNow;
+        var tokenHours = Math.Clamp(options.TokenHours, 1, 24);
+        await _authRepository.AddPasswordResetTokenAsync(
+            PasswordResetToken.Create(
+                user.Id,
+                _sessionTokenService.HashToken(rawToken),
+                now,
+                now.AddHours(tokenHours)),
+            cancellationToken);
+        if (auditEvent is not null)
+        {
+            await _authRepository.AddOperatorAuditEventAsync(auditEvent, cancellationToken);
+        }
+
+        await _authRepository.SaveChangesAsync(cancellationToken);
+        await _emailSender.SendAsync(
+            AccountEmailBuilders.PasswordReset(
+                user.Email,
+                user.DisplayName,
+                BuildPasswordResetLink(options, rawToken),
+                tokenHours),
+            cancellationToken);
+    }
+
+    private static string BuildPasswordResetLink(
+        PasswordRecoveryOptions options,
+        string token)
+    {
+        var baseUrl = options.PublicBaseUrl.TrimEnd('/');
+        var path = string.IsNullOrWhiteSpace(options.ResetPath)
+            ? "/#reset-password="
+            : options.ResetPath;
+        return path.Contains("{token}", StringComparison.Ordinal)
+            ? $"{baseUrl}{path.Replace("{token}", Uri.EscapeDataString(token), StringComparison.Ordinal)}"
+            : $"{baseUrl}{path}{Uri.EscapeDataString(token)}";
+    }
+
+    private async Task<AppUser> GetCurrentUserForUpdateAsync(CancellationToken cancellationToken)
+    {
+        var current = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken) ??
+            throw new UnauthorizedAccessException("Authentication is required.");
+        return await _authRepository.GetUserByIdAsync(
+                current.UserId,
+                trackChanges: true,
+                cancellationToken) ??
+            throw new UnauthorizedAccessException("Authentication is required.");
+    }
+
+    private static AccountDeletionStatusResponse? MapDeletionStatus(AccountDeletionRequest? request) =>
+        request is null
+            ? null
+            : new AccountDeletionStatusResponse(
+                request.RequestedAt,
+                request.ScheduledFor,
+                request.ReminderSentAt);
 
     private static string BuildConfirmationLink(
         EmailConfirmationOptions options,

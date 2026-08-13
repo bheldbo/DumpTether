@@ -37,6 +37,29 @@ public interface IAuthService
         string token,
         CancellationToken cancellationToken);
 
+    Task RequestPasswordResetAsync(
+        ForgotPasswordRequest request,
+        CancellationToken cancellationToken);
+
+    Task ResetPasswordAsync(
+        ResetPasswordRequest request,
+        CancellationToken cancellationToken);
+
+    Task SendPasswordResetForOperatorAsync(
+        string email,
+        string actor,
+        string reason,
+        CancellationToken cancellationToken);
+
+    Task<AccountDeletionStatusResponse?> GetAccountDeletionStatusAsync(
+        CancellationToken cancellationToken);
+
+    Task<AccountDeletionStatusResponse> RequestAccountDeletionAsync(
+        RequestAccountDeletionRequest request,
+        CancellationToken cancellationToken);
+
+    Task<bool> CancelAccountDeletionAsync(CancellationToken cancellationToken);
+
     Task<bool> LogoutAsync(CancellationToken cancellationToken);
 
     Task<CurrentUserResponse?> GetCurrentAsync(CancellationToken cancellationToken);

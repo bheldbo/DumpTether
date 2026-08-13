@@ -115,3 +115,25 @@ Use it when a cleanup is real but not worth derailing the current task.
   preventing misleading local-only edits to a read-only cache.
 - Future cleanup: add a desktop cache access policy in application services so
   local mutation endpoints also consult imported-root role/access metadata.
+
+### Transactional account email outbox
+
+- Status: deferred production hardening
+- Context: registration and password-recovery email delivery are transactionally
+  coupled to their tokens. Scheduled deletion reminders are claimed durably, but
+  a process crash after provider acceptance can still cause a duplicate retry.
+- Why it can wait: reset links remain one-time and deletion timing remains
+  authoritative; a repeated reminder is inconvenient rather than destructive.
+- Future cleanup: add a transactional email outbox with provider message IDs,
+  idempotent dispatch, retry policy, and delivery observability.
+
+### Account export and lifecycle transaction naming
+
+- Status: deferred privacy and naming cleanup
+- Context: self-service delayed deletion is implemented, but GDPR export remains
+  operator-assisted. `IRegistrationTransaction` now also protects recovery token
+  delivery and no longer describes its full responsibility accurately.
+- Why it can wait: the transaction boundary is correct, and operator tooling can
+  service export requests while the product is small.
+- Future cleanup: add a user-readable export package and rename the shared
+  transaction abstraction in a focused cross-module cleanup.

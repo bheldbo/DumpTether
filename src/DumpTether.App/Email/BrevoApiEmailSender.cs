@@ -1,18 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
-using DumpTether.App.Email;
 using Microsoft.Extensions.Options;
 
-namespace DumpTether.Api;
+namespace DumpTether.App.Email;
 
-internal sealed class BrevoEmailSender : IEmailSender
+internal sealed class BrevoApiEmailSender : IEmailSender
 {
     private readonly HttpClient _httpClient;
     private readonly IOptions<EmailOptions> _emailOptions;
 
-    public BrevoEmailSender(
-        HttpClient httpClient,
-        IOptions<EmailOptions> emailOptions)
+    public BrevoApiEmailSender(HttpClient httpClient, IOptions<EmailOptions> emailOptions)
     {
         _httpClient = httpClient;
         _emailOptions = emailOptions;
@@ -21,9 +18,7 @@ internal sealed class BrevoEmailSender : IEmailSender
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(message);
-
         var options = _emailOptions.Value;
-
         if (options.Provider != EmailProvider.BrevoApi)
         {
             throw new EmailDeliveryException("Brevo API email is not enabled.");
@@ -43,31 +38,22 @@ internal sealed class BrevoEmailSender : IEmailSender
                 name = string.IsNullOrWhiteSpace(options.FromName) ? "DumpTether" : options.FromName,
                 email = options.FromEmail
             },
-            to = new[]
-            {
-                new
-                {
-                    email = message.ToEmail,
-                    name = message.ToName
-                }
-            },
+            to = new[] { new { email = message.ToEmail, name = message.ToName } },
             subject = message.Subject,
             htmlContent = message.HtmlContent,
             textContent = message.TextContent
         });
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
-
         if (response.IsSuccessStatusCode)
         {
             return;
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        var messagePrefix = response.StatusCode is HttpStatusCode.TooManyRequests
+        var prefix = response.StatusCode is HttpStatusCode.TooManyRequests
             ? "Email provider limit was reached."
             : "Email provider rejected the message.";
-
-        throw new EmailDeliveryException($"{messagePrefix} Brevo status {(int)response.StatusCode}. {body}");
+        throw new EmailDeliveryException($"{prefix} Brevo status {(int)response.StatusCode}. {body}");
     }
 }

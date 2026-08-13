@@ -28,11 +28,12 @@ internal static class DumpTetherApiSetup
         DumpTetherRuntimeSetup runtimeSetup)
     {
         services.Configure<AuthOptions>(configuration.GetSection("Auth"));
-        services.Configure<EmailOptions>(configuration.GetSection("Email"));
         services.Configure<EmailConfirmationOptions>(configuration.GetSection("EmailConfirmation"));
         services.Configure<OAuthOptions>(configuration.GetSection("OAuth"));
         services.Configure<LegalOptions>(configuration.GetSection("Legal"));
         services.Configure<UsageOptions>(configuration.GetSection("Usage"));
+        services.Configure<PasswordRecoveryOptions>(configuration.GetSection("PasswordRecovery"));
+        services.Configure<AccountDeletionOptions>(configuration.GetSection("AccountDeletion"));
         services.PostConfigure<AuthOptions>(options =>
         {
             if (!environment.IsDevelopment())
@@ -43,7 +44,7 @@ internal static class DumpTetherApiSetup
         });
 
         services.AddDumpTetherApplication();
-        services.AddDumpTetherEmail(configuration);
+        services.AddDumpTetherTransactionalEmail(configuration);
         services.RemoveAll<ILiveUpdatePublisher>();
         services.RemoveAll<ICloudSyncClient>();
         services.RemoveAll<ICloudSessionProtector>();
@@ -69,6 +70,7 @@ internal static class DumpTetherApiSetup
                 "database",
                 tags: ["ready"]);
         services.AddHostedService<SessionCleanupHostedService>();
+        services.AddHostedService<AccountDeletionHostedService>();
         if (environment.IsEnvironment("Desktop") &&
             configuration.GetValue<bool>("Desktop:CloudLiveRelayEnabled"))
         {
@@ -240,35 +242,6 @@ internal static class DumpTetherApiSetup
         return services;
     }
 
-    private static IServiceCollection AddDumpTetherEmail(
-        this IServiceCollection services,
-        IConfiguration configuration)
-    {
-        var emailOptions = configuration.GetSection("Email").Get<EmailOptions>() ?? new();
-
-        if (emailOptions.Provider == EmailProvider.None)
-        {
-            return services;
-        }
-
-        services.RemoveAll<IEmailSender>();
-
-        if (emailOptions.Provider == EmailProvider.Smtp)
-        {
-            services.AddTransient<IEmailSender, SmtpEmailSender>();
-            return services;
-        }
-
-        if (emailOptions.Provider == EmailProvider.BrevoApi)
-        {
-            services.AddHttpClient<IEmailSender, BrevoEmailSender>();
-            return services;
-        }
-
-        throw new InvalidOperationException(
-            $"Unsupported email provider '{emailOptions.Provider}'.");
-    }
-
     private static string GetDefaultDesktopDataProtectionKeysPath()
     {
         var appDataRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -395,6 +368,15 @@ internal static class DumpTetherApiSetup
                         Window = TimeSpan.FromMinutes(1),
                         QueueLimit = 0
                     }));
+            options.AddPolicy("account-recovery", context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    GetIpRateLimitKey(context),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 5,
+                        Window = TimeSpan.FromMinutes(15),
+                        QueueLimit = 0
+                    }));
             options.AddPolicy("task-writes", context =>
                 RateLimitPartition.GetFixedWindowLimiter(
                     GetRateLimitKey(context),
@@ -415,9 +397,14 @@ internal static class DumpTetherApiSetup
 
         if (!string.IsNullOrWhiteSpace(authorization))
         {
-            return authorization;
+            var bytes = System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(authorization));
+            return $"credential:{Convert.ToHexString(bytes)}";
         }
 
-        return context.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
+        return GetIpRateLimitKey(context);
     }
+
+    private static string GetIpRateLimitKey(HttpContext context) =>
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
 }

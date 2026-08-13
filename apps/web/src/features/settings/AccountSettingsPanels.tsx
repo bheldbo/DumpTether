@@ -5,11 +5,14 @@ import { readCloudSyncApiBaseUrl } from '../../appSettings';
 import { Icon, type IconName } from '../../components/Icon';
 import { ModalFrame } from '../../components/ModalFrame';
 import { DeleteWorkspaceDialog } from '../../components/DeleteWorkspaceDialog';
+import { AccountRecoveryPanel } from '../auth/AccountRecoveryPanel';
 import {
   LegalNoticeDialog,
   MicrosoftMark,
   type LegalDocumentKind,
 } from '../auth/LegalNoticeDialog';
+import { AccountDeletionSection } from './AccountDeletionSection';
+import { HelpSection } from './HelpSection';
 import {
   formatDateTime,
   formatOAuthProvider,
@@ -19,6 +22,7 @@ import {
 import type { Language, Translate } from '../../localization';
 import type {
   ArchiveResolutionResponse,
+  AccountDeletionResponse,
   AuthSessionListItemResponse,
   AuthClientOptionsResponse,
   CloudSyncAccountResponse,
@@ -28,6 +32,7 @@ import type {
   LoginUserRequest,
   RegisterUserRequest,
   RegisterUserResponse,
+  ResetPasswordRequest,
   TaskShareInboxResponse,
   UpdateArchiveResolutionRequest,
   WorkspaceInvitationInboxResponse,
@@ -41,9 +46,13 @@ export function AuthPanel({
   localDesktopSessionIsActive,
   onDevelopmentLogin,
   onGuestLogin,
+  onForgotPassword,
   onLogin,
   onLogout,
   onRegister,
+  onResetPassword,
+  onResetPasswordComplete,
+  resetPasswordToken,
   temporarySessionIsActive,
   t,
   variant,
@@ -54,14 +63,18 @@ export function AuthPanel({
   localDesktopSessionIsActive: boolean;
   onDevelopmentLogin: () => Promise<void>;
   onGuestLogin: () => Promise<void>;
+  onForgotPassword: (email: string) => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout?: () => Promise<void>;
   onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
+  onResetPassword: (requestBody: ResetPasswordRequest) => Promise<void>;
+  onResetPasswordComplete: () => void;
+  resetPasswordToken: string | null;
   temporarySessionIsActive: boolean;
   t: Translate;
   variant: 'gate' | 'settings';
 }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -86,11 +99,11 @@ export function AuthPanel({
         privacyNoticeVersion: authOptions.legal.privacyNoticeVersion,
       }
     : null;
-  const oAuthLegalAcceptance = authOptions.legal.acceptanceRequired
+  const oAuthLegalAcceptance = authOptions.legal.acceptanceRequired && mode === 'register'
     ? {
-        termsAccepted: true,
+        termsAccepted: legalAccepted,
         termsVersion: authOptions.legal.termsVersion,
-        privacyNoticeAcknowledged: true,
+        privacyNoticeAcknowledged: legalAccepted,
         privacyNoticeVersion: authOptions.legal.privacyNoticeVersion,
       }
     : null;
@@ -182,7 +195,35 @@ export function AuthPanel({
     (mode !== 'register' || registrationIsAvailable) &&
     (!registrationNeedsInvite || inviteCode.trim().length > 0) &&
     (mode !== 'register' || !authOptions.legal.acceptanceRequired || legalAccepted);
-  const canStartOAuth = mode !== 'register' || registrationIsAvailable;
+  const canStartOAuth = mode !== 'register' || (
+    registrationIsAvailable &&
+    (!authOptions.legal.acceptanceRequired || legalAccepted)
+  );
+
+  if (resetPasswordToken) {
+    return (
+      <section className={wrapperClassName} aria-label={t('accountRecovery')}>
+        {variant === 'gate' ? (
+          <img
+            alt="DumpTether"
+            className="auth-product-logo"
+            src="/assets/dumptether-logo.png"
+          />
+        ) : null}
+        <AccountRecoveryPanel
+          mode="reset"
+          onBackToLogin={onResetPasswordComplete}
+          onForgotPassword={onForgotPassword}
+          onResetPassword={async (requestBody) => {
+            await onResetPassword(requestBody);
+            onResetPasswordComplete();
+          }}
+          resetToken={resetPasswordToken}
+          t={t}
+        />
+      </section>
+    );
+  }
 
   if (currentUser) {
     const displayName = localDesktopSessionIsActive
@@ -298,6 +339,27 @@ export function AuthPanel({
     );
   }
 
+  if (mode === 'forgot') {
+    return (
+      <section className={wrapperClassName} aria-label={t('accountRecovery')}>
+        {variant === 'gate' ? (
+          <img
+            alt="DumpTether"
+            className="auth-product-logo"
+            src="/assets/dumptether-logo.png"
+          />
+        ) : null}
+        <AccountRecoveryPanel
+          mode="forgot"
+          onBackToLogin={() => setMode('login')}
+          onForgotPassword={onForgotPassword}
+          onResetPassword={onResetPassword}
+          t={t}
+        />
+      </section>
+    );
+  }
+
   return (
     <section className={wrapperClassName} aria-label={t('account')}>
       {variant === 'gate' ? (
@@ -377,6 +439,20 @@ export function AuthPanel({
           ) : null}
         </label>
 
+        {mode === 'login' && authOptions.passwordRecoveryEnabled ? (
+          <button
+            className="auth-forgot-password-link"
+            onClick={() => {
+              setFormError(null);
+              setStatusMessage(null);
+              setMode('forgot');
+            }}
+            type="button"
+          >
+            {t('forgotPassword')}
+          </button>
+        ) : null}
+
         {mode === 'register' && registrationNeedsInvite ? (
           <label>
             {t('inviteCode')}
@@ -441,22 +517,10 @@ export function AuthPanel({
               </button>
             ))}
           </div>
-          {authOptions.legal.acceptanceRequired ? (
-            <p className="oauth-legal-disclosure">
-              {t('oauthLegalAgreementPrefix')}{' '}
-              <button onClick={() => setOpenLegalDocument('terms')} type="button">
-                {t('termsOfUse')}
-              </button>
-              {' '}{t('legalAgreementJoin')}{' '}
-              <button onClick={() => setOpenLegalDocument('privacy')} type="button">
-                {t('privacyNotice')}
-              </button>.
-            </p>
-          ) : null}
         </>
       ) : null}
 
-      {legalNoticesAvailable ? (
+      {legalNoticesAvailable && (mode !== 'register' || !authOptions.legal.acceptanceRequired) ? (
         <nav aria-label={t('legalInformation')} className="auth-legal-links">
           <button onClick={() => setOpenLegalDocument('terms')} type="button">
             {t('termsOfUse')}
@@ -512,6 +576,7 @@ export function AuthPanel({
 }
 
 export function AccountPanel({
+  accountDeletion,
   authSessions,
   authOptions,
   cloudSyncAccount,
@@ -521,20 +586,28 @@ export function AccountPanel({
   isLoadingAuth,
   localDesktopSessionIsActive,
   onAcceptIncomingWorkspaceInvitation,
+  onCancelAccountDeletion,
   onConnectCloudAccount,
   onClose,
   onDeclineIncomingWorkspaceInvitation,
   onDisconnectCloudAccount,
   onDevelopmentLogin,
   onGuestLogin,
+  onForgotPassword,
   onLeaveTaskShare,
   onLogin,
   onLogout,
+  onOpenTour,
+  onRequestAccountDeletion,
   onRegister,
   onRevokeAuthSession,
+  onResetPassword,
+  onResetPasswordComplete,
+  resetPasswordToken,
   temporarySessionIsActive,
   t,
 }: {
+  accountDeletion: AccountDeletionResponse | null;
   authSessions: AuthSessionListItemResponse[];
   authOptions: AuthClientOptionsResponse;
   cloudSyncAccount: CloudSyncAccountResponse | null;
@@ -544,21 +617,31 @@ export function AccountPanel({
   isLoadingAuth: boolean;
   localDesktopSessionIsActive: boolean;
   onAcceptIncomingWorkspaceInvitation: (id: string) => Promise<void>;
+  onCancelAccountDeletion: () => Promise<void>;
   onConnectCloudAccount: (requestBody: ConnectCloudAccountRequest) => Promise<void>;
   onClose: () => void;
   onDeclineIncomingWorkspaceInvitation: (id: string) => Promise<void>;
   onDisconnectCloudAccount: () => Promise<void>;
   onDevelopmentLogin: () => Promise<void>;
   onGuestLogin: () => Promise<void>;
+  onForgotPassword: (email: string) => Promise<void>;
   onLeaveTaskShare: (shareId: string) => Promise<void>;
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout: () => Promise<void>;
+  onOpenTour: () => void;
+  onRequestAccountDeletion: (
+    confirmationEmail: string,
+    currentPassword?: string,
+  ) => Promise<void>;
   onRegister: (requestBody: RegisterUserRequest) => Promise<RegisterUserResponse>;
   onRevokeAuthSession: (sessionId: string) => Promise<void>;
+  onResetPassword: (requestBody: ResetPasswordRequest) => Promise<void>;
+  onResetPasswordComplete: () => void;
+  resetPasswordToken: string | null;
   temporarySessionIsActive: boolean;
   t: Translate;
 }) {
-  const revocableSessions = authSessions.filter(
+  const visibleSessions = authSessions.filter(
     (session) =>
       !session.revokedAt &&
       session.sessionType !== 'DesktopLocal' &&
@@ -590,10 +673,14 @@ export function AccountPanel({
           isLoading={isLoadingAuth}
           localDesktopSessionIsActive={localDesktopSessionIsActive}
           onDevelopmentLogin={onDevelopmentLogin}
+          onForgotPassword={onForgotPassword}
           onGuestLogin={onGuestLogin}
           onLogin={onLogin}
           onLogout={onLogout}
           onRegister={onRegister}
+          onResetPassword={onResetPassword}
+          onResetPasswordComplete={onResetPasswordComplete}
+          resetPasswordToken={resetPasswordToken}
           temporarySessionIsActive={temporarySessionIsActive}
           t={t}
           variant="settings"
@@ -608,11 +695,11 @@ export function AccountPanel({
           />
         ) : null}
 
-        {currentUser && revocableSessions.length > 0 ? (
+        {currentUser && visibleSessions.length > 0 ? (
           <section className="settings-section">
             <h3>{t('sessions')}</h3>
             <div className="account-notification-list">
-              {revocableSessions.map((session) => (
+              {visibleSessions.map((session) => (
                     <article className="account-notification-card" key={session.id}>
                       <Icon name={sessionIcon(session.sessionType)} />
                       <div>
@@ -628,14 +715,16 @@ export function AccountPanel({
                           <small>{t('expires')}: {formatDateTime(session.expiresAt)}</small>
                         </div>
                       </div>
-                      <button
-                        className="secondary-action logout-button"
-                        onClick={() => void onRevokeAuthSession(session.id)}
-                        type="button"
-                      >
-                        <Icon name="logout" />
-                        {session.isCurrent ? t('logout') : t('revokeSession')}
-                      </button>
+                      {!session.isCurrent ? (
+                        <button
+                          className="secondary-action logout-button"
+                          onClick={() => void onRevokeAuthSession(session.id)}
+                          type="button"
+                        >
+                          <Icon name="logout" />
+                          {t('revokeSession')}
+                        </button>
+                      ) : null}
                     </article>
                   ))}
             </div>
@@ -708,6 +797,19 @@ export function AccountPanel({
               </div>
             )}
           </section>
+        ) : null}
+
+        {currentUser ? <HelpSection onStartTour={onOpenTour} t={t} /> : null}
+
+        {currentUser && authOptions.accountDeletionEnabled && !localDesktopSessionIsActive && !temporarySessionIsActive ? (
+          <AccountDeletionSection
+            accountEmail={currentUser.user.email}
+            hasPasswordCredential={currentUser.user.hasPasswordCredential}
+            deletion={accountDeletion}
+            onCancel={onCancelAccountDeletion}
+            onRequest={onRequestAccountDeletion}
+            t={t}
+          />
         ) : null}
 
       </section>

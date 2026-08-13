@@ -98,17 +98,29 @@ remaining task can still render.
 
 ## Password and account recovery
 
-Operators cannot read or set passwords. That is intentional: manually assigning
-a password would create a credential-delivery problem and bypass the account
-owner. At the current product stage:
+Operators cannot read or assign passwords. That is intentional: manually
+assigning a password creates a credential-delivery problem and bypasses the
+account owner. An operator can instead send the same one-hour, single-use reset
+link used by self-service recovery:
 
-- Revoke sessions if a device or token may be compromised.
-- Lock the account if access should stop immediately.
-- Microsoft users can authenticate again through Microsoft after sessions are
-  revoked.
-- Password-reset email is a tracked future feature for email/password accounts.
-- Deleting and re-registering an account is destructive and is not a password
-  reset.
+```bash
+sudo docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T api \
+  dotnet /tools/admin/DumpTether.Admin.dll users send-password-reset person@example.com \
+  --actor bjarke --reason "Identity verified and recovery requested"
+```
+
+The command only works for active, confirmed email/password accounts, uses the
+configured transactional email provider, and writes a
+`password_reset.requested` operator audit event. Microsoft-only accounts recover
+through Microsoft. If a device or token may be compromised, revoke sessions or
+lock the account separately.
+
+Self-service deletion is scheduled 48 hours ahead and can be cancelled from the
+Account panel until the worker claims it. A reminder is sent about 24 hours
+before deletion. The API refuses self-service deletion while an owned board has
+members, pending invitations, or task shares; those relationships must be
+removed first. The immediate `users delete` command remains an exceptional,
+irreversible operator path.
 
 ## GDPR access and export requests
 

@@ -17,6 +17,56 @@ namespace DumpTether.Data.Sqlite.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.0");
 
+            modelBuilder.Entity("DumpTether.Domain.AccountDeletionRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ClaimedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("claimed_at");
+
+                    b.Property<DateTimeOffset?>("ReminderClaimedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reminder_claimed_at");
+
+                    b.Property<DateTimeOffset>("ReminderDueAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reminder_due_at");
+
+                    b.Property<DateTimeOffset?>("ReminderSentAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reminder_sent_at");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("requested_at");
+
+                    b.Property<DateTimeOffset>("ScheduledFor")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("scheduled_for");
+
+                    b.Property<int>("State")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("state");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.HasIndex("State", "ScheduledFor");
+
+                    b.HasIndex("State", "ReminderDueAt", "ReminderSentAt");
+
+                    b.ToTable("account_deletion_requests", (string)null);
+                });
+
             modelBuilder.Entity("DumpTether.Domain.AppUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -42,6 +92,12 @@ namespace DumpTether.Data.Sqlite.Migrations
                     b.Property<DateTimeOffset?>("EmailConfirmedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("email_confirmed_at");
+
+                    b.Property<bool>("HasPasswordCredential")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true)
+                        .HasColumnName("has_password_credential");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -469,6 +525,44 @@ namespace DumpTether.Data.Sqlite.Migrations
                     b.HasIndex("TargetUserId");
 
                     b.ToTable("operator_audit_events", (string)null);
+                });
+
+            modelBuilder.Entity("DumpTether.Domain.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("used_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ExpiresAt", "UsedAt");
+
+                    b.ToTable("password_reset_tokens", (string)null);
                 });
 
             modelBuilder.Entity("DumpTether.Domain.Project", b =>
@@ -1204,6 +1298,15 @@ namespace DumpTether.Data.Sqlite.Migrations
                     b.ToTable("workspace_memberships", (string)null);
                 });
 
+            modelBuilder.Entity("DumpTether.Domain.AccountDeletionRequest", b =>
+                {
+                    b.HasOne("DumpTether.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("DumpTether.Domain.ArchiveResolution", b =>
                 {
                     b.HasOne("DumpTether.Domain.Workspace", null)
@@ -1265,6 +1368,15 @@ namespace DumpTether.Data.Sqlite.Migrations
                 });
 
             modelBuilder.Entity("DumpTether.Domain.LegalAcceptance", b =>
+                {
+                    b.HasOne("DumpTether.Domain.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DumpTether.Domain.PasswordResetToken", b =>
                 {
                     b.HasOne("DumpTether.Domain.AppUser", null)
                         .WithMany()

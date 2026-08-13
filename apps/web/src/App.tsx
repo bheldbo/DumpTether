@@ -43,6 +43,7 @@ import {
   acceptShareLink,
   acceptIncomingWorkspaceInvitation,
   archiveTaskItem,
+  cancelAccountDeletion,
   checkHealth,
   connectCloudSyncAccount,
   copyTaskItems,
@@ -63,6 +64,8 @@ import {
   disconnectCloudSyncAccount,
   declineIncomingWorkspaceInvitation,
   developmentLogin,
+  forgotPassword,
+  getAccountDeletion,
   getCloudSyncAccount,
   guestLogin,
   getTaskItem,
@@ -87,12 +90,15 @@ import {
   reopenTaskItem,
   reopenTaskItems,
   registerUser,
+  requestAccountDeletion,
+  resetPassword,
   reconcileCloudWorkspaces,
   removeWorkspaceMember,
   revokeAuthSession,
   revokeTaskShare,
   revokeWorkspaceInvitation,
   setCurrentWorkspaceId,
+  setSessionToken,
   isTemporarySession,
   syncWorkspaceWithCloud,
   updateArchiveResolution,
@@ -129,6 +135,7 @@ import {
 } from './taskUtils';
 import type {
   AuthClientOptionsResponse,
+  AccountDeletionResponse,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   AuthSessionListItemResponse,
@@ -143,6 +150,7 @@ import type {
   LoginUserRequest,
   ProjectResponse,
   RegisterUserRequest,
+  ResetPasswordRequest,
   SavedViewResponse,
   TaskItemDetailResponse,
   TaskItemSummaryResponse,
@@ -206,6 +214,13 @@ function App() {
   });
   const [settingsIsOpen, setSettingsIsOpen] = useState(false);
   const [accountIsOpen, setAccountIsOpen] = useState(false);
+  const [accountDeletion, setAccountDeletion] = useState<AccountDeletionResponse | null>(null);
+  const [resetPasswordToken, setResetPasswordToken] = useState<string | null>(() => {
+    const fragment = window.location.hash;
+    return fragment.startsWith('#reset-password=')
+      ? decodeURIComponent(fragment.slice('#reset-password='.length))
+      : null;
+  });
   const [authOptions, setAuthOptions] =
     useState<AuthClientOptionsResponse>(defaultAuthOptions);
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
@@ -379,6 +394,21 @@ function App() {
         ? await getCloudSyncAccount()
         : null);
       setTemporarySessionIsActive(session.temporarySessionIsActive);
+      if (
+        session.currentUser &&
+        !session.localDesktopSessionIsActive &&
+        !session.temporarySessionIsActive &&
+        session.authOptions.accountDeletionEnabled
+      ) {
+        try {
+          setAccountDeletion(await getAccountDeletion());
+        } catch (error) {
+          setAccountDeletion(null);
+          showToast(getErrorMessage(error), 'error');
+        }
+      } else {
+        setAccountDeletion(null);
+      }
       setErrorMessage(null);
     } catch (error) {
       setConnectionStatus('offline');
@@ -387,7 +417,7 @@ function App() {
     } finally {
       setIsLoadingAuth(false);
     }
-  }, []);
+  }, [showToast]);
 
   const applyWorkspaceSnapshot = useCallback((
     snapshot: CachedWorkspaceSnapshot,
@@ -1367,13 +1397,26 @@ function App() {
     const isDesktopLocalSession =
       userState.session.sessionType === 'DesktopLocal' ||
         userState.session.sessionType === 2;
-    setLocalDesktopSessionIsActive(isDesktopLocalSession);
-    setTemporarySessionIsActive(
+    const isTemporarySessionActive =
       !isDesktopLocalSession &&
-        (userState.session.sessionType === 'Guest' ||
-          userState.session.sessionType === 5 ||
-          isTemporarySession()),
-    );
+      (userState.session.sessionType === 'Guest' ||
+        userState.session.sessionType === 5 ||
+        isTemporarySession());
+    setLocalDesktopSessionIsActive(isDesktopLocalSession);
+    setTemporarySessionIsActive(isTemporarySessionActive);
+    if (
+      !isDesktopLocalSession &&
+      !isTemporarySessionActive &&
+      authOptions.accountDeletionEnabled
+    ) {
+      try {
+        setAccountDeletion(await getAccountDeletion());
+      } catch {
+        setAccountDeletion(null);
+      }
+    } else {
+      setAccountDeletion(null);
+    }
     const workspaceId = userState.workspaces[0]?.id ?? null;
     setSelectedWorkspaceId(workspaceId);
     setSelectedTaskId(null);
@@ -1381,6 +1424,31 @@ function App() {
     setSelectedTask(null);
     setHasBootstrapped(true);
     await loadWorkspace(null, workspaceId);
+  };
+
+  const clearAuthenticatedClientState = () => {
+    setSessionToken(null);
+    setCurrentUser(null);
+    setAuthSessions([]);
+    setLocalDesktopSessionIsActive(false);
+    setTemporarySessionIsActive(false);
+    setAccountDeletion(null);
+    setCurrentWorkspaceId(null);
+    setSelectedWorkspaceId(null);
+    setWorkspace(null);
+    setWorkspaces([]);
+    setWorkspaceMembers([]);
+    setWorkspaceInvitations([]);
+    setIncomingWorkspaceInvitations([]);
+    setIncomingTaskShares([]);
+    setSavedViews([]);
+    setProjects([]);
+    setTaskItems([]);
+    setSelectedTaskId(null);
+    setSelectedTaskWorkspaceId(null);
+    setSelectedTask(null);
+    window.localStorage.removeItem(workspaceStorageKey);
+    setHasBootstrapped(false);
   };
 
   const handleLogin = async (requestBody: LoginUserRequest) => {
@@ -1395,6 +1463,33 @@ function App() {
       showToast(message, 'error');
       throw error;
     }
+  };
+
+  const handleForgotPassword = async (email: string) => {
+    try {
+      await forgotPassword({ email });
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleResetPassword = async (requestBody: ResetPasswordRequest) => {
+    try {
+      await resetPassword(requestBody);
+      clearAuthenticatedClientState();
+      showToast(t('passwordResetSuccess'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleResetPasswordComplete = () => {
+    window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+    setResetPasswordToken(null);
   };
 
   const handleRegister = async (requestBody: RegisterUserRequest) => {
@@ -1458,26 +1553,7 @@ function App() {
 
     try {
       await logoutUser();
-      setCurrentUser(null);
-      setAuthSessions([]);
-      setLocalDesktopSessionIsActive(false);
-      setTemporarySessionIsActive(false);
-      setCurrentWorkspaceId(null);
-      setSelectedWorkspaceId(null);
-      setWorkspace(null);
-      setWorkspaces([]);
-      setWorkspaceMembers([]);
-      setWorkspaceInvitations([]);
-      setIncomingWorkspaceInvitations([]);
-      setIncomingTaskShares([]);
-      setSavedViews([]);
-      setProjects([]);
-      setTaskItems([]);
-      setSelectedTaskId(null);
-      setSelectedTaskWorkspaceId(null);
-      setSelectedTask(null);
-      window.localStorage.removeItem(workspaceStorageKey);
-      setHasBootstrapped(false);
+      clearAuthenticatedClientState();
 
       if (!authOptions.requiresAuthentication) {
         await loadWorkspace(null, null);
@@ -1515,6 +1591,33 @@ function App() {
       const message = getErrorMessage(error);
       setErrorMessage(message);
       showToast(message, 'error');
+      throw error;
+    }
+  };
+
+  const handleRequestAccountDeletion = async (
+    confirmationEmail: string,
+    currentPassword?: string,
+  ) => {
+    try {
+      await requestAccountDeletion({ confirmationEmail, currentPassword: currentPassword || null });
+      setAccountDeletion(await getAccountDeletion());
+      showToast(t('accountDeletionRequested'), 'warning');
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleCancelAccountDeletion = async () => {
+    try {
+      await cancelAccountDeletion();
+      setAccountDeletion(null);
+      showToast(t('accountDeletionCancelled'), 'info');
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
       throw error;
     }
   };
@@ -2394,7 +2497,25 @@ function App() {
       />
 
       <section className="workspace" aria-label="Task workspace">
-        {mode === 'tour' ? (
+        {resetPasswordToken ? (
+          <AuthPanel
+            authOptions={authOptions}
+            currentUser={null}
+            isLoading={isLoadingAuth}
+            onDevelopmentLogin={handleDevelopmentLogin}
+            onForgotPassword={handleForgotPassword}
+            onGuestLogin={handleGuestLogin}
+            onLogin={handleLogin}
+            onRegister={handleRegister}
+            onResetPassword={handleResetPassword}
+            onResetPasswordComplete={handleResetPasswordComplete}
+            resetPasswordToken={resetPasswordToken}
+            localDesktopSessionIsActive={false}
+            temporarySessionIsActive={false}
+            t={t}
+            variant="gate"
+          />
+        ) : mode === 'tour' ? (
           <ProductTourPage onClose={handleCloseTour} t={t} />
         ) : isLoadingAuth ? (
           <section className="auth-gate" aria-label={t('account')}>
@@ -2408,9 +2529,13 @@ function App() {
               currentUser={currentUser}
               isLoading={isLoadingAuth}
               onDevelopmentLogin={handleDevelopmentLogin}
+              onForgotPassword={handleForgotPassword}
               onGuestLogin={handleGuestLogin}
               onLogin={handleLogin}
               onRegister={handleRegister}
+              onResetPassword={handleResetPassword}
+              onResetPasswordComplete={handleResetPasswordComplete}
+              resetPasswordToken={resetPasswordToken}
               localDesktopSessionIsActive={localDesktopSessionIsActive}
               temporarySessionIsActive={temporarySessionIsActive}
               t={t}
@@ -2518,6 +2643,7 @@ function App() {
       ) : null}
       {accountIsOpen ? (
         <AccountPanel
+          accountDeletion={accountDeletion}
           authSessions={authSessions}
           authOptions={authOptions}
           cloudSyncAccount={cloudSyncAccount}
@@ -2526,17 +2652,24 @@ function App() {
           incomingWorkspaceInvitations={incomingWorkspaceInvitations}
           isLoadingAuth={isLoadingAuth}
           onAcceptIncomingWorkspaceInvitation={handleAcceptIncomingWorkspaceInvitation}
+          onCancelAccountDeletion={handleCancelAccountDeletion}
           onClose={() => setAccountIsOpen(false)}
           onDeclineIncomingWorkspaceInvitation={handleDeclineIncomingWorkspaceInvitation}
           onConnectCloudAccount={handleConnectCloudAccount}
           onDisconnectCloudAccount={handleDisconnectCloudAccount}
           onDevelopmentLogin={handleDevelopmentLogin}
+          onForgotPassword={handleForgotPassword}
           onGuestLogin={handleGuestLogin}
           onLeaveTaskShare={handleLeaveTaskShare}
           onLogin={handleLogin}
           onLogout={handleLogout}
+          onOpenTour={handleOpenTour}
+          onRequestAccountDeletion={handleRequestAccountDeletion}
           onRegister={handleRegister}
           onRevokeAuthSession={handleRevokeAuthSession}
+          onResetPassword={handleResetPassword}
+          onResetPasswordComplete={handleResetPasswordComplete}
+          resetPasswordToken={resetPasswordToken}
           localDesktopSessionIsActive={localDesktopSessionIsActive}
           temporarySessionIsActive={temporarySessionIsActive}
           t={t}

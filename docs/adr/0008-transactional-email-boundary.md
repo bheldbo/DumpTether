@@ -6,7 +6,7 @@ Accepted for the current registration flow.
 
 ## Context
 
-DumpTether needs email confirmation and later account recovery. Provider
+DumpTether needs email confirmation, account recovery, and deletion notices. Provider
 delivery can fail temporarily or reach a quota. Creating a separate email
 service now would add another deployment, protocol, secret boundary, release
 pipeline, and failure mode before the product needs that scale.
@@ -32,6 +32,13 @@ is no resend-confirmation workflow or operational outbox yet. A transactional
 outbox may replace it later, but only together with retry observability and a
 user-facing resend flow.
 
+Password recovery uses the same transaction boundary for token creation and
+delivery: if delivery fails, the reset token and operator audit request roll
+back while the anonymous endpoint still returns its generic accepted response.
+Account deletion scheduling itself remains durable if its informational email
+fails; the reminder worker retries on later sweeps until a reminder is marked
+sent.
+
 Configuration should select one provider:
 
 ```text
@@ -53,6 +60,8 @@ uncommitted environment file, never pasted into chat or committed.
 - Failed delivery does not reserve the email address or leave partial account
   data behind.
 - Provider latency is currently part of registration latency.
+- Delayed account deletion uses a database-backed claimed worker, but email
+  delivery is not yet a full outbox and has a small send/mark crash window.
 - A future worker may consume a transactional outbox without moving the email
   module to another repository, but that is not current behavior.
 - A separate email service is reconsidered only when multiple products,
