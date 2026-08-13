@@ -20,6 +20,8 @@ export function ColorPickerPopover({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [draftColor, setDraftColor] = useState('');
+  const draftColorRef = useRef('');
+  const onChangeRef = useRef(onChange);
   const popoverRef = useRef<HTMLDivElement>(null);
   const selectedColor = isHexColor(color) ? color : '#FDE68A';
   const choices = useMemo(
@@ -28,11 +30,17 @@ export function ColorPickerPopover({
   );
 
   useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
     if (!isOpen) {
       return undefined;
     }
 
-    setDraftColor(isHexColor(color) ? color.toUpperCase() : selectedColor);
+    const initialColor = isHexColor(color) ? color.toUpperCase() : selectedColor;
+    draftColorRef.current = initialColor;
+    setDraftColor(initialColor);
 
     const handlePointerDown = (event: PointerEvent) => {
       if (
@@ -40,8 +48,8 @@ export function ColorPickerPopover({
         event.target instanceof Node &&
         !popoverRef.current.contains(event.target)
       ) {
-        const nextColor = draftColor.trim().toUpperCase();
-        onChange(isHexColor(nextColor) ? nextColor : '');
+        const nextColor = draftColorRef.current.trim().toUpperCase();
+        onChangeRef.current(isHexColor(nextColor) ? nextColor : '');
         setIsOpen(false);
       }
     };
@@ -49,16 +57,21 @@ export function ColorPickerPopover({
     window.addEventListener('pointerdown', handlePointerDown);
 
     return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [color, draftColor, isOpen, onChange, selectedColor]);
+  }, [color, isOpen, selectedColor]);
+
+  const updateDraftColor = (nextColor: string) => {
+    draftColorRef.current = nextColor;
+    setDraftColor(nextColor);
+  };
 
   const commitColor = () => {
-    const nextColor = draftColor.trim().toUpperCase();
+    const nextColor = draftColorRef.current.trim().toUpperCase();
     onChange(isHexColor(nextColor) ? nextColor : '');
     setIsOpen(false);
   };
 
   const cancelColor = () => {
-    setDraftColor(isHexColor(color) ? color.toUpperCase() : selectedColor);
+    updateDraftColor(isHexColor(color) ? color.toUpperCase() : selectedColor);
     setIsOpen(false);
   };
 
@@ -96,7 +109,7 @@ export function ColorPickerPopover({
                 key={choice}
                 onClick={(event) => {
                   event.stopPropagation();
-                  setDraftColor(choice);
+                  updateDraftColor(choice);
                   onChange(choice);
                   setIsOpen(false);
                 }}
@@ -109,7 +122,7 @@ export function ColorPickerPopover({
           <div className="custom-color-row">
             <input
               aria-label="Custom color"
-              onChange={(event) => setDraftColor(event.target.value.toUpperCase())}
+              onChange={(event) => updateDraftColor(event.target.value.toUpperCase())}
               onClick={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
               type="color"
@@ -118,7 +131,7 @@ export function ColorPickerPopover({
             <input
               aria-label={t('taskColor')}
               className="custom-color-input"
-              onChange={(event) => setDraftColor(event.target.value.toUpperCase())}
+              onChange={(event) => updateDraftColor(event.target.value.toUpperCase())}
               onClick={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
               placeholder="#FDE68A"

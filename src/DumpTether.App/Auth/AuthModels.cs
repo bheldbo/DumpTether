@@ -30,7 +30,8 @@ public sealed record AuthUserResponse(
     string DisplayName,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastLoginAt,
-    DateTimeOffset? EmailConfirmedAt);
+    DateTimeOffset? EmailConfirmedAt,
+    bool HasPasswordCredential);
 
 public sealed record AuthWorkspaceResponse(
     Guid Id,
@@ -85,6 +86,8 @@ public sealed record AuthClientOptionsResponse(
     bool DevelopmentLoginEnabled,
     bool LocalDesktopLoginEnabled,
     bool EmailConfirmationEnabled,
+    bool PasswordRecoveryEnabled,
+    bool AccountDeletionEnabled,
     AuthSignupMode SignupMode,
     IReadOnlyList<string> OAuthProviders,
     LegalClientOptionsResponse Legal);
@@ -110,6 +113,21 @@ public sealed record ExternalLoginRequest(
 
 public sealed record TestEmailRequest(
     string Email);
+
+public sealed record ForgotPasswordRequest(string Email);
+
+public sealed record ResetPasswordRequest(string Token, string NewPassword);
+
+public sealed record PasswordResetRequestAcceptedResponse(string Message);
+
+public sealed record AccountDeletionStatusResponse(
+    DateTimeOffset RequestedAt,
+    DateTimeOffset ScheduledFor,
+    DateTimeOffset? ReminderSentAt);
+
+public sealed record RequestAccountDeletionRequest(
+    string ConfirmationEmail,
+    string? CurrentPassword = null);
 
 public sealed record CurrentUserSession(
     Guid UserId,

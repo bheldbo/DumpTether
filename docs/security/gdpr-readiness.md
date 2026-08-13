@@ -12,6 +12,8 @@ Implemented foundations:
 - workspace-scoped authorization;
 - configurable retention for sessions and archived tasks;
 - versioned Terms and Privacy acknowledgement at registration;
+- cancellable 48-hour self-service account deletion with a 24-hour reminder;
+- audited operator deletion and standard-link password recovery;
 - server-side secrets and HTTPS deployment direction;
 - no advertising or analytics tracking in the current client.
 
@@ -21,12 +23,13 @@ Implemented foundations:
 - verify and sign processor agreements for hosting, Cloudflare, Brevo, and
   Microsoft where used;
 - document international transfer safeguards;
-- implement or operationalize account deletion and data export requests;
+- implement a portable personal-data export and operationalize access requests;
 - document backup, log, archive, and inactive-account retention;
 - maintain a record of processing activities;
 - define incident response and personal-data-breach procedures;
 - test email confirmation, authentication, sharing authorization, rate limits,
-  restoration, and deletion end to end;
+  restoration, password recovery, and deletion against the real production
+  email provider and backup procedure;
 - add bot protection or equivalent abuse controls before fully open signup.
 
 ## Legal acceptance is not blanket consent

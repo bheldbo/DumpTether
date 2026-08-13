@@ -202,6 +202,7 @@ export interface AuthUserResponse {
   createdAt: string;
   lastLoginAt: string | null;
   emailConfirmedAt: string | null;
+  hasPasswordCredential: boolean;
 }
 
 export interface AuthWorkspaceResponse {
@@ -238,6 +239,26 @@ export interface LoginUserRequest {
   email: string;
   password: string;
   deviceName?: string | null;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  newPassword: string;
+}
+
+export interface AccountDeletionResponse {
+  requestedAt: string;
+  scheduledFor: string;
+  reminderSentAt: string | null;
+}
+
+export interface RequestAccountDeletionRequest {
+  confirmationEmail: string;
+  currentPassword?: string | null;
 }
 
 export type UserSessionType =
@@ -292,6 +313,8 @@ export interface AuthClientOptionsResponse {
   developmentLoginEnabled: boolean;
   localDesktopLoginEnabled: boolean;
   emailConfirmationEnabled: boolean;
+  passwordRecoveryEnabled: boolean;
+  accountDeletionEnabled: boolean;
   signupMode: 'Open' | 'Whitelist' | 'InviteOnly' | 'Closed' | 1 | 2 | 3 | 4;
   oAuthProviders: string[];
   legal: LegalClientOptionsResponse;

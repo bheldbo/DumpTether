@@ -15,6 +15,7 @@ public sealed class AppUser
         string normalizedEmail,
         string displayName,
         string passwordHash,
+        bool hasPasswordCredential,
         DateTimeOffset createdAt,
         DateTimeOffset? emailConfirmedAt)
     {
@@ -23,6 +24,7 @@ public sealed class AppUser
         NormalizedEmail = normalizedEmail;
         DisplayName = displayName;
         PasswordHash = passwordHash;
+        HasPasswordCredential = hasPasswordCredential;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
         EmailConfirmedAt = emailConfirmedAt;
@@ -38,6 +40,8 @@ public sealed class AppUser
     public string DisplayName { get; private set; } = string.Empty;
 
     public string PasswordHash { get; private set; } = string.Empty;
+
+    public bool HasPasswordCredential { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -59,7 +63,8 @@ public sealed class AppUser
         string? displayName,
         string passwordHash,
         DateTimeOffset createdAt,
-        bool emailIsConfirmed = true)
+        bool emailIsConfirmed = true,
+        bool hasPasswordCredential = true)
     {
         var normalizedEmail = NormalizeEmail(email);
         var trimmedDisplayName = DomainGuards.OptionalTrimmed(displayName) ??
@@ -71,6 +76,7 @@ public sealed class AppUser
             normalizedEmail,
             trimmedDisplayName,
             DomainGuards.NotBlank(passwordHash, nameof(passwordHash)),
+            hasPasswordCredential,
             createdAt,
             emailIsConfirmed ? createdAt : null);
     }
@@ -102,6 +108,13 @@ public sealed class AppUser
     {
         IsActive = true;
         UpdatedAt = activatedAt;
+    }
+
+    public void ChangePassword(string passwordHash, DateTimeOffset changedAt)
+    {
+        PasswordHash = DomainGuards.NotBlank(passwordHash, nameof(passwordHash));
+        HasPasswordCredential = true;
+        UpdatedAt = changedAt;
     }
 
     private static string NormalizeEmailForStorage(string email)

@@ -2,6 +2,7 @@ using DumpTether.App.LiveUpdates;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using DumpTether.App.Sync;
+using DumpTether.App.Tasks;
 using DumpTether.Data;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
@@ -35,6 +36,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
     private readonly ICloudSyncClient? _cloudSyncClient;
     private readonly ILiveUpdatePublisher? _liveUpdatePublisher;
     private readonly IEmailSender? _emailSender;
+    private readonly IClock? _clock;
 
     public DumpTetherApiFactory(
         bool requireAuthentication = false,
@@ -45,7 +47,8 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         IReadOnlyDictionary<string, string?>? extraConfiguration = null,
         ICloudSyncClient? cloudSyncClient = null,
         ILiveUpdatePublisher? liveUpdatePublisher = null,
-        IEmailSender? emailSender = null)
+        IEmailSender? emailSender = null,
+        IClock? clock = null)
     {
         _requireAuthentication = requireAuthentication;
         _enableDevelopmentLogin = enableDevelopmentLogin;
@@ -56,6 +59,7 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
         _cloudSyncClient = cloudSyncClient;
         _liveUpdatePublisher = liveUpdatePublisher;
         _emailSender = emailSender;
+        _clock = clock;
         _previousConnectionString = Environment.GetEnvironmentVariable(ConnectionStringKey);
         _previousApplyMigrationsOnStartup =
             Environment.GetEnvironmentVariable(ApplyMigrationsOnStartupKey);
@@ -140,6 +144,12 @@ internal sealed class DumpTetherApiFactory : WebApplicationFactory<Program>
             {
                 services.RemoveAll<IEmailSender>();
                 services.AddSingleton(_emailSender);
+            }
+
+            if (_clock is not null)
+            {
+                services.RemoveAll<IClock>();
+                services.AddSingleton(_clock);
             }
 
             services.RemoveAll<ICloudSessionProtector>();

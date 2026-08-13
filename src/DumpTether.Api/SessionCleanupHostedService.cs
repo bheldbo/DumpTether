@@ -73,15 +73,23 @@ internal sealed class SessionCleanupHostedService : BackgroundService
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();
         var now = clock.UtcNow;
         var cleanupDays = Math.Clamp(options.SessionCleanupDays, 1, 3650);
-        var deleted = await authRepository.DeleteInactiveSessionsAsync(
+        var deleteBefore = now.AddDays(-cleanupDays);
+        var deletedSessions = await authRepository.DeleteInactiveSessionsAsync(
             now,
-            now.AddDays(-cleanupDays),
+            deleteBefore,
+            cancellationToken);
+        var deletedTokens = await authRepository.DeleteInactiveAuthTokensAsync(
+            now,
+            deleteBefore,
             cancellationToken);
 
-        if (deleted > 0)
+        if (deletedSessions > 0 || deletedTokens > 0)
         {
             await authRepository.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Deleted {SessionCount} inactive user sessions.", deleted);
+            _logger.LogInformation(
+                "Deleted {SessionCount} inactive user sessions and {TokenCount} inactive auth tokens.",
+                deletedSessions,
+                deletedTokens);
         }
     }
 }

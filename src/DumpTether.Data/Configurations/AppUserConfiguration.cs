@@ -55,10 +55,16 @@ internal sealed class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
             .HasDefaultValue(true)
             .IsRequired();
 
+        builder.Property(user => user.HasPasswordCredential)
+            .HasColumnName("has_password_credential")
+            .HasDefaultValue(true)
+            .IsRequired();
+
         builder.Ignore(user => user.Sessions);
         builder.Ignore(user => user.WorkspaceMemberships);
 
         builder.HasIndex(user => user.NormalizedEmail)
             .IsUnique();
+
     }
 }

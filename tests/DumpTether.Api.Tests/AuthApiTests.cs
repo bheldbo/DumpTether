@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace DumpTether.Api.Tests;
@@ -263,6 +264,299 @@ public sealed class AuthApiTests
         Assert.Equal(HttpStatusCode.BadRequest, reused.StatusCode);
         Assert.Contains("This confirmation link is not valid", reusedBody);
         Assert.Contains("Return to DumpTether login", reusedBody);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_ReturnsSameResponse_ForKnownAndUnknownAccounts()
+    {
+        var emailSender = new ControllableEmailSender();
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: PasswordRecoveryConfiguration(),
+            emailSender: emailSender);
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "recover@example.com", "correct horse battery");
+
+        var unknown = await client.PostAsJsonAsync(
+            "/api/auth/forgot-password",
+            new { email = "unknown@example.com" });
+        var known = await client.PostAsJsonAsync(
+            "/api/auth/forgot-password",
+            new { email = "recover@example.com" });
+
+        Assert.Equal(HttpStatusCode.Accepted, unknown.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, known.StatusCode);
+        Assert.Equal(
+            await unknown.Content.ReadAsStringAsync(),
+            await known.Content.ReadAsStringAsync());
+        var message = Assert.Single(emailSender.SentMessages);
+        Assert.Equal("recover@example.com", message.ToEmail);
+        Assert.Contains("#reset-password=", message.TextContent);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_WhenEmailDeliveryFails_DoesNotLeaveAUsableToken()
+    {
+        var emailSender = new ControllableEmailSender { FailDelivery = true };
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: PasswordRecoveryConfiguration(),
+            emailSender: emailSender);
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "delivery-failed@example.com", "correct horse battery");
+
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/forgot-password",
+            new { email = "delivery-failed@example.com" });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.PasswordResetTokens.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ResetPassword_IsSingleUse_ChangesPassword_AndRevokesExistingSessions()
+    {
+        var emailSender = new ControllableEmailSender();
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: PasswordRecoveryConfiguration(),
+            emailSender: emailSender);
+        using var accountClient = factory.CreateClient();
+        using var resetClient = factory.CreateClient();
+        await RegisterAsync(accountClient, "reset@example.com", "correct horse battery");
+        var existingLogin = await LoginAsync(
+            accountClient,
+            "reset@example.com",
+            "correct horse battery");
+
+        var forgot = await resetClient.PostAsJsonAsync(
+            "/api/auth/forgot-password",
+            new { email = "reset@example.com" });
+        Assert.Equal(HttpStatusCode.Accepted, forgot.StatusCode);
+        var token = ExtractPasswordResetToken(Assert.Single(emailSender.SentMessages));
+
+        var reset = await resetClient.PostAsJsonAsync(
+            "/api/auth/reset-password",
+            new { token, newPassword = "new correct horse battery" });
+        Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
+
+        var oldPassword = await LoginWithResponseAsync(
+            resetClient,
+            "reset@example.com",
+            "correct horse battery");
+        Assert.Equal(HttpStatusCode.Unauthorized, oldPassword.StatusCode);
+
+        var newPassword = await LoginWithResponseAsync(
+            resetClient,
+            "reset@example.com",
+            "new correct horse battery");
+        newPassword.EnsureSuccessStatusCode();
+
+        accountClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", existingLogin.SessionToken);
+        var oldSession = await accountClient.GetAsync("/api/auth/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, oldSession.StatusCode);
+
+        using var replayClient = factory.CreateClient();
+        var reused = await replayClient.PostAsJsonAsync(
+            "/api/auth/reset-password",
+            new { token, newPassword = "another password" });
+        Assert.Equal(HttpStatusCode.BadRequest, reused.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var storedToken = await dbContext.PasswordResetTokens.SingleAsync();
+        Assert.NotEqual(token, storedToken.TokenHash);
+        Assert.NotNull(storedToken.UsedAt);
+    }
+
+    [Fact]
+    public async Task ResetPassword_InvalidatesOtherOutstandingResetLinks()
+    {
+        var emailSender = new ControllableEmailSender();
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: PasswordRecoveryConfiguration(),
+            emailSender: emailSender);
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "many-links@example.com", "correct horse battery");
+
+        await client.PostAsJsonAsync(
+            "/api/auth/forgot-password",
+            new { email = "many-links@example.com" });
+        await client.PostAsJsonAsync(
+            "/api/auth/forgot-password",
+            new { email = "many-links@example.com" });
+        var firstToken = ExtractPasswordResetToken(emailSender.SentMessages[0]);
+        var secondToken = ExtractPasswordResetToken(emailSender.SentMessages[1]);
+
+        var firstReset = await client.PostAsJsonAsync(
+            "/api/auth/reset-password",
+            new { token = firstToken, newPassword = "new correct horse battery" });
+        var secondReset = await client.PostAsJsonAsync(
+            "/api/auth/reset-password",
+            new { token = secondToken, newPassword = "another correct horse battery" });
+
+        Assert.Equal(HttpStatusCode.NoContent, firstReset.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, secondReset.StatusCode);
+    }
+
+    [Fact]
+    public async Task OperatorPasswordReset_UsesStandardLinkAndWritesAuditEvidence()
+    {
+        var emailSender = new ControllableEmailSender();
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: PasswordRecoveryConfiguration(),
+            emailSender: emailSender);
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "operator-reset@example.com", "correct horse battery");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+            await authService.SendPasswordResetForOperatorAsync(
+                "operator-reset@example.com",
+                "test-operator",
+                "Account owner requested help.",
+                CancellationToken.None);
+        }
+
+        var message = Assert.Single(emailSender.SentMessages);
+        Assert.Equal("operator-reset@example.com", message.ToEmail);
+        Assert.Contains("#reset-password=", message.TextContent);
+
+        using var verificationScope = factory.Services.CreateScope();
+        var dbContext = verificationScope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var auditEvent = await dbContext.OperatorAuditEvents.SingleAsync();
+        Assert.Equal("password_reset.requested", auditEvent.Action);
+        Assert.Equal("test-operator", auditEvent.Actor);
+        Assert.Equal("Account owner requested help.", auditEvent.Reason);
+    }
+
+    [Fact]
+    public async Task AccountDeletion_CanBeScheduledFor48HoursAndCancelled()
+    {
+        var emailSender = new ControllableEmailSender();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            extraConfiguration: AccountDeletionConfiguration(),
+            emailSender: emailSender);
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "delete-me@example.com", "correct horse battery");
+        var login = await LoginAsync(client, "delete-me@example.com", "correct horse battery");
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+
+        var before = DateTimeOffset.UtcNow;
+        var schedule = await client.PostAsJsonAsync(
+            "/api/account/deletion",
+            new
+            {
+                confirmationEmail = "delete-me@example.com",
+                currentPassword = "correct horse battery"
+            });
+        schedule.EnsureSuccessStatusCode();
+        var status = await schedule.Content.ReadFromJsonAsync<AccountDeletionStatusResponse>();
+
+        Assert.NotNull(status);
+        Assert.InRange(
+            status!.ScheduledFor,
+            before.AddHours(48),
+            DateTimeOffset.UtcNow.AddHours(48).AddMinutes(1));
+        Assert.Contains(
+            "scheduled for deletion",
+            Assert.Single(emailSender.SentMessages).TextContent,
+            StringComparison.OrdinalIgnoreCase);
+
+        var fetched = await client.GetFromJsonAsync<AccountDeletionStatusResponse>(
+            "/api/account/deletion");
+        Assert.Equal(status.ScheduledFor, fetched!.ScheduledFor);
+
+        var cancel = await client.DeleteAsync("/api/account/deletion");
+        Assert.Equal(HttpStatusCode.NoContent, cancel.StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            (await client.GetAsync("/api/account/deletion")).StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.AccountDeletionRequests.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AccountDeletion_RejectsWrongCurrentPassword()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            extraConfiguration: AccountDeletionConfiguration(),
+            emailSender: new ControllableEmailSender());
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "keep-me@example.com", "correct horse battery");
+        var login = await LoginAsync(client, "keep-me@example.com", "correct horse battery");
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/account/deletion",
+            new
+            {
+                confirmationEmail = "keep-me@example.com",
+                currentPassword = "wrong password"
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.AccountDeletionRequests.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AccountDeletionWorker_SendsReminderThenDeletesAtDeadline()
+    {
+        var clock = new MutableClock(DateTimeOffset.UtcNow);
+        var emailSender = new ControllableEmailSender();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            extraConfiguration: AccountDeletionConfiguration(),
+            emailSender: emailSender,
+            clock: clock);
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "scheduled-delete@example.com", "correct horse battery");
+        var login = await LoginAsync(
+            client,
+            "scheduled-delete@example.com",
+            "correct horse battery");
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+        var schedule = await client.PostAsJsonAsync(
+            "/api/account/deletion",
+            new
+            {
+                confirmationEmail = "scheduled-delete@example.com",
+                currentPassword = "correct horse battery"
+            });
+        schedule.EnsureSuccessStatusCode();
+
+        var worker = factory.Services.GetServices<IHostedService>()
+            .OfType<AccountDeletionHostedService>()
+            .Single();
+        clock.Advance(TimeSpan.FromHours(24));
+        await worker.ProcessOnceAsync(CancellationToken.None);
+
+        Assert.Equal(2, emailSender.SentMessages.Count);
+        Assert.Contains(
+            "about 24 hours",
+            emailSender.SentMessages[1].Subject,
+            StringComparison.OrdinalIgnoreCase);
+
+        clock.Advance(TimeSpan.FromHours(24));
+        await worker.ProcessOnceAsync(CancellationToken.None);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        Assert.Empty(await dbContext.AppUsers.ToListAsync());
+        Assert.Empty(await dbContext.AccountDeletionRequests.ToListAsync());
+        Assert.Contains(
+            await dbContext.OperatorAuditEvents.ToListAsync(),
+            audit => audit.Action == "user.delete");
     }
 
     [Fact]
@@ -712,20 +1006,22 @@ public sealed class AuthApiTests
     }
 
     [Fact]
-    public async Task GetOptions_ReturnsSignupMode()
+    public async Task GetOptions_ReturnsSignupModeAndAccountLifecycleCapabilities()
     {
+        var configuration = PasswordRecoveryConfiguration();
+        configuration["AccountDeletion:Enabled"] = "true";
+        configuration["Auth:SignupMode"] = "InviteOnly";
+        configuration["Auth:SignupInviteCodes:0"] = "alpha-invite";
         using var factory = new DumpTetherApiFactory(
-            extraConfiguration: new Dictionary<string, string?>
-            {
-                ["Auth:SignupMode"] = "InviteOnly",
-                ["Auth:SignupInviteCodes:0"] = "alpha-invite"
-            });
+            extraConfiguration: configuration);
         using var client = factory.CreateClient();
 
         var options = await client.GetFromJsonAsync<AuthClientOptionsResponse>("/api/auth/options");
 
         Assert.NotNull(options);
         Assert.Equal(AuthSignupMode.InviteOnly, options!.SignupMode);
+        Assert.True(options.PasswordRecoveryEnabled);
+        Assert.True(options.AccountDeletionEnabled);
     }
 
     [Fact]
@@ -1055,6 +1351,41 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public void Startup_WhenPasswordRecoveryEnabledWithoutProvider_ThrowsHelpfulError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["PasswordRecovery:Enabled"] = "true",
+                ["PasswordRecovery:PublicBaseUrl"] = "https://dumptether.example.com"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
+
+        Assert.Contains("DumpTether configuration is incomplete", exception.Message);
+        Assert.Contains("Email:Provider", exception.Message);
+    }
+
+    [Fact]
+    public void Startup_WhenAccountDeletionEnabledWithoutProvider_ThrowsHelpfulError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AccountDeletion:Enabled"] = "true"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
+
+        Assert.Contains("DumpTether configuration is incomplete", exception.Message);
+        Assert.Contains("Email:Provider", exception.Message);
+    }
+
+    [Fact]
     public void Startup_WhenBooleanContainsInlineComment_ThrowsHelpfulError()
     {
         var configuration = new ConfigurationBuilder()
@@ -1373,6 +1704,42 @@ public sealed class AuthApiTests
             ["Email:Smtp:EnableSsl"] = "false"
         };
 
+    private static Dictionary<string, string?> PasswordRecoveryConfiguration() =>
+        new()
+        {
+            ["PasswordRecovery:Enabled"] = "true",
+            ["PasswordRecovery:PublicBaseUrl"] = "http://localhost",
+            ["PasswordRecovery:TokenHours"] = "1",
+            ["Email:Provider"] = "Smtp",
+            ["Email:FromEmail"] = "noreply@example.com",
+            ["Email:Smtp:Host"] = "localhost",
+            ["Email:Smtp:Port"] = "1025",
+            ["Email:Smtp:UseAuthentication"] = "false",
+            ["Email:Smtp:EnableSsl"] = "false"
+        };
+
+    private static Dictionary<string, string?> AccountDeletionConfiguration()
+    {
+        var configuration = PasswordRecoveryConfiguration();
+        configuration["PasswordRecovery:Enabled"] = "false";
+        configuration["AccountDeletion:Enabled"] = "true";
+        configuration["AccountDeletion:GraceHours"] = "48";
+        configuration["AccountDeletion:ReminderHoursBefore"] = "24";
+        configuration["AccountDeletion:SweepIntervalMinutes"] = "1440";
+        return configuration;
+    }
+
+    private static string ExtractPasswordResetToken(EmailMessage message)
+    {
+        var resetUrl = message.TextContent!
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Last();
+        var fragment = new Uri(resetUrl).Fragment;
+        const string prefix = "#reset-password=";
+        Assert.StartsWith(prefix, fragment, StringComparison.Ordinal);
+        return Uri.UnescapeDataString(fragment[prefix.Length..]);
+    }
+
     private static object ValidLegalAcceptance() =>
         new
         {
@@ -1394,6 +1761,8 @@ public sealed class AuthApiTests
             ["Auth:EnableDevelopmentLogin"] = "false",
             ["Auth:EnableLocalDesktopLogin"] = "true",
             ["EmailConfirmation:Enabled"] = "false",
+            ["PasswordRecovery:Enabled"] = "false",
+            ["AccountDeletion:Enabled"] = "false",
             ["Email:Provider"] = "None",
             ["Mfa:Email:Enabled"] = "false",
             ["OAuth:Microsoft:Enabled"] = "false",
@@ -1494,5 +1863,17 @@ public sealed class AuthApiTests
 
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class MutableClock : IClock
+    {
+        public MutableClock(DateTimeOffset utcNow)
+        {
+            UtcNow = utcNow;
+        }
+
+        public DateTimeOffset UtcNow { get; private set; }
+
+        public void Advance(TimeSpan amount) => UtcNow = UtcNow.Add(amount);
     }
 }

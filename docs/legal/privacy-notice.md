@@ -54,9 +54,12 @@ deletion, restriction, objection, or portability. A person may also complain
 to the Danish Data Protection Agency. Requests should be sent to the configured
 privacy contact.
 
-Self-service account deletion and export are not complete yet. Until they are,
-the operator must provide a documented manual request process before public
-signup is opened.
+Account holders can schedule self-service deletion from Account settings. The
+request has a 48-hour cancellation period and a reminder is sent about 24 hours
+before deletion. Deletion of an account that owns shared boards is blocked until
+the owner removes those sharing relationships. A portable self-service export
+is not complete yet; the operator must provide a documented manual access and
+export process until it is.
 
 ## Cookies
 

@@ -537,15 +537,17 @@ export function Sidebar({
         <div className="sidebar-separator sidebar-separator-actions" />
 
         <div className="sidebar-actions">
-          <button
-            aria-current={mode === 'tour' ? 'page' : undefined}
-            className="nav-item"
-            onClick={onOpenTour}
-            type="button"
-          >
-            <Icon name="help" />
-            <span className="nav-label">{t('tour')}</span>
-          </button>
+          {!currentUser ? (
+            <button
+              aria-current={mode === 'tour' ? 'page' : undefined}
+              className="nav-item"
+              onClick={onOpenTour}
+              type="button"
+            >
+              <Icon name="help" />
+              <span className="nav-label">{t('tour')}</span>
+            </button>
+          ) : null}
           <button
             aria-current={mode === 'templates' ? 'page' : undefined}
             className="nav-item"

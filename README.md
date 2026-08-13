@@ -326,6 +326,13 @@ Email__Smtp__Port
 Email__Smtp__UseAuthentication
 Email__Smtp__EnableSsl
 Email__BrevoApi__ApiKey
+PasswordRecovery__Enabled
+PasswordRecovery__PublicBaseUrl
+PasswordRecovery__TokenHours
+AccountDeletion__Enabled
+AccountDeletion__GraceHours
+AccountDeletion__ReminderHoursBefore
+AccountDeletion__SweepIntervalMinutes
 OAuth__Microsoft__Enabled
 OAuth__Microsoft__ClientId
 OAuth__Microsoft__ClientSecret
@@ -396,6 +403,25 @@ DUMPTETHER_EMAIL_SMTP_ENABLE_SSL=false
 Register a user and open `http://127.0.0.1:8025` to inspect the confirmation
 message. A containerized API uses `mailpit` instead of `localhost` as the SMTP
 host. Production still needs a delivery-capable SMTP relay or `BrevoApi`.
+
+The same provider sends password recovery and account deletion messages. To
+enable those capabilities on a hosted server, configure:
+
+```text
+DUMPTETHER_PASSWORD_RECOVERY_ENABLED=true
+DUMPTETHER_PASSWORD_RECOVERY_PUBLIC_BASE_URL=https://dumptether.example.com
+DUMPTETHER_PASSWORD_RECOVERY_TOKEN_HOURS=1
+DUMPTETHER_ACCOUNT_DELETION_ENABLED=true
+DUMPTETHER_ACCOUNT_DELETION_GRACE_HOURS=48
+DUMPTETHER_ACCOUNT_DELETION_REMINDER_HOURS_BEFORE=24
+DUMPTETHER_ACCOUNT_DELETION_SWEEP_INTERVAL_MINUTES=30
+```
+
+Recovery returns the same response for known and unknown accounts. Reset links
+are single-use, stored only as hashes, invalidate other reset links, and revoke
+existing sessions after a successful password change. Account deletion is
+cancellable for 48 hours, sends a reminder after roughly 24 hours, and refuses
+to delete an owner account while its boards are shared.
 
 `DUMPTETHER_EMAIL_CONFIRMATION_ENABLED=true` and
 `DUMPTETHER_EMAIL_PROVIDER=None` is intentionally rejected at API startup.
@@ -722,6 +748,10 @@ no public HTTP route and never prints passwords or tokens. See
 `docs/adr/0009-server-operations-and-administration.md` and the production
 deployment guide for commands. The practical walkthrough is in
 [`docs/deployment/operator-administration.md`](docs/deployment/operator-administration.md).
+
+Operators never assign passwords. For a verified recovery request, the CLI can
+send the same one-hour, single-use reset link as the normal Forgot password
+flow with `users send-password-reset <email> --actor <name> --reason <text>`.
 
 ## Testing
 

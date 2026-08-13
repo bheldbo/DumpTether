@@ -41,6 +41,13 @@ services:
       Cors__AllowedOrigins__0: ${DUMPTETHER_CORS_ALLOWED_ORIGIN_0}
       EmailConfirmation__Enabled: ${DUMPTETHER_EMAIL_CONFIRMATION_ENABLED:-false}
       EmailConfirmation__PublicBaseUrl: ${DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL}
+      PasswordRecovery__Enabled: ${DUMPTETHER_PASSWORD_RECOVERY_ENABLED:-false}
+      PasswordRecovery__PublicBaseUrl: ${DUMPTETHER_PASSWORD_RECOVERY_PUBLIC_BASE_URL}
+      PasswordRecovery__TokenHours: ${DUMPTETHER_PASSWORD_RECOVERY_TOKEN_HOURS:-1}
+      AccountDeletion__Enabled: ${DUMPTETHER_ACCOUNT_DELETION_ENABLED:-true}
+      AccountDeletion__GraceHours: ${DUMPTETHER_ACCOUNT_DELETION_GRACE_HOURS:-48}
+      AccountDeletion__ReminderHoursBefore: ${DUMPTETHER_ACCOUNT_DELETION_REMINDER_HOURS_BEFORE:-24}
+      AccountDeletion__SweepIntervalMinutes: ${DUMPTETHER_ACCOUNT_DELETION_SWEEP_INTERVAL_MINUTES:-30}
       Email__FromEmail: ${DUMPTETHER_EMAIL_FROM}
       Email__FromName: ${DUMPTETHER_EMAIL_FROM_NAME:-DumpTether}
       Email__Provider: ${DUMPTETHER_EMAIL_PROVIDER:-None}

@@ -63,7 +63,7 @@ jobs:
 
       - name: Check client deployment target
         working-directory: apps/desktop
-        run: npm run configure:client:check
+        run: npm run configure:client:check -- --target public
 
       - name: Lint
         run: npm run lint

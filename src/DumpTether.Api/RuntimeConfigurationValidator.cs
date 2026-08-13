@@ -26,6 +26,17 @@ public static class RuntimeConfigurationValidator
             AddIfMissing(configuration, "EmailConfirmation:PublicBaseUrl", missingKeys);
         }
 
+        if (GetBoolean(configuration, "PasswordRecovery:Enabled"))
+        {
+            AddMissingEmailProviderKeys(configuration, emailProvider, missingKeys);
+            AddIfMissing(configuration, "PasswordRecovery:PublicBaseUrl", missingKeys);
+        }
+
+        if (GetBoolean(configuration, "AccountDeletion:Enabled"))
+        {
+            AddMissingEmailProviderKeys(configuration, emailProvider, missingKeys);
+        }
+
         if (GetBoolean(configuration, "Mfa:Email:Enabled"))
         {
             throw new InvalidOperationException(
@@ -259,6 +270,8 @@ public static class RuntimeConfigurationValidator
         RequireBoolean(configuration, "Auth:EnableLocalDesktopLogin", expected: true);
         RequireValue(configuration, "Auth:SignupMode", "Closed");
         RequireBoolean(configuration, "EmailConfirmation:Enabled", expected: false);
+        RequireBoolean(configuration, "PasswordRecovery:Enabled", expected: false);
+        RequireBoolean(configuration, "AccountDeletion:Enabled", expected: false);
         RequireBoolean(configuration, "Mfa:Email:Enabled", expected: false);
         RequireBoolean(configuration, "OAuth:Microsoft:Enabled", expected: false);
 

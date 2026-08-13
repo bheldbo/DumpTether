@@ -1,14 +1,17 @@
 using DumpTether.App.Administration;
+using DumpTether.App.Auth;
 
 namespace DumpTether.Admin;
 
 internal sealed class AdminCommandRunner
 {
     private readonly IAdministrationService _service;
+    private readonly IAuthService _authService;
 
-    public AdminCommandRunner(IAdministrationService service)
+    public AdminCommandRunner(IAdministrationService service, IAuthService authService)
     {
         _service = service;
+        _authService = authService;
     }
 
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
@@ -29,6 +32,7 @@ internal sealed class AdminCommandRunner
                 ("users", "lock") => await LockUserAsync(args, cancellationToken),
                 ("users", "unlock") => await UnlockUserAsync(args, cancellationToken),
                 ("users", "delete") => await DeleteUserAsync(args, cancellationToken),
+                ("users", "send-password-reset") => await SendPasswordResetAsync(args, cancellationToken),
                 ("sessions", "revoke") => await RevokeSessionsAsync(args, cancellationToken),
                 _ => UnknownCommand()
             };
@@ -175,6 +179,19 @@ internal sealed class AdminCommandRunner
         return 0;
     }
 
+    private async Task<int> SendPasswordResetAsync(string[] args, CancellationToken cancellationToken)
+    {
+        var email = RequirePositional(args, 2, "email");
+        var actor = RequireOperator(args);
+        var reason = RequireOption(args, "--reason");
+        await _authService.SendPasswordResetForOperatorAsync(
+            email,
+            actor,
+            reason,
+            cancellationToken);
+        return Success($"Sent the standard password reset link to {email}.");
+    }
+
     private static string RequireOperator(string[] args)
     {
         var actor = GetOption(args, "--actor") ??
@@ -245,6 +262,7 @@ internal sealed class AdminCommandRunner
         Console.WriteLine("  users unlock <email> --actor <name> --reason <text>");
         Console.WriteLine("  sessions revoke <email> --actor <name> --reason <text>");
         Console.WriteLine("  users delete <email> --confirm <email> --actor <name> --reason <text>");
+        Console.WriteLine("  users send-password-reset <email> --actor <name> --reason <text>");
         Console.WriteLine();
         Console.WriteLine("This tool is intended for SSH-only server operation. It never prints password or token hashes.");
     }

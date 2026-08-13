@@ -5,6 +5,7 @@ import type {
   ArchiveProjectTasksRequest,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
+  AccountDeletionResponse,
   AuthClientOptionsResponse,
   AuthSessionListItemResponse,
   CloudSyncAccountResponse,
@@ -15,6 +16,7 @@ import type {
   CopyTaskItemsResponse,
   DeleteTaskItemsRequest,
   DisconnectCloudAccountResponse,
+  ForgotPasswordRequest,
   CreateTaskShareRequest,
   CreateTaskShareLinkRequest,
   CreateWorkspaceInvitationRequest,
@@ -28,11 +30,13 @@ import type {
   LoginUserRequest,
   LoginUserResponse,
   LegalAcceptanceSubmission,
+  RequestAccountDeletionRequest,
   ReconcileCloudWorkspacesResponse,
   ReopenTaskItemRequest,
   ReopenTaskItemsRequest,
   RegisterUserRequest,
   RegisterUserResponse,
+  ResetPasswordRequest,
   SavedViewResponse,
   TaskTemplateDetailResponse,
   TaskTemplateImportResponse,
@@ -199,7 +203,8 @@ async function request<T>(
     return undefined as T;
   }
 
-  return (await response.json()) as T;
+  const responseText = await response.text();
+  return responseText ? JSON.parse(responseText) as T : undefined as T;
 }
 
 function readStoredSessionToken() {
@@ -281,6 +286,41 @@ export function revokeAuthSession(sessionId: string): Promise<void> {
 
 export function getAuthOptions(): Promise<AuthClientOptionsResponse> {
   return request<AuthClientOptionsResponse>('/api/auth/options');
+}
+
+export function forgotPassword(requestBody: ForgotPasswordRequest): Promise<void> {
+  return request<void>('/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function resetPassword(requestBody: ResetPasswordRequest): Promise<void> {
+  return request<void>('/api/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export async function getAccountDeletion(): Promise<AccountDeletionResponse | null> {
+  return (await request<AccountDeletionResponse | null | undefined>(
+    '/api/account/deletion',
+  )) ?? null;
+}
+
+export function requestAccountDeletion(
+  requestBody: RequestAccountDeletionRequest,
+): Promise<void> {
+  return request<void>('/api/account/deletion', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export function cancelAccountDeletion(): Promise<void> {
+  return request<void>('/api/account/deletion', {
+    method: 'DELETE',
+  });
 }
 
 export function beginOAuthLogin(

@@ -94,7 +94,7 @@ export function ProductTourPage({ onClose, t }: { onClose: () => void; t: Transl
         <div className="tour-intro-actions">
           <span><Icon name="shield" /> {t('tourExamplesOnly')}</span>
           {guideIndex === null ? (
-            <button className="primary-action" onClick={() => setGuideIndex(0)} type="button"><Icon name="help" />{t('tourStartGuide')}</button>
+            <button className="secondary-action" data-active="true" onClick={() => setGuideIndex(0)} type="button"><Icon name="help" />{t('tourStartGuide')}</button>
           ) : null}
           <button className="secondary-action" onClick={onClose} type="button"><Icon name="back" />{t('tourBackToApp')}</button>
         </div>

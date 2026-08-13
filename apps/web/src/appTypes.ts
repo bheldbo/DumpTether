@@ -41,6 +41,8 @@ export const defaultAuthOptions: AuthClientOptionsResponse = {
   developmentLoginEnabled: false,
   localDesktopLoginEnabled: false,
   emailConfirmationEnabled: false,
+  passwordRecoveryEnabled: false,
+  accountDeletionEnabled: false,
   signupMode: 'Open',
   oAuthProviders: [],
   legal: {
