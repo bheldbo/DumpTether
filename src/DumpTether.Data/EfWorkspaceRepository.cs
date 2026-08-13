@@ -316,10 +316,11 @@ internal sealed class EfWorkspaceRepository : IWorkspaceRepository
                 await _dbContext.TaskItemShares
                     .Where(share => taskIds.Contains(share.TaskItemId))
                     .ToListAsync(cancellationToken));
+            var taskItems = await _dbContext.TaskItems
+                .Where(taskItem => taskIds.Contains(taskItem.Id))
+                .ToListAsync(cancellationToken);
             _dbContext.TaskItems.RemoveRange(
-                await _dbContext.TaskItems
-                    .Where(taskItem => taskIds.Contains(taskItem.Id))
-                    .ToListAsync(cancellationToken));
+                taskItems.OrderByDescending(taskItem => taskItem.ParentTaskItemId.HasValue));
         }
 
         _dbContext.SavedViews.RemoveRange(

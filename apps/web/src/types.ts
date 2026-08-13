@@ -19,6 +19,8 @@ export interface TaskItemSummaryResponse {
   shares: TaskItemShareResponse[];
   syncState: TaskSyncStateResponse | null;
   latestTimelineEntry: TaskTimelineEntryResponse | null;
+  parentTaskItemId: string | null;
+  subtaskCount: number;
 }
 
 export interface TaskItemDetailResponse extends TaskItemSummaryResponse {
@@ -409,6 +411,7 @@ export interface SavedViewFilter {
   projectId?: string | null;
   status?: string | null;
   category?: string | null;
+  parentTaskItemId?: string | null;
   color?: string | null;
   archive?: SavedViewArchiveFilter | null;
   followUp?: SavedViewFollowUpFilter | null;
@@ -420,6 +423,7 @@ export interface SavedViewFilter {
 export interface SavedViewSort {
   field?: SavedViewSortField | null;
   direction?: SavedViewSortDirection | null;
+  includeChildTasks?: boolean;
 }
 
 export interface SavedViewResponse {

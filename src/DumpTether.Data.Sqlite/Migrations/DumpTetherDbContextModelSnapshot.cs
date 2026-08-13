@@ -852,6 +852,10 @@ namespace DumpTether.Data.Sqlite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("last_viewed_at");
 
+                    b.Property<Guid?>("ParentTaskItemId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("parent_task_item_id");
+
                     b.Property<Guid?>("ProjectId")
                         .HasColumnType("TEXT")
                         .HasColumnName("project_id");
@@ -881,6 +885,8 @@ namespace DumpTether.Data.Sqlite.Migrations
 
                     b.HasIndex("FollowUpAt");
 
+                    b.HasIndex("ParentTaskItemId");
+
                     b.HasIndex("ProjectId");
 
                     b.HasIndex("TaskTemplateId");
@@ -892,6 +898,8 @@ namespace DumpTether.Data.Sqlite.Migrations
                     b.HasIndex("WorkspaceId", "ArchivedAt", "LastTouchedAt");
 
                     b.HasIndex("WorkspaceId", "ProjectId", "ArchivedAt");
+
+                    b.HasIndex("WorkspaceId", "ParentTaskItemId", "ArchivedAt", "LastTouchedAt");
 
                     b.ToTable("task_items", null, t =>
                         {
@@ -1431,6 +1439,11 @@ namespace DumpTether.Data.Sqlite.Migrations
                     b.HasOne("DumpTether.Domain.ArchiveResolution", null)
                         .WithMany()
                         .HasForeignKey("ArchiveResolutionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DumpTether.Domain.TaskItem", null)
+                        .WithMany()
+                        .HasForeignKey("ParentTaskItemId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("DumpTether.Domain.Project", null)

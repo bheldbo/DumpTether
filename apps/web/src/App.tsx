@@ -52,6 +52,7 @@ import {
   createTaskShareLink,
   createTaskShareLinks,
   createTaskItem,
+  createSubtask,
   createTaskTemplate,
   createWorkspace,
   createWorkspaceInvitation,
@@ -82,6 +83,7 @@ import {
   listWorkspaceInvitations,
   listWorkspaceMembers,
   listTaskItems,
+  listSubtasks,
   listTaskTemplates,
   listTaskViewCounts,
   listWorkspaces,
@@ -145,6 +147,7 @@ import type {
   CreateArchiveResolutionRequest,
   CreateTaskShareRequest,
   CreateTaskShareLinkRequest,
+  CreateTaskItemRequest,
   CreateWorkspaceInvitationRequest,
   FieldValueMap,
   LoginUserRequest,
@@ -1737,6 +1740,34 @@ function App() {
     }
   };
 
+  const handleListSubtasks = async (parentTaskItem: TaskItemDetailResponse) => {
+    return listSubtasks(parentTaskItem.id, { workspaceId: parentTaskItem.workspaceId });
+  };
+
+  const handleCreateSubtask = async (
+    parentTaskItem: TaskItemDetailResponse,
+    requestBody: CreateTaskItemRequest,
+  ) => {
+    try {
+      const created = await createSubtask(parentTaskItem.id, requestBody, {
+        workspaceId: parentTaskItem.workspaceId,
+      });
+      setTaskItems((currentItems) => currentItems.map((taskItem) =>
+        taskItem.id === parentTaskItem.id
+          ? { ...taskItem, subtaskCount: taskItem.subtaskCount + 1 }
+          : taskItem));
+      setSelectedTask((currentTask) => currentTask?.id === parentTaskItem.id
+        ? { ...currentTask, subtaskCount: currentTask.subtaskCount + 1 }
+        : currentTask);
+      void performBackgroundCloudSync(parentTaskItem.workspaceId);
+      return created;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
+
   const handleCopyTaskItemsToWorkspace = async (
     taskItemIds: string[],
     destinationWorkspaceId: string,
@@ -2571,6 +2602,8 @@ function App() {
             onCloseArchiveDialog={() => setArchiveDialogIsOpen(false)}
             onCopyTaskItemsToWorkspace={handleCopyTaskItemsToWorkspace}
             onCreateTaskItem={handleCreateTaskItem}
+            onCreateSubtask={handleCreateSubtask}
+            onListSubtasks={handleListSubtasks}
             onCreateProject={handleCreateProject}
             onCreateTaskShareLink={handleCreateTaskShareLink}
             onCreateTaskShareLinks={handleCreateTaskShareLinks}
@@ -2590,6 +2623,13 @@ function App() {
               setSelectedTaskWorkspaceId(workspaceId);
             }}
             onCloseTaskItem={() => {
+              if (selectedTask?.parentTaskItemId) {
+                setSelectedTaskId(selectedTask.parentTaskItemId);
+                setSelectedTaskWorkspaceId(selectedTask.workspaceId);
+                setSelectedTask(null);
+                return;
+              }
+
               setSelectedTaskId(null);
               setSelectedTaskWorkspaceId(null);
               setSelectedTask(null);

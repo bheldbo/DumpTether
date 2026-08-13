@@ -13,6 +13,7 @@ DumpTether runs in two connected shapes. The hosted website uses ASP.NET Core an
 - Create task templates with header fields and per-entry fields.
 - Build simple note/TODO-like entry layouts from template rows and cells.
 - Add tasks as sticky-note style cards.
+- Break a task into one level of subtasks without cluttering the main wall.
 - Color-code tasks and boards.
 - Add one or more categories to a task.
 - Set custom statuses and follow-up dates.

@@ -98,6 +98,66 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         return counts;
     }
 
+    public async Task<IReadOnlyDictionary<Guid, int>> CountChildrenByParentIdsAsync(
+        Guid workspaceId,
+        IReadOnlyCollection<Guid> parentTaskItemIds,
+        CancellationToken cancellationToken)
+    {
+        var parentIds = parentTaskItemIds
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (parentIds.Length == 0)
+        {
+            return new Dictionary<Guid, int>();
+        }
+
+        return await _dbContext.TaskItems
+            .AsNoTracking()
+            .Where(taskItem =>
+                taskItem.WorkspaceId == workspaceId &&
+                taskItem.ParentTaskItemId.HasValue &&
+                parentIds.Contains(taskItem.ParentTaskItemId.Value))
+            .GroupBy(taskItem => taskItem.ParentTaskItemId!.Value)
+            .ToDictionaryAsync(group => group.Key, group => group.Count(), cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskItem>> ListChildrenByParentIdsAsync(
+        Guid workspaceId,
+        IReadOnlyCollection<Guid> parentTaskItemIds,
+        bool trackChanges,
+        CancellationToken cancellationToken)
+    {
+        var parentIds = parentTaskItemIds
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (parentIds.Length == 0)
+        {
+            return [];
+        }
+
+        var query = _dbContext.TaskItems
+            .Include("_fieldValues")
+            .Include(taskItem => taskItem.Shares)
+            .Include("_timelineEntries")
+            .Include("_timelineEntries.FieldValues")
+            .AsSplitQuery()
+            .Where(taskItem =>
+                taskItem.WorkspaceId == workspaceId &&
+                taskItem.ParentTaskItemId.HasValue &&
+                parentIds.Contains(taskItem.ParentTaskItemId.Value));
+
+        if (!trackChanges)
+        {
+            query = query.AsNoTracking();
+        }
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<TaskItem>> ListByProjectAsync(
         Guid workspaceId,
         Guid projectId,
@@ -404,10 +464,11 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
                 .Where(share => taskIds.Contains(share.TaskItemId))
                 .ToListAsync(cancellationToken));
 
+        var taskItems = await _dbContext.TaskItems
+            .Where(taskItem => taskIds.Contains(taskItem.Id))
+            .ToListAsync(cancellationToken);
         _dbContext.TaskItems.RemoveRange(
-            await _dbContext.TaskItems
-                .Where(taskItem => taskIds.Contains(taskItem.Id))
-                .ToListAsync(cancellationToken));
+            taskItems.OrderByDescending(taskItem => taskItem.ParentTaskItemId.HasValue));
 
         return taskIds.Count;
     }
@@ -531,7 +592,8 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
 
     private static bool MatchesQuery(TaskItem taskItem, TaskItemQuery query)
     {
-        return MatchesProject(taskItem, query.ProjectId) &&
+        return MatchesHierarchy(taskItem, query) &&
+            MatchesProject(taskItem, query.ProjectId) &&
             MatchesSharedAccess(taskItem, query) &&
             MatchesArchive(taskItem, query.ArchiveFilter) &&
             MatchesStatus(taskItem, query.Status) &&
@@ -542,6 +604,11 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             MatchesNotViewedSince(taskItem, query.NotViewedSinceDays, query.Now) &&
             MatchesNotTouchedSince(taskItem, query.NotTouchedSinceDays, query.Now) &&
             MatchesText(taskItem, query.Text);
+    }
+
+    private static bool MatchesHierarchy(TaskItem taskItem, TaskItemQuery query)
+    {
+        return query.IncludeChildTasks || taskItem.ParentTaskItemId == query.ParentTaskItemId;
     }
 
     private static bool MatchesProject(TaskItem taskItem, Guid? projectId)

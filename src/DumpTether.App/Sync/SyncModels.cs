@@ -121,7 +121,8 @@ public sealed record CloudSyncTaskResponse(
     DateTimeOffset? FollowUpAt,
     DateTimeOffset? ArchivedAt,
     IReadOnlyList<CloudSyncFieldValueResponse>? FieldValues = null,
-    IReadOnlyList<CloudSyncTimelineEntryResponse>? TimelineEntries = null);
+    IReadOnlyList<CloudSyncTimelineEntryResponse>? TimelineEntries = null,
+    Guid? ParentTaskItemId = null);
 
 public sealed record CloudSyncCreateWorkspaceRequest(
     string Name,
@@ -140,7 +141,8 @@ public sealed record CloudSyncCreateTaskRequest(
     string? Color,
     DateTimeOffset? FollowUpAt,
     IReadOnlyDictionary<Guid, string>? FieldValues = null,
-    IReadOnlyList<CloudSyncTimelineEntryRequest>? TimelineEntries = null);
+    IReadOnlyList<CloudSyncTimelineEntryRequest>? TimelineEntries = null,
+    Guid? ParentTaskItemId = null);
 
 public sealed record CloudSyncUpdateTaskRequest(
     string? Title,

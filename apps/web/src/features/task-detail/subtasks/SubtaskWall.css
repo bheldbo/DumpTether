@@ -1,0 +1,254 @@
+.subtask-wall {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(24, 33, 44, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.subtask-wall__header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subtask-wall__header h2 {
+  min-width: 0;
+  margin: 0;
+  font-size: 0.96rem;
+  line-height: 1.25;
+}
+
+.subtask-wall__heading-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(24, 76, 72, 0.09);
+  color: #184c48;
+}
+
+.subtask-wall__quiet-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  margin-left: auto;
+  color: #52706d;
+  animation: subtask-wall-spin 850ms linear infinite;
+}
+
+.subtask-wall__create {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 7px;
+  align-items: center;
+}
+
+.subtask-wall__create input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid #cbd6df;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #18212c;
+  font: inherit;
+}
+
+.subtask-wall__create input:focus-visible {
+  border-color: #2c716a;
+  outline: 2px solid rgba(44, 113, 106, 0.18);
+  outline-offset: 1px;
+}
+
+.subtask-wall__create-button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(24, 76, 72, 0.24);
+  border-radius: 999px;
+  background: #edf7f4;
+  color: #184c48;
+}
+
+.subtask-wall__create-button:hover:not(:disabled) {
+  background: #dcefeb;
+}
+
+.subtask-wall__create-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.subtask-wall__inline-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -3px 0 0;
+  color: #a33d35;
+  font-size: 0.76rem;
+}
+
+.subtask-wall__grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+  gap: 10px;
+}
+
+.subtask-wall__card {
+  --subtask-note-color: #fff3a6;
+
+  min-width: 0;
+  min-height: 118px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(24, 33, 44, 0.13);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--subtask-note-color) 78%, #ffffff);
+  color: #18212c;
+  box-shadow: 0 7px 16px rgba(32, 45, 58, 0.09);
+  text-align: left;
+}
+
+.subtask-wall__card:hover {
+  border-color: rgba(24, 76, 72, 0.42);
+  box-shadow: 0 9px 20px rgba(32, 45, 58, 0.13);
+  transform: translateY(-1px);
+}
+
+.subtask-wall__card:focus-visible {
+  outline: 3px solid rgba(24, 76, 72, 0.28);
+  outline-offset: 2px;
+}
+
+.subtask-wall__card-title {
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.92rem;
+  font-weight: 760;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.subtask-wall__status {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 1px solid rgba(24, 33, 44, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.56);
+  font-size: 0.69rem;
+  font-weight: 680;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtask-wall__card-meta {
+  align-self: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  color: rgba(24, 33, 44, 0.72);
+  font-size: 0.68rem;
+}
+
+.subtask-wall__card-meta > span {
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.subtask-wall__state {
+  min-height: 90px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 18px;
+  border: 1px dashed #c7d2dc;
+  border-radius: 6px;
+  color: #637383;
+  text-align: center;
+}
+
+.subtask-wall__state p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.subtask-wall__state--empty {
+  min-height: 78px;
+}
+
+.subtask-wall__state--error {
+  border-color: rgba(175, 62, 52, 0.28);
+  background: rgba(255, 241, 239, 0.64);
+  color: #8c332c;
+}
+
+.subtask-wall__state button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+
+.subtask-wall__spinner {
+  width: 17px;
+  height: 17px;
+  display: inline-block;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: subtask-wall-spin 850ms linear infinite;
+}
+
+@keyframes subtask-wall-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 620px) {
+  .subtask-wall {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .subtask-wall__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .subtask-wall__card {
+    min-height: 104px;
+  }
+}

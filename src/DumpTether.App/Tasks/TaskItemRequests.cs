@@ -20,7 +20,8 @@ public sealed record TaskItemListRequest(
     string? SharedWith = null,
     bool SharedWithMe = false,
     string? Sort = null,
-    string? Direction = null);
+    string? Direction = null,
+    bool IncludeChildTasks = false);
 
 public sealed record CreateTaskItemRequest(
     [Required]
@@ -30,7 +31,8 @@ public sealed record CreateTaskItemRequest(
     Dictionary<Guid, JsonElement>? FieldValues = null,
     Guid? ProjectId = null,
     [MaxLength(120)] string? Category = null,
-    Guid? ClientGeneratedId = null);
+    Guid? ClientGeneratedId = null,
+    Guid? ParentTaskItemId = null);
 
 public sealed record UpdateTaskItemRequest(
     [MaxLength(500)] string? Title = null,

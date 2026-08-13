@@ -41,6 +41,8 @@ public sealed class TaskItem
 
     public Guid? TaskTemplateId { get; private set; }
 
+    public Guid? ParentTaskItemId { get; private set; }
+
     public string Title { get; private set; } = string.Empty;
 
     public string? Status { get; private set; }
@@ -163,6 +165,59 @@ public sealed class TaskItem
         }
 
         ProjectId = projectId;
+    }
+
+    public void MakeSubtaskOf(TaskItem parent, DateTimeOffset occurredAt)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+
+        if (parent.Id == Id)
+        {
+            throw new InvalidOperationException("A task cannot be its own parent.");
+        }
+
+        if (parent.WorkspaceId != WorkspaceId)
+        {
+            throw new InvalidOperationException("A subtask must belong to the same board as its parent.");
+        }
+
+        if (parent.ParentTaskItemId.HasValue)
+        {
+            throw new InvalidOperationException("Nested subtasks are not supported.");
+        }
+
+        if (ParentTaskItemId == parent.Id)
+        {
+            return;
+        }
+
+        if (ParentTaskItemId.HasValue)
+        {
+            throw new InvalidOperationException("A subtask cannot be moved to another parent.");
+        }
+
+        ParentTaskItemId = parent.Id;
+        AddTimelineEntry(
+            TaskTimelineEntryKind.ParentChanged,
+            "Added as a subtask",
+            occurredAt,
+            $"Parent task: {parent.Title}");
+    }
+
+    public void RecordSubtaskAdded(TaskItem subtask, DateTimeOffset occurredAt)
+    {
+        ArgumentNullException.ThrowIfNull(subtask);
+
+        if (subtask.ParentTaskItemId != Id || subtask.WorkspaceId != WorkspaceId)
+        {
+            throw new InvalidOperationException("The task is not a child of this parent.");
+        }
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.ParentChanged,
+            "Subtask added",
+            occurredAt,
+            subtask.Title);
     }
 
     public TaskTimelineEntry AddNote(string? note, DateTimeOffset occurredAt)

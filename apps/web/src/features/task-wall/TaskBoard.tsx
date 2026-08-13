@@ -42,6 +42,7 @@ import type {
   CloudSyncAccountResponse,
   CreateTaskShareLinkRequest,
   CreateTaskShareRequest,
+  CreateTaskItemRequest,
   CreateWorkspaceInvitationRequest,
   FieldValueMap,
   ProjectResponse,
@@ -105,10 +106,12 @@ export function TaskBoard({
   onCreateTaskShareLink,
   onCreateTaskShareLinks,
   onCreateTaskItem,
+  onCreateSubtask,
   onCreateWorkspaceInvitation,
   onDeleteProject,
   onDeleteTimelineEntry,
   onImportTaskTemplate,
+  onListSubtasks,
   onOpenArchiveDialog,
   onReopen,
   onReopenTaskItems,
@@ -169,6 +172,13 @@ export function TaskBoard({
     title: string,
     options?: CreateTaskItemOptions,
   ) => Promise<TaskItemDetailResponse | null>;
+  onCreateSubtask: (
+    parentTaskItem: TaskItemDetailResponse,
+    requestBody: CreateTaskItemRequest,
+  ) => Promise<TaskItemDetailResponse>;
+  onListSubtasks: (
+    parentTaskItem: TaskItemDetailResponse,
+  ) => Promise<TaskItemSummaryResponse[]>;
   onCreateWorkspaceInvitation: (
     requestBody: CreateWorkspaceInvitationRequest,
   ) => Promise<WorkspaceInvitationResponse>;
@@ -281,12 +291,21 @@ export function TaskBoard({
   );
   const [draftTaskIsOpen, setDraftTaskIsOpen] = useState(false);
   const focusedTaskItem = selectedTaskId
-    ? visibleTaskItems.find((taskItem) => taskItem.id === selectedTaskId) ?? null
+    ? visibleTaskItems.find((taskItem) => taskItem.id === selectedTaskId) ??
+      (selectedTask?.id === selectedTaskId ? selectedTask : null)
     : null;
-  const focusModeIsEnabled = Boolean(focusedTaskItem) || draftTaskIsOpen;
-  const displayedTaskItems = focusedTaskItem || draftTaskIsOpen
+  const focusModeIsEnabled = Boolean(selectedTaskId) || draftTaskIsOpen;
+  const displayedTaskItems = selectedTaskId || draftTaskIsOpen
     ? focusedTaskItem ? [focusedTaskItem] : []
     : visibleTaskItems;
+  const focusedTaskWorkspace = selectedTask
+    ? workspaces.find((candidate) => candidate.id === selectedTask.workspaceId) ?? null
+    : null;
+  const canCreateSubtasks = Boolean(
+    focusedTaskWorkspace &&
+    !isTaskShareWorkspace(focusedTaskWorkspace) &&
+    (!focusedTaskWorkspace.role || !isReadOnlyRole(focusedTaskWorkspace.role)),
+  );
   const projectByName = useMemo(
     () => new Map(projects.map((project) => [project.name.toLowerCase(), project])),
     [projects],
@@ -574,6 +593,16 @@ export function TaskBoard({
           />
         ) : null}
 
+        {selectedTaskId && !focusedTaskItem ? (
+          <div className="task-card task-card-pending-detail">
+            <div className="task-card-detail">
+              <div className="task-detail-loading-indicator">
+                <BoardLoadingState compact t={t} />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {displayedTaskItems.map((taskItem) => {
           const isExpanded = selectedTaskId === taskItem.id;
           const isSelectedForEdit = selectedTaskIds.includes(taskItem.id);
@@ -646,6 +675,12 @@ export function TaskBoard({
                   <span className="task-card-title">{taskItem.title}</span>
                   {taskItem.noteCount > 0 ? (
                     <span className="note-count">{taskItem.noteCount}</span>
+                  ) : null}
+                  {taskItem.subtaskCount > 0 ? (
+                    <span className="note-count" title={`${taskItem.subtaskCount} ${t('subtaskCount')}`}>
+                      <Icon name="subtasks" />
+                      {taskItem.subtaskCount}
+                    </span>
                   ) : null}
                   {taskItem.shares.length > 0 ? (
                     <span className="note-count share-count" title={t('sharing')}>
@@ -727,6 +762,9 @@ export function TaskBoard({
                       archiveDialogIsOpen={archiveDialogIsOpen}
                       archiveResolutions={archiveResolutions}
                       onAddTimelineEntry={onAddTimelineEntry}
+                      onCreateSubtask={(requestBody) => onCreateSubtask(selectedTask, requestBody)}
+                      onListSubtasks={() => onListSubtasks(selectedTask)}
+                      onOpenSubtask={(subtask) => onSelectTaskItem(subtask.id, subtask.workspaceId)}
                       onArchive={onArchive}
                       onClose={closeFocusedTask}
                       onCloseArchiveDialog={onCloseArchiveDialog}
@@ -749,6 +787,7 @@ export function TaskBoard({
                       onImportTemplate={() => onImportTaskTemplate(selectedTask.id)}
                       onRequestSync={() => openCloudSync(selectedTask.workspaceId)}
                       colorOptions={colorOptions}
+                      canCreateSubtasks={canCreateSubtasks}
                       canManageSharing={canManageSharing}
                       templateCanBeImported={Boolean(
                         selectedTask.taskTemplateId &&

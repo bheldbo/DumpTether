@@ -263,7 +263,7 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
         var summaries = await SendAsync<IReadOnlyList<TaskItemSummaryResponse>>(
             connection,
             HttpMethod.Get,
-            "/api/tasks?scope=All",
+            "/api/tasks?scope=All&includeChildTasks=true",
             workspaceId,
             body: null,
             cancellationToken);
@@ -301,7 +301,8 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                 BuildFieldValuePayload(request.FieldValues),
                 ProjectId: null,
                 request.Category,
-                request.ClientGeneratedId),
+                request.ClientGeneratedId,
+                request.ParentTaskItemId),
             cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(request.Status) ||
@@ -594,7 +595,8 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
             taskItem.FollowUpAt,
             taskItem.ArchivedAt,
             FieldValues: [],
-            TimelineEntries: []);
+            TimelineEntries: [],
+            taskItem.ParentTaskItemId);
     }
 
     private static CloudSyncTaskResponse MapTask(TaskItemDetailResponse taskItem)
@@ -629,6 +631,7 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                             value.ValueJson,
                             value.UpdatedAt))
                         .ToList()))
-                .ToList());
+                .ToList(),
+            taskItem.ParentTaskItemId);
     }
 }

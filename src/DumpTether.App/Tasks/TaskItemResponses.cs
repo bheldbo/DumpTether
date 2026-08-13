@@ -21,7 +21,9 @@ public sealed record TaskItemSummaryResponse(
     int NoteCount,
     IReadOnlyList<TaskItemShareResponse> Shares,
     TaskSyncStateResponse? SyncState,
-    TaskTimelineEntryResponse? LatestTimelineEntry);
+    TaskTimelineEntryResponse? LatestTimelineEntry,
+    Guid? ParentTaskItemId = null,
+    int SubtaskCount = 0);
 
 public sealed record TaskItemDetailResponse(
     Guid Id,
@@ -43,7 +45,9 @@ public sealed record TaskItemDetailResponse(
     TaskSyncStateResponse? SyncState,
     TaskTemplateDetailResponse? Template,
     IReadOnlyList<FieldValueResponse> FieldValues,
-    IReadOnlyList<TaskTimelineEntryResponse> TimelineEntries);
+    IReadOnlyList<TaskTimelineEntryResponse> TimelineEntries,
+    Guid? ParentTaskItemId = null,
+    int SubtaskCount = 0);
 
 public sealed record TaskItemViewCountResponse(
     Guid ViewId,

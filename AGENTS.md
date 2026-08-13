@@ -73,6 +73,7 @@ Use these docs as the repo grows instead of rediscovering the same decisions fro
 - Desktop/offline/sync: `docs/adr/0003-desktop-offline-architecture.md`, `docs/adr/0006-local-offline-runtime-and-sync.md`
 - Auth/security: `docs/adr/0004-auth-server-sync-readiness.md`, `docs/security/auth-hardening.md`, `docs/security/security-principles.md`
 - Archive policy: `docs/adr/0007-effective-archive-policy.md`
+- Task hierarchy: `docs/adr/0011-task-subtask-hierarchy.md`
 - Transactional email: `docs/adr/0008-transactional-email-boundary.md`
 - Server operations/admin: `docs/adr/0009-server-operations-and-administration.md`
 - Legal/privacy: `docs/adr/0010-legal-privacy-foundation.md`, `docs/legal/terms-of-use.md`, `docs/legal/privacy-notice.md`, `docs/security/gdpr-readiness.md`

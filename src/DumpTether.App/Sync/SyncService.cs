@@ -574,7 +574,9 @@ internal sealed class SyncService : ISyncService
 
         if (request.PushLocalChanges && canPushRemoteChanges)
         {
-            foreach (var localTask in localTasks)
+            foreach (var localTask in localTasks
+                         .OrderBy(task => task.ParentTaskItemId.HasValue)
+                         .ThenBy(task => task.CreatedAt))
             {
                 await PushLocalTaskAsync(
                     connection,
@@ -628,7 +630,9 @@ internal sealed class SyncService : ISyncService
                     .ToHashSet();
             }
 
-            foreach (var remoteTask in remoteTasks.Values)
+            foreach (var remoteTask in remoteTasks.Values
+                         .OrderBy(task => task.ParentTaskItemId.HasValue)
+                         .ThenBy(task => task.CreatedAt))
             {
                 if (remoteIdsAlreadyMapped.Contains(remoteTask.Id))
                 {
@@ -655,6 +659,17 @@ internal sealed class SyncService : ISyncService
         else if (stats.Failed == 0 && root.RemoteWorkspaceId.HasValue)
         {
             root.MarkSynced(now);
+        }
+
+        var duplicateRemoteMapping = mappings.Values
+            .Where(mapping => mapping.RemoteId.HasValue)
+            .GroupBy(mapping => mapping.RemoteId!.Value)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicateRemoteMapping is not null)
+        {
+            throw new InvalidOperationException(
+                $"Cloud entity {duplicateRemoteMapping.Key} was mapped to more than one local task: " +
+                string.Join(", ", duplicateRemoteMapping.Select(mapping => mapping.LocalId)));
         }
 
         await _syncRepository.SaveChangesAsync(cancellationToken);
@@ -1012,7 +1027,9 @@ internal sealed class SyncService : ISyncService
                 SharedWithMe: false,
                 TaskItemSortField.LastTouchedAt,
                 SortDescending: true,
-                now),
+                now,
+                ParentTaskItemId: null,
+                IncludeChildTasks: true),
             cancellationToken);
     }
 
@@ -1048,6 +1065,17 @@ internal sealed class SyncService : ISyncService
                 var remoteFieldValues = CloudSyncTemplatePayloadMapper.BuildRemoteFieldValuePayload(
                     localTask,
                     remoteTemplate.LocalToRemoteFieldIds);
+                Guid? remoteParentTaskItemId = null;
+                if (localTask.ParentTaskItemId.HasValue)
+                {
+                    if (!mappings.TryGetValue(localTask.ParentTaskItemId.Value, out var parentMapping) ||
+                        !parentMapping.RemoteId.HasValue)
+                    {
+                        throw new InvalidOperationException("The parent task must sync before its subtask.");
+                    }
+
+                    remoteParentTaskItemId = parentMapping.RemoteId.Value;
+                }
                 var createdRemoteTask = await _cloudSyncClient.CreateTaskAsync(
                     connection,
                     remoteWorkspaceId,
@@ -1060,7 +1088,8 @@ internal sealed class SyncService : ISyncService
                         localTask.Color,
                         localTask.FollowUpAt,
                         remoteFieldValues,
-                        BuildRemoteTimelineEntryPayload(localTask, remoteTemplate.LocalToRemoteFieldIds)),
+                        BuildRemoteTimelineEntryPayload(localTask, remoteTemplate.LocalToRemoteFieldIds),
+                        remoteParentTaskItemId),
                     cancellationToken);
 
                 mapping.LinkRemote(
@@ -1261,6 +1290,26 @@ internal sealed class SyncService : ISyncService
                 remoteTask.Title,
                 _clock.UtcNow,
                 localTemplate.LocalTemplateId);
+        if (existingLocalTask is null && remoteTask.ParentTaskItemId.HasValue)
+        {
+            var localParentId = mappings.Values
+                .Where(mapping => mapping.RemoteId == remoteTask.ParentTaskItemId)
+                .Select(mapping => (Guid?)mapping.LocalId)
+                .SingleOrDefault();
+            if (!localParentId.HasValue)
+            {
+                throw new InvalidOperationException("The cloud parent task must be imported before its subtask.");
+            }
+
+            var localParent = await _taskItemRepository.GetByIdAsync(
+                localParentId.Value,
+                localWorkspaceId,
+                projectId: null,
+                trackChanges: true,
+                cancellationToken)
+                ?? throw new InvalidOperationException("The mapped parent task was not found locally.");
+            localTask.MakeSubtaskOf(localParent, _clock.UtcNow);
+        }
         ApplyRemoteHeaderToLocal(localTask, remoteTask, _clock.UtcNow);
         ApplyRemoteFieldValuesToLocal(
             localTask,
@@ -1294,6 +1343,13 @@ internal sealed class SyncService : ISyncService
         }
 
         mappings[localTask.Id] = mapping;
+        if (existingLocalTask is null)
+        {
+            // A following cloud subtask resolves its parent through the repository.
+            // Persist each newly imported root before the next hierarchy item is pulled.
+            await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        }
+
         stats.Pulled++;
     }
 

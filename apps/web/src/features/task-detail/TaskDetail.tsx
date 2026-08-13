@@ -1,6 +1,7 @@
 import {
   type KeyboardEvent,
   type MouseEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -28,6 +29,7 @@ import {
 } from '../../taskUtils';
 import { withDefaultFieldValues } from '../../templateFieldUtils';
 import { TimelinePanel } from '../timeline/TimelinePanel';
+import { SubtaskWall } from './subtasks/SubtaskWall';
 import { TaskShareStrip } from '../sharing/ShareDialog';
 import { ArchiveDialog } from './TaskDialogs';
 import { CategoryMultiSelect } from './CategoryMultiSelect';
@@ -35,9 +37,11 @@ import type {
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   CreateTaskShareRequest,
+  CreateTaskItemRequest,
   FieldValueMap,
   ProjectResponse,
   TaskItemDetailResponse,
+  TaskItemSummaryResponse,
   TaskShareLinkResponse,
   UpdateTaskItemRequest,
   UpdateTaskShareRequest,
@@ -46,9 +50,13 @@ import type {
 interface TaskDetailProps {
   archiveDialogIsOpen: boolean;
   archiveResolutions: ArchiveResolutionResponse[];
+  canCreateSubtasks: boolean;
   canManageSharing: boolean;
   colorOptions: string[];
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
+  onCreateSubtask: (requestBody: CreateTaskItemRequest) => Promise<TaskItemDetailResponse>;
+  onListSubtasks: () => Promise<TaskItemSummaryResponse[]>;
+  onOpenSubtask: (taskItem: TaskItemSummaryResponse) => void;
   onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
   onClose: () => Promise<void>;
   onCloseArchiveDialog: () => void;
@@ -86,9 +94,13 @@ interface TaskDetailProps {
 export function TaskDetail({
   archiveDialogIsOpen,
   archiveResolutions,
+  canCreateSubtasks,
   canManageSharing,
   colorOptions,
   onAddTimelineEntry,
+  onCreateSubtask,
+  onListSubtasks,
+  onOpenSubtask,
   onArchive,
   onClose,
   onCloseArchiveDialog,
@@ -111,9 +123,14 @@ export function TaskDetail({
   templateCanBeImported,
   taskItem,
 }: TaskDetailProps) {
+  const closeLabel = taskItem.parentTaskItemId ? t('backToParent') : t('backToWall');
   const [reopenNote, setReopenNote] = useState('');
   const [fieldDraft, setFieldDraft] = useState<FieldValueMap>({});
   const [isSavingFields, setIsSavingFields] = useState(false);
+  const [subtasks, setSubtasks] = useState<TaskItemSummaryResponse[]>([]);
+  const [subtasksAreLoading, setSubtasksAreLoading] = useState(true);
+  const [subtaskError, setSubtaskError] = useState<string | null>(null);
+  const onListSubtasksRef = useRef(onListSubtasks);
   const fieldSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedFieldDraftRef = useRef('');
   const headerFields = useMemo(
@@ -135,6 +152,33 @@ export function TaskDetail({
   }, [taskItem, headerFields]);
 
   const headerFieldsCanBeEdited = !taskItem.archivedAt && headerFields.length > 0;
+
+  useEffect(() => {
+    onListSubtasksRef.current = onListSubtasks;
+  }, [onListSubtasks]);
+
+  const loadSubtasks = useCallback(async () => {
+    setSubtasksAreLoading(true);
+    setSubtaskError(null);
+    try {
+      setSubtasks(await onListSubtasksRef.current());
+    } catch {
+      setSubtaskError(t('subtaskCreateFailed'));
+    } finally {
+      setSubtasksAreLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (taskItem.parentTaskItemId) {
+      setSubtasks([]);
+      setSubtasksAreLoading(false);
+      setSubtaskError(null);
+      return;
+    }
+
+    void loadSubtasks();
+  }, [loadSubtasks, taskItem.id, taskItem.lastTouchedAt, taskItem.parentTaskItemId]);
 
   useEffect(() => {
     if (!headerFieldsCanBeEdited) {
@@ -193,11 +237,11 @@ export function TaskDetail({
         <button
           className="icon-button task-detail-back-button"
           onClick={() => void onClose()}
-          title={t('backToWall')}
+          title={closeLabel}
           type="button"
         >
           <Icon name="back" />
-          <span className="sr-only">{t('backToWall')}</span>
+          <span className="sr-only">{closeLabel}</span>
         </button>
         <TaskHeaderEditor
           onUpdateTaskItem={onUpdateTaskItem}
@@ -310,6 +354,36 @@ export function TaskDetail({
             />
           ) : null}
         </section>
+      ) : null}
+
+      {!taskItem.parentTaskItemId ? (
+        <SubtaskWall
+          canCreate={canCreateSubtasks && !taskItem.archivedAt}
+          error={subtaskError}
+          isLoading={subtasksAreLoading}
+          onCreate={async (requestBody) => {
+            const created = await onCreateSubtask(requestBody);
+            setSubtasks((current) => [created, ...current]);
+          }}
+          onOpenSubtask={onOpenSubtask}
+          onRetry={() => void loadSubtasks()}
+          parentTaskItemId={taskItem.id}
+          strings={{
+            heading: t('subtasks'),
+            createPlaceholder: t('addSubtask'),
+            createButtonLabel: t('addSubtask'),
+            creatingLabel: t('saving'),
+            loadingMessage: t('loadingSubtasks'),
+            emptyMessage: t('noSubtasks'),
+            errorMessage: t('subtaskCreateFailed'),
+            createErrorMessage: t('subtaskCreateFailed'),
+            retryLabel: t('retrySync'),
+            formatNoteCount: (count) => `${count} ${t('noteCount')}`,
+            formatSubtaskCount: (count) => `${count} ${t('subtaskCount')}`,
+            formatUpdatedAt: formatRelativeDate,
+          }}
+          subtasks={subtasks}
+        />
       ) : null}
 
       <TimelinePanel
