@@ -52,6 +52,15 @@ DumpTether should feel like a lightweight personal sticker wall backed by a stru
 
 - Basic task creation should not force template choice.
 - Quick-create should use the configured default template.
+- Every account has protected `Basic Task` and `ToDo Task` templates. Their
+  stable built-in identity, rather than their display name, is used by sync and
+  wall rendering.
+- `Basic Task` provides a task-level context field and plain structured entries.
+- `ToDo Task` provides a task-level description plus an entry-level item and
+  checkbox. Its latest checklist entries remain directly interactive on the
+  wall.
+- Built-in templates cannot be renamed, edited, or deleted. Users create a
+  custom template when they need a different structure.
 - Custom fields should be available in task detail without dominating the screen.
 - Template help should explain that fields add structure and can later be used by filters.
 - Useful examples include `People contains Jan`, `Status = Active and People contains Jan/Lars`, and `Not touched in 14 days`.

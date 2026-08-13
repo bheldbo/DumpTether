@@ -261,9 +261,15 @@ internal sealed class TaskItemService : ITaskItemService
             context.WorkspaceId,
             subtasks.Select(taskItem => taskItem.Id).ToArray(),
             cancellationToken);
+        var taskTemplates = await LoadSummaryTemplatesAsync(subtasks, cancellationToken);
 
         return subtasks
-            .Select(taskItem => MapSummary(taskItem, syncStates.GetValueOrDefault(taskItem.Id)))
+            .Select(taskItem => MapSummary(
+                taskItem,
+                syncStates.GetValueOrDefault(taskItem.Id),
+                taskTemplate: taskItem.TaskTemplateId.HasValue
+                    ? taskTemplates.GetValueOrDefault(taskItem.TaskTemplateId.Value)
+                    : null))
             .ToList();
     }
 
@@ -336,12 +342,16 @@ internal sealed class TaskItemService : ITaskItemService
             context.WorkspaceId,
             taskItems.Select(taskItem => taskItem.Id).ToArray(),
             cancellationToken);
+        var taskTemplates = await LoadSummaryTemplatesAsync(taskItems, cancellationToken);
 
         return taskItems
             .Select(taskItem => MapSummary(
                 taskItem,
                 syncStates.GetValueOrDefault(taskItem.Id),
-                subtaskCounts.GetValueOrDefault(taskItem.Id)))
+                subtaskCounts.GetValueOrDefault(taskItem.Id),
+                taskItem.TaskTemplateId.HasValue
+                    ? taskTemplates.GetValueOrDefault(taskItem.TaskTemplateId.Value)
+                    : null))
             .ToList();
     }
 
@@ -2305,7 +2315,8 @@ internal sealed class TaskItemService : ITaskItemService
     private static TaskItemSummaryResponse MapSummary(
         TaskItem taskItem,
         TaskSyncStateResponse? syncState = null,
-        int subtaskCount = 0)
+        int subtaskCount = 0,
+        TaskTemplate? taskTemplate = null)
     {
         var latestTimelineEntry = taskItem.TimelineEntries
             .Where(entry => entry.DeletedAt == null && entry.Kind == TaskTimelineEntryKind.NoteAdded)
@@ -2343,7 +2354,9 @@ internal sealed class TaskItemService : ITaskItemService
                     latestTimelineEntry.UpdatedAt,
                     MapFieldValues(latestTimelineEntry.FieldValues)),
             taskItem.ParentTaskItemId,
-            subtaskCount);
+            subtaskCount,
+            MapBuiltInTemplateKind(taskTemplate),
+            MapTodoEntries(taskItem, taskTemplate));
     }
 
     private static TaskItemDetailResponse MapDetail(
@@ -2387,7 +2400,92 @@ internal sealed class TaskItemService : ITaskItemService
                 .Select(MapTimelineEntry)
                 .ToList(),
             taskItem.ParentTaskItemId,
-            subtaskCount);
+            subtaskCount,
+            MapBuiltInTemplateKind(taskTemplate),
+            MapTodoEntries(taskItem, taskTemplate));
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, TaskTemplate>> LoadSummaryTemplatesAsync(
+        IReadOnlyCollection<TaskItem> taskItems,
+        CancellationToken cancellationToken)
+    {
+        var templateIds = taskItems
+            .Where(taskItem => taskItem.TaskTemplateId.HasValue)
+            .Select(taskItem => taskItem.TaskTemplateId!.Value)
+            .Distinct()
+            .ToArray();
+
+        return await _taskTemplateRepository.ListByIdsAsync(templateIds, cancellationToken);
+    }
+
+    private static string? MapBuiltInTemplateKind(TaskTemplate? taskTemplate) =>
+        taskTemplate is null || taskTemplate.BuiltInKind == TaskTemplateBuiltInKind.None
+            ? null
+            : taskTemplate.BuiltInKind.ToString();
+
+    private static IReadOnlyList<TaskTodoEntryResponse>? MapTodoEntries(
+        TaskItem taskItem,
+        TaskTemplate? taskTemplate)
+    {
+        if (taskTemplate?.BuiltInKind != TaskTemplateBuiltInKind.Todo)
+        {
+            return null;
+        }
+
+        var itemField = taskTemplate.FieldDefinitions.FirstOrDefault(field =>
+            field.IsActive &&
+            field.Scope == FieldDefinitionScope.Entry &&
+            string.Equals(field.Key, "item", StringComparison.OrdinalIgnoreCase));
+        var doneField = taskTemplate.FieldDefinitions.FirstOrDefault(field =>
+            field.IsActive &&
+            field.Scope == FieldDefinitionScope.Entry &&
+            field.Type == FieldDefinitionType.Checkbox &&
+            string.Equals(field.Key, "done", StringComparison.OrdinalIgnoreCase));
+
+        if (itemField is null || doneField is null)
+        {
+            return [];
+        }
+
+        return taskItem.TimelineEntries
+            .Where(entry => entry.DeletedAt is null && entry.Kind == TaskTimelineEntryKind.NoteAdded)
+            .OrderBy(entry => entry.OccurredAt)
+            .ThenBy(entry => entry.Id)
+            .Select(entry =>
+            {
+                var itemValue = entry.FieldValues.FirstOrDefault(value =>
+                    value.FieldDefinitionId == itemField.Id)?.ValueJson;
+                var doneValue = entry.FieldValues.FirstOrDefault(value =>
+                    value.FieldDefinitionId == doneField.Id)?.ValueJson;
+
+                return new TaskTodoEntryResponse(
+                    entry.Id,
+                    ParseJsonString(itemValue) ?? entry.Details ?? string.Empty,
+                    string.Equals(doneValue, "true", StringComparison.OrdinalIgnoreCase),
+                    doneField.Id);
+            })
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Label))
+            .ToList();
+    }
+
+    private static string? ParseJsonString(string? valueJson)
+    {
+        if (string.IsNullOrWhiteSpace(valueJson) || valueJson == "null")
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(valueJson);
+            return document.RootElement.ValueKind == JsonValueKind.String
+                ? document.RootElement.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static TaskTimelineEntryResponse MapTimelineEntry(TaskTimelineEntry entry)
@@ -2482,7 +2580,11 @@ internal sealed class TaskItemService : ITaskItemService
                 .ThenBy(field => field.SortOrder)
                 .ThenBy(field => field.Label)
                 .Select(TaskTemplateService.MapField)
-                .ToList());
+                .ToList(),
+            taskTemplate.BuiltInKind == TaskTemplateBuiltInKind.None
+                ? null
+                : taskTemplate.BuiltInKind.ToString(),
+            taskTemplate.IsProtected);
     }
 
     private static IReadOnlySet<Guid> GetTaskFieldValueDefinitionIds(TaskItem taskItem)

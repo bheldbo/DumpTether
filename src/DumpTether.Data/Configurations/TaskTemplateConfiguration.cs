@@ -24,6 +24,12 @@ internal sealed class TaskTemplateConfiguration : IEntityTypeConfiguration<TaskT
             .HasMaxLength(200)
             .IsRequired();
 
+        builder.Property(taskTemplate => taskTemplate.BuiltInKind)
+            .HasColumnName("built_in_kind")
+            .HasConversion<int>()
+            .HasDefaultValue(TaskTemplateBuiltInKind.None)
+            .IsRequired();
+
         builder.Property(taskTemplate => taskTemplate.HeaderLayoutJson)
             .HasColumnName("header_layout_json")
             .HasColumnType("jsonb")
@@ -49,6 +55,7 @@ internal sealed class TaskTemplateConfiguration : IEntityTypeConfiguration<TaskT
 
         builder.Ignore(taskTemplate => taskTemplate.FieldDefinitions);
         builder.Ignore(taskTemplate => taskTemplate.IsActive);
+        builder.Ignore(taskTemplate => taskTemplate.IsProtected);
 
         builder.HasIndex(taskTemplate => new
             {

@@ -449,7 +449,9 @@ internal sealed class HttpCloudSyncClient : ICloudSyncClient
                     field.LayoutRowSpan,
                     field.LayoutColumnSpan,
                     field.LayoutWeight))
-                .ToList());
+                .ToList(),
+            template.BuiltInKind,
+            template.IsProtected);
     }
 
     private async Task<TResponse> SendAsync<TResponse>(

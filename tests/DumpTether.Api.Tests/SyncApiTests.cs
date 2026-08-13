@@ -461,7 +461,7 @@ public sealed class SyncApiTests
 
         Assert.Equal(1, sync.Pushed);
         Assert.Equal(0, sync.Failed);
-        Assert.Single(cloud.Templates);
+        Assert.Single(cloud.Templates, template => template.Id == existingRemoteTemplate.Id);
         Assert.Equal(existingRemoteTemplate.Id, remoteTask.TaskTemplateId);
         Assert.Contains(
             sync.Messages,
@@ -693,7 +693,9 @@ public sealed class SyncApiTests
 
         response.EnsureSuccessStatusCode();
         var sync = (await response.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
-        var remoteTemplate = Assert.Single(cloud.Templates);
+        var remoteTemplate = Assert.Single(
+            cloud.Templates,
+            template => template.Name == "Travel Note");
         var remoteField = Assert.Single(remoteTemplate.Fields);
         var remoteTask = Assert.Single(cloud.TasksByWorkspace[cloud.Workspaces.Single().Id]);
         var remoteFieldValue = Assert.Single(remoteTask.FieldValues!);
@@ -1260,6 +1262,7 @@ public sealed class SyncApiTests
             CloudSyncConnection connection,
             CancellationToken cancellationToken)
         {
+            EnsureBuiltInTemplates();
             return Task.FromResult<IReadOnlyList<CloudSyncTaskTemplateResponse>>(Templates.ToList());
         }
 
@@ -1412,6 +1415,69 @@ public sealed class SyncApiTests
             return template;
         }
 
+        private void EnsureBuiltInTemplates()
+        {
+            var basic = Templates.FirstOrDefault(template =>
+                template.BuiltInKind == TaskTemplateBuiltInKind.Basic.ToString() ||
+                (string.IsNullOrWhiteSpace(template.BuiltInKind) && template.Name == "Basic Task"));
+            ReplaceTemplate(
+                basic,
+                CreateTemplate(
+                    basic?.Id ?? Guid.NewGuid(),
+                    "Basic Task",
+                    [new CloudSyncUpsertFieldDefinitionRequest(
+                        Id: null,
+                        Name: "Context",
+                        Type: "LongText",
+                        Scope: "Header",
+                        Required: false,
+                        SortOrder: 0,
+                        Options: [],
+                        LayoutRow: 1,
+                        LayoutColumn: 1,
+                        LayoutRowSpan: 1,
+                        LayoutColumnSpan: 1,
+                        LayoutWeight: 1)],
+                    new CloudSyncTaskTemplateLayoutRequest(
+                        [new CloudSyncTaskTemplateLayoutRowRequest(1, [1], 190)],
+                        [new CloudSyncTaskTemplateLayoutRowRequest(1, [1], 90)]),
+                    TaskTemplateBuiltInKind.Basic));
+
+            var todo = Templates.FirstOrDefault(template =>
+                template.BuiltInKind == TaskTemplateBuiltInKind.Todo.ToString() ||
+                (string.IsNullOrWhiteSpace(template.BuiltInKind) && template.Name == "ToDo Task"));
+            ReplaceTemplate(
+                todo,
+                CreateTemplate(
+                    todo?.Id ?? Guid.NewGuid(),
+                    "ToDo Task",
+                    [
+                        new CloudSyncUpsertFieldDefinitionRequest(
+                            null, "Description", "LongText", "Header", false, 0, [], 1, 1, 1, 1, 1),
+                        new CloudSyncUpsertFieldDefinitionRequest(
+                            null, "Item", "Text", "Entry", true, 0, [], 1, 1, 1, 1, 4),
+                        new CloudSyncUpsertFieldDefinitionRequest(
+                            null, "Done", "Checkbox", "Entry", false, 1, [], 1, 2, 1, 1, 1)
+                    ],
+                    new CloudSyncTaskTemplateLayoutRequest(
+                        [new CloudSyncTaskTemplateLayoutRowRequest(1, [1], 190)],
+                        [new CloudSyncTaskTemplateLayoutRowRequest(1, [4, 1], 90)]),
+                    TaskTemplateBuiltInKind.Todo));
+        }
+
+        private void ReplaceTemplate(
+            CloudSyncTaskTemplateResponse? existing,
+            CloudSyncTaskTemplateResponse replacement)
+        {
+            if (existing is null)
+            {
+                Templates.Add(replacement);
+                return;
+            }
+
+            Templates[Templates.IndexOf(existing)] = replacement;
+        }
+
         public CloudSyncTaskResponse AddTask(
             Guid workspaceId,
             string title,
@@ -1475,7 +1541,8 @@ public sealed class SyncApiTests
             Guid id,
             string name,
             IReadOnlyList<CloudSyncUpsertFieldDefinitionRequest> fields,
-            CloudSyncTaskTemplateLayoutRequest layout)
+            CloudSyncTaskTemplateLayoutRequest layout,
+            TaskTemplateBuiltInKind builtInKind = TaskTemplateBuiltInKind.None)
         {
             return new CloudSyncTaskTemplateResponse(
                 id,
@@ -1509,7 +1576,9 @@ public sealed class SyncApiTests
                         field.LayoutRowSpan,
                         field.LayoutColumnSpan,
                         field.LayoutWeight))
-                    .ToList());
+                    .ToList(),
+                builtInKind == TaskTemplateBuiltInKind.None ? null : builtInKind.ToString(),
+                builtInKind != TaskTemplateBuiltInKind.None);
         }
 
         private static IReadOnlyList<CloudSyncFieldValueResponse> MapFieldValues(

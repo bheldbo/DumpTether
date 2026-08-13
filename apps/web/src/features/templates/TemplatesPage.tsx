@@ -95,7 +95,10 @@ export function TemplatesPage({
               onClick={() => selectTemplate(template.id)}
               type="button"
             >
-              <span>{template.name}</span>
+              <span>
+                {template.isProtected ? <Icon name="lock" /> : null}
+                {template.name}
+              </span>
               <strong>{template.fields.length} fields</strong>
             </button>
           ))}

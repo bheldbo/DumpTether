@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using DumpTether.App.Email;
 using DumpTether.App.Tasks;
+using DumpTether.App.Templates;
 using DumpTether.App.Workspaces;
 using DumpTether.Domain;
 using Microsoft.Extensions.Logging;
@@ -30,6 +31,7 @@ internal sealed class AuthService : IAuthService
     private readonly IRegistrationTransaction _registrationTransaction;
     private readonly ISessionTokenService _sessionTokenService;
     private readonly IWorkspaceRepository _workspaceRepository;
+    private readonly IBuiltInTaskTemplateProvisioner _builtInTaskTemplateProvisioner;
 
     public AuthService(
         IAuthRepository authRepository,
@@ -46,7 +48,8 @@ internal sealed class AuthService : IAuthService
         IPasswordHashService passwordHashService,
         IRegistrationTransaction registrationTransaction,
         ISessionTokenService sessionTokenService,
-        IWorkspaceRepository workspaceRepository)
+        IWorkspaceRepository workspaceRepository,
+        IBuiltInTaskTemplateProvisioner builtInTaskTemplateProvisioner)
     {
         _authRepository = authRepository;
         _authTokenAccessor = authTokenAccessor;
@@ -63,6 +66,7 @@ internal sealed class AuthService : IAuthService
         _registrationTransaction = registrationTransaction;
         _sessionTokenService = sessionTokenService;
         _workspaceRepository = workspaceRepository;
+        _builtInTaskTemplateProvisioner = builtInTaskTemplateProvisioner;
     }
 
     public async Task<RegisterUserResponse> RegisterAsync(
@@ -966,6 +970,7 @@ internal sealed class AuthService : IAuthService
         await _authRepository.AddUserAsync(user, cancellationToken);
         await _workspaceRepository.AddAsync(workspace, cancellationToken);
         await _authRepository.AddWorkspaceMembershipAsync(membership, cancellationToken);
+        await _builtInTaskTemplateProvisioner.EnsureAsync(user.Id, cancellationToken);
 
         return (user, workspace, membership);
     }

@@ -128,6 +128,7 @@ export function TaskBoard({
   onUpdateTaskItems,
   onUpdateTaskItem,
   onUpdateTimelineEntry,
+  onToggleTodoEntry,
   onUpdateWorkspace,
   onUpdateWorkspaceMemberRole,
   onShowToast,
@@ -212,6 +213,13 @@ export function TaskBoard({
     note: string | null,
     fieldValues?: FieldValueMap,
   ) => Promise<void>;
+  onToggleTodoEntry: (
+    taskItemId: string,
+    workspaceId: string,
+    timelineEntryId: string,
+    doneFieldDefinitionId: string,
+    isDone: boolean,
+  ) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
   onUpdateWorkspaceMemberRole: (
     userId: string,
@@ -268,6 +276,34 @@ export function TaskBoard({
     !currentUserHasReadOnlyWorkspaceAccess;
   const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
   const [pendingDeletedNoteIds, setPendingDeletedNoteIds] = useState<string[]>([]);
+  const [todoEntryOverrides, setTodoEntryOverrides] = useState<Record<string, boolean>>({});
+
+  const toggleTodoEntry = async (
+    taskItem: TaskItemSummaryResponse,
+    timelineEntryId: string,
+    doneFieldDefinitionId: string,
+    isDone: boolean,
+  ) => {
+    setTodoEntryOverrides((current) => ({ ...current, [timelineEntryId]: isDone }));
+
+    try {
+      await onToggleTodoEntry(
+        taskItem.id,
+        taskItem.workspaceId,
+        timelineEntryId,
+        doneFieldDefinitionId,
+        isDone,
+      );
+    } catch {
+      // The app-level handler reports the authoritative API error.
+    } finally {
+      setTodoEntryOverrides((current) => {
+        const next = { ...current };
+        delete next[timelineEntryId];
+        return next;
+      });
+    }
+  };
   const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [batchArchiveIsOpen, setBatchArchiveIsOpen] = useState(false);
@@ -380,7 +416,7 @@ export function TaskBoard({
   }, []);
 
   const startTaskLongPress = useCallback((
-    event: ReactPointerEvent<HTMLButtonElement>,
+    event: ReactPointerEvent<HTMLElement>,
     taskItemId: string,
   ) => {
     if (event.pointerType === 'mouse' || editModeIsEnabled || focusModeIsEnabled) {
@@ -634,7 +670,7 @@ export function TaskBoard({
                   {isSelectedForEdit ? <Icon name="check" /> : null}
                 </span>
               ) : null}
-              <button
+              <div
                 aria-expanded={isExpanded}
                 aria-pressed={editModeIsEnabled ? isSelectedForEdit : undefined}
                 className="task-card-button"
@@ -659,8 +695,23 @@ export function TaskBoard({
                 onPointerDown={(event) => startTaskLongPress(event, taskItem.id)}
                 onPointerLeave={clearLongPressTimer}
                 onPointerUp={clearLongPressTimer}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                  }
+
+                  event.preventDefault();
+                  if (editModeIsEnabled) {
+                    toggleSelectedTask(taskItem.id);
+                  } else if (isExpanded) {
+                    void closeFocusedTask();
+                  } else {
+                    onSelectTaskItem(taskItem.id, taskItem.workspaceId);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
                 title={isExpanded ? t('backToWall') : taskItem.title}
-                type="button"
               >
                 {sourceWorkspace ? (
                   <span
@@ -691,7 +742,38 @@ export function TaskBoard({
                   <TaskSyncIndicator syncState={taskItem.syncState} t={t} />
                 </span>
                 <span className="task-card-main">
-                  <span className="task-card-latest">
+                  {taskItem.builtInTemplateKind === 'Todo' && taskItem.todoEntries?.length ? (
+                    <span
+                      className="task-card-todo-list"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      {taskItem.todoEntries.slice(0, 5).map((entry) => {
+                        const checked = todoEntryOverrides[entry.timelineEntryId] ?? entry.isDone;
+
+                        return (
+                          <label className="task-card-todo-entry" key={entry.timelineEntryId}>
+                            <input
+                              checked={checked}
+                              disabled={archiveViewIsActive || currentUserHasReadOnlyWorkspaceAccess}
+                              onChange={(event) => void toggleTodoEntry(
+                                taskItem,
+                                entry.timelineEntryId,
+                                entry.doneFieldDefinitionId,
+                                event.target.checked,
+                              )}
+                              type="checkbox"
+                            />
+                            <span data-done={checked}>{entry.label}</span>
+                          </label>
+                        );
+                      })}
+                      {taskItem.todoEntries.length > 5 ? (
+                        <small>+{taskItem.todoEntries.length - 5}</small>
+                      ) : null}
+                    </span>
+                  ) : <span className="task-card-latest">
                     {taskItem.latestTimelineEntry ? (
                       <>
                         <span className="task-card-latest-date">
@@ -702,7 +784,7 @@ export function TaskBoard({
                     ) : (
                       t('noNotesYet')
                     )}
-                  </span>
+                  </span>}
                 </span>
                 <span className="task-card-meta">
                   {taskItem.status ? (
@@ -749,7 +831,7 @@ export function TaskBoard({
                     {formatFullDate(taskItem.createdAt)}
                   </span>
                 </span>
-              </button>
+              </div>
 
               {isExpanded ? (
                 <div className="task-card-detail">

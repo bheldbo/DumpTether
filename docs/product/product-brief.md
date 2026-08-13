@@ -35,6 +35,9 @@ Users can:
 - capture a task with little ceremony
 - scan tasks as colored units on a board
 - add compact notes or template-defined structured entries
+- start from protected `Basic Task` and `ToDo Task` templates that are provisioned
+  for every account and repaired when an older account first loads templates
+- check items from a ToDo task directly on the wall without opening the task
 - organize with categories, status, color, follow-up dates, and custom fields
 - filter temporarily or reuse a personal filter
 - archive without losing useful history

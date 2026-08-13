@@ -1,6 +1,7 @@
 using System.Text.Json;
 using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
+using DumpTether.App.Templates;
 using DumpTether.App.Workspaces;
 using DumpTether.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -24,21 +25,6 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         new("Completed", "Work finished or captured elsewhere.", false),
         new("No Longer Needed", "The task is intentionally dropped.", true),
         new("Blocked", "The task cannot move forward right now.", true)
-    ];
-
-    private static readonly DevelopmentTaskTemplate[] DevelopmentTaskTemplates =
-    [
-        new(
-            "Basic Task",
-            [
-                new("Context", FieldDefinitionType.LongText)
-            ]),
-        new(
-            "ToDo Task",
-            [
-                new("Done", FieldDefinitionType.Checkbox),
-                new("Next step", FieldDefinitionType.Text)
-            ])
     ];
 
     private static readonly string[] LegacyDevelopmentTaskTemplateNames =
@@ -72,19 +58,22 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     private readonly ICurrentWorkspaceSelection _currentWorkspaceSelection;
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly DumpTetherDbContext _dbContext;
+    private readonly IBuiltInTaskTemplateProvisioner _builtInTaskTemplateProvisioner;
 
     public DevelopmentWorkspaceProvider(
         IClock clock,
         IOptions<AuthOptions> authOptions,
         ICurrentWorkspaceSelection currentWorkspaceSelection,
         ICurrentUserSessionProvider currentUserSessionProvider,
-        DumpTetherDbContext dbContext)
+        DumpTetherDbContext dbContext,
+        IBuiltInTaskTemplateProvisioner builtInTaskTemplateProvisioner)
     {
         _clock = clock;
         _authOptions = authOptions;
         _currentWorkspaceSelection = currentWorkspaceSelection;
         _currentUserSessionProvider = currentUserSessionProvider;
         _dbContext = dbContext;
+        _builtInTaskTemplateProvisioner = builtInTaskTemplateProvisioner;
     }
 
     public async Task<DevelopmentWorkspaceContext> GetCurrentAsync(CancellationToken cancellationToken)
@@ -221,46 +210,7 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
 
         var templateOwnerUserId = currentSession?.UserId;
 
-        foreach (var templateDefinition in DevelopmentTaskTemplates)
-        {
-            var exists = await _dbContext.TaskTemplates
-                .AnyAsync(
-                    candidate =>
-                        candidate.OwnerUserId == templateOwnerUserId &&
-                        candidate.Name == templateDefinition.Name &&
-                        candidate.DeletedAt == null,
-                    cancellationToken);
-
-            if (!exists)
-            {
-                var taskTemplate = TaskTemplate.Create(
-                    templateOwnerUserId,
-                    templateDefinition.Name,
-                    _clock.UtcNow);
-
-                foreach (var (field, index) in templateDefinition.Fields.Select((field, index) => (field, index)))
-                {
-                    taskTemplate.AddFieldDefinition(
-                        GenerateKey(field.Name),
-                        field.Name,
-                        field.Type,
-                        FieldDefinitionScope.Header,
-                        isRequired: false,
-                        sortOrder: index,
-                        optionsJson: field.Options.Count == 0
-                            ? null
-                            : JsonSerializer.Serialize(field.Options),
-                        layoutRow: field.LayoutRow,
-                        layoutColumn: field.LayoutColumn,
-                        layoutRowSpan: field.LayoutRowSpan,
-                        layoutColumnSpan: field.LayoutColumnSpan);
-                }
-
-                await _dbContext.TaskTemplates.AddAsync(taskTemplate, cancellationToken);
-            }
-        }
-
-        await DeactivateDuplicateDevelopmentTemplatesAsync(templateOwnerUserId, cancellationToken);
+        await _builtInTaskTemplateProvisioner.EnsureAsync(templateOwnerUserId, cancellationToken);
         await DeactivateLegacyDevelopmentTemplatesAsync(templateOwnerUserId, cancellationToken);
         await SeedDevelopmentSavedViewsAsync(workspace.Id, projects, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -388,29 +338,6 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             : new SelectedWorkspace(developmentWorkspace, IsSharedOnly: false, MembershipRole: null);
     }
 
-    private async Task DeactivateDuplicateDevelopmentTemplatesAsync(
-        Guid? ownerUserId,
-        CancellationToken cancellationToken)
-    {
-        foreach (var templateName in DevelopmentTaskTemplates.Select(template => template.Name))
-        {
-            var matchingTemplates = await _dbContext.TaskTemplates
-                .Where(template =>
-                    template.OwnerUserId == ownerUserId &&
-                    template.Name == templateName &&
-                    template.DeletedAt == null)
-                .ToListAsync(cancellationToken);
-
-            foreach (var duplicateTemplate in matchingTemplates
-                         .OrderBy(template => template.CreatedAt)
-                         .ThenBy(template => template.Id)
-                         .Skip(1))
-            {
-                duplicateTemplate.SoftDelete(_clock.UtcNow);
-            }
-        }
-    }
-
     private async Task DeactivateLegacyDevelopmentTemplatesAsync(
         Guid? ownerUserId,
         CancellationToken cancellationToken)
@@ -515,65 +442,10 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         }
     }
 
-    private static string GenerateKey(string name)
-    {
-        var keyCharacters = name
-            .Trim()
-            .ToLowerInvariant()
-            .Select(character => char.IsLetterOrDigit(character) ? character : '_')
-            .ToArray();
-
-        return string.Join(
-            '_',
-            new string(keyCharacters)
-                .Split('_', StringSplitOptions.RemoveEmptyEntries));
-    }
-
     private sealed record DevelopmentArchiveResolution(
         string Name,
         string Description,
         bool RequiresExplanation);
-
-    private sealed record DevelopmentTaskTemplate(
-        string Name,
-        IReadOnlyList<DevelopmentFieldDefinition> Fields);
-
-    private sealed record DevelopmentFieldDefinition(
-        string Name,
-        FieldDefinitionType Type,
-        IReadOnlyList<string> Options,
-        int LayoutRow,
-        int LayoutColumn,
-        int LayoutRowSpan,
-        int LayoutColumnSpan)
-    {
-        public DevelopmentFieldDefinition(string name, FieldDefinitionType type)
-            : this(
-                name,
-                type,
-                [],
-                1,
-                1,
-                1,
-                type == FieldDefinitionType.LongText ? 2 : 1)
-        {
-        }
-
-        public DevelopmentFieldDefinition(
-            string name,
-            FieldDefinitionType type,
-            IReadOnlyList<string> options)
-            : this(
-                name,
-                type,
-                options,
-                1,
-                1,
-                1,
-                type == FieldDefinitionType.LongText ? 2 : 1)
-        {
-        }
-    }
 
     private sealed record DevelopmentSavedView(
         string Name,

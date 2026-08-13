@@ -5,7 +5,9 @@ public sealed record TaskTemplateSummaryResponse(
     string Name,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    int FieldCount);
+    int FieldCount,
+    string? BuiltInKind,
+    bool IsProtected);
 
 public sealed record TaskTemplateDetailResponse(
     Guid Id,
@@ -13,7 +15,9 @@ public sealed record TaskTemplateDetailResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     TaskTemplateLayoutResponse Layout,
-    IReadOnlyList<FieldDefinitionResponse> Fields);
+    IReadOnlyList<FieldDefinitionResponse> Fields,
+    string? BuiltInKind,
+    bool IsProtected);
 
 public sealed record TaskTemplateLayoutResponse(
     IReadOnlyList<TaskTemplateLayoutRowResponse> Header,

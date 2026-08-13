@@ -23,6 +23,7 @@ internal sealed class SyncService : ISyncService
     private readonly ITaskItemRepository _taskItemRepository;
     private readonly ITaskTemplateRepository _taskTemplateRepository;
     private readonly IWorkspaceRepository _workspaceRepository;
+    private readonly IBuiltInTaskTemplateProvisioner _builtInTaskTemplateProvisioner;
 
     public SyncService(
         IAuthRepository authRepository,
@@ -33,7 +34,8 @@ internal sealed class SyncService : ISyncService
         ISyncRepository syncRepository,
         ITaskItemRepository taskItemRepository,
         ITaskTemplateRepository taskTemplateRepository,
-        IWorkspaceRepository workspaceRepository)
+        IWorkspaceRepository workspaceRepository,
+        IBuiltInTaskTemplateProvisioner builtInTaskTemplateProvisioner)
     {
         _authRepository = authRepository;
         _cloudSessionProtector = cloudSessionProtector;
@@ -44,6 +46,7 @@ internal sealed class SyncService : ISyncService
         _taskItemRepository = taskItemRepository;
         _taskTemplateRepository = taskTemplateRepository;
         _workspaceRepository = workspaceRepository;
+        _builtInTaskTemplateProvisioner = builtInTaskTemplateProvisioner;
     }
 
     public async Task<IReadOnlyList<SyncRootResponse>> ListWorkspaceRootsAsync(
@@ -1474,11 +1477,21 @@ internal sealed class SyncService : ISyncService
                 existingLocalTemplate);
         }
 
-        var localTemplate = CloudSyncTemplatePayloadMapper.CreateLocalTemplate(
-            remoteTemplate,
-            ownerUserId,
-            _clock.UtcNow);
-        await _taskTemplateRepository.AddAsync(localTemplate, cancellationToken);
+        TaskTemplate localTemplate;
+        if (TryParseBuiltInKind(remoteTemplate.BuiltInKind, out var builtInKind))
+        {
+            await _builtInTaskTemplateProvisioner.EnsureAsync(ownerUserId, cancellationToken);
+            localTemplate = (await _taskTemplateRepository.ListAsync(ownerUserId, cancellationToken))
+                .Single(template => template.BuiltInKind == builtInKind);
+        }
+        else
+        {
+            localTemplate = CloudSyncTemplatePayloadMapper.CreateLocalTemplate(
+                remoteTemplate,
+                ownerUserId,
+                _clock.UtcNow);
+            await _taskTemplateRepository.AddAsync(localTemplate, cancellationToken);
+        }
         mapping = SyncMapping.CreateLocal(
             root.Id,
             SyncEntityType.TaskTemplate,
@@ -1489,7 +1502,9 @@ internal sealed class SyncService : ISyncService
             CreateRemoteVersion(remoteTemplate),
             _clock.UtcNow);
         await _syncRepository.AddMappingAsync(mapping, cancellationToken);
-        messages.Add($"Imported cloud template \"{remoteTemplate.Name}\".");
+        messages.Add(TryParseBuiltInKind(remoteTemplate.BuiltInKind, out _)
+            ? $"Linked built-in cloud template \"{remoteTemplate.Name}\"."
+            : $"Imported cloud template \"{remoteTemplate.Name}\".");
 
         return CloudSyncTemplatePayloadMapper.CreateRemoteToLocalProjection(
             remoteTemplate,
@@ -1673,10 +1688,9 @@ internal sealed class SyncService : ISyncService
             var matchingRemoteTemplate = (await _cloudSyncClient.ListTaskTemplatesAsync(
                     connection,
                     cancellationToken))
-                .FirstOrDefault(candidate => string.Equals(
-                    candidate.Name,
-                    localTemplate.Name,
-                    StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(candidate => TemplatesRepresentSameIdentity(
+                    localTemplate,
+                    candidate));
 
             if (matchingRemoteTemplate is not null)
             {
@@ -1698,6 +1712,13 @@ internal sealed class SyncService : ISyncService
                 return CloudSyncTemplatePayloadMapper.CreateProjection(
                     matchingRemoteTemplate,
                     localTemplate);
+            }
+
+            if (localTemplate.IsProtected)
+            {
+                throw new InvalidOperationException(
+                    $"The cloud account is missing its built-in {localTemplate.Name} template. " +
+                    "Refresh the cloud template library before syncing this task.");
             }
 
             remoteTemplate = await _cloudSyncClient.CreateTaskTemplateAsync(
@@ -1830,6 +1851,37 @@ internal sealed class SyncService : ISyncService
     private static string CreateRemoteVersion(CloudSyncTaskTemplateResponse remoteTemplate)
     {
         return remoteTemplate.UpdatedAt.ToString("O");
+    }
+
+    private static bool TemplatesRepresentSameIdentity(
+        TaskTemplate localTemplate,
+        CloudSyncTaskTemplateResponse remoteTemplate)
+    {
+        if (localTemplate.BuiltInKind != TaskTemplateBuiltInKind.None)
+        {
+            if (TryParseBuiltInKind(remoteTemplate.BuiltInKind, out var remoteKind))
+            {
+                return remoteKind == localTemplate.BuiltInKind;
+            }
+
+            // Older cloud deployments did not expose built-in identity. The
+            // subsequent structural comparison keeps this name fallback from
+            // linking an unrelated custom template.
+            return string.IsNullOrWhiteSpace(remoteTemplate.BuiltInKind) &&
+                string.Equals(remoteTemplate.Name, localTemplate.Name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.IsNullOrWhiteSpace(remoteTemplate.BuiltInKind) &&
+            string.Equals(remoteTemplate.Name, localTemplate.Name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryParseBuiltInKind(
+        string? value,
+        out TaskTemplateBuiltInKind builtInKind)
+    {
+        return Enum.TryParse(value, ignoreCase: true, out builtInKind) &&
+            builtInKind != TaskTemplateBuiltInKind.None &&
+            Enum.IsDefined(builtInKind);
     }
 
     private async Task<SyncMapping> EnsureLocalTaskMappingForUpdateAsync(
