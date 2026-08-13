@@ -6,6 +6,15 @@ public interface ITaskItemService
         CreateTaskItemRequest request,
         CancellationToken cancellationToken);
 
+    Task<TaskItemDetailResponse?> CreateSubtaskAsync(
+        Guid parentTaskItemId,
+        CreateTaskItemRequest request,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<TaskItemSummaryResponse>?> ListSubtasksAsync(
+        Guid parentTaskItemId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<TaskItemSummaryResponse>> ListAsync(
         TaskItemListScope scope,
         CancellationToken cancellationToken);

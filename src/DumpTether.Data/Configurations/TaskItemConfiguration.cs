@@ -31,6 +31,9 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(taskItem => taskItem.TaskTemplateId)
             .HasColumnName("task_template_id");
 
+        builder.Property(taskItem => taskItem.ParentTaskItemId)
+            .HasColumnName("parent_task_item_id");
+
         builder.Property(taskItem => taskItem.Title)
             .HasColumnName("title")
             .HasMaxLength(500)
@@ -102,6 +105,14 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
             taskItem.Color
         });
 
+        builder.HasIndex(taskItem => new
+        {
+            taskItem.WorkspaceId,
+            taskItem.ParentTaskItemId,
+            taskItem.ArchivedAt,
+            taskItem.LastTouchedAt
+        });
+
         builder.HasOne<Workspace>()
             .WithMany()
             .HasForeignKey(taskItem => taskItem.WorkspaceId)
@@ -120,6 +131,11 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.HasOne<ArchiveResolution>()
             .WithMany()
             .HasForeignKey(taskItem => taskItem.ArchiveResolutionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<TaskItem>()
+            .WithMany()
+            .HasForeignKey(taskItem => taskItem.ParentTaskItemId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -71,6 +71,33 @@ internal sealed class TaskItemService : ITaskItemService
 
         EnsureCanWriteWorkspace(context);
 
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        TaskItem? parentTaskItem = null;
+        if (request.ParentTaskItemId.HasValue)
+        {
+            if (request.ParentTaskItemId.Value == Guid.Empty)
+            {
+                throw new ValidationException("ParentTaskItemId cannot be empty.");
+            }
+
+            parentTaskItem = await _taskItemRepository.GetByIdAsync(
+                request.ParentTaskItemId.Value,
+                context.WorkspaceId,
+                projectId: null,
+                trackChanges: true,
+                cancellationToken);
+
+            if (parentTaskItem is null || !CanEditTask(context, currentSession, parentTaskItem))
+            {
+                throw new ValidationException("Parent task was not found.");
+            }
+
+            if (parentTaskItem.ParentTaskItemId.HasValue)
+            {
+                throw new ValidationException("Nested subtasks are not supported.");
+            }
+        }
+
         if (request.ClientGeneratedId.HasValue)
         {
             if (request.ClientGeneratedId.Value == Guid.Empty)
@@ -87,6 +114,12 @@ internal sealed class TaskItemService : ITaskItemService
 
             if (existingTaskItem is not null)
             {
+                if (existingTaskItem.ParentTaskItemId != request.ParentTaskItemId)
+                {
+                    throw new ValidationException(
+                        "ClientGeneratedId already belongs to a task with a different parent.");
+                }
+
                 var existingTemplate = await ResolveTaskTemplateForDetailAsync(
                     existingTaskItem,
                     includeDeleted: true,
@@ -109,7 +142,7 @@ internal sealed class TaskItemService : ITaskItemService
             cancellationToken);
         var project = await ResolveProjectAsync(
             context.WorkspaceId,
-            request.ProjectId,
+            parentTaskItem?.ProjectId ?? request.ProjectId,
             cancellationToken);
         var taskItem = request.ClientGeneratedId.HasValue
             ? TaskItem.Create(
@@ -125,8 +158,14 @@ internal sealed class TaskItemService : ITaskItemService
                 request.Title,
                 now,
                 taskTemplate?.Id);
+
+        if (parentTaskItem is not null)
+        {
+            taskItem.MakeSubtaskOf(parentTaskItem, now);
+            parentTaskItem.RecordSubtaskAdded(taskItem, now);
+        }
         var category = string.IsNullOrWhiteSpace(request.Category)
-            ? request.ProjectId.HasValue ? project?.Name : null
+            ? parentTaskItem?.Category ?? (request.ProjectId.HasValue ? project?.Name : null)
             : request.Category;
 
         if (!string.IsNullOrWhiteSpace(category))
@@ -148,11 +187,84 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem,
             now,
             cancellationToken);
+        if (parentTaskItem is not null)
+        {
+            await PublishTaskEventAsync(
+                LiveUpdateEvents.TaskUpdated,
+                parentTaskItem,
+                now,
+                cancellationToken);
+        }
 
         return MapDetail(
             taskItem,
             taskTemplate,
             await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
+    }
+
+    public async Task<TaskItemDetailResponse?> CreateSubtaskAsync(
+        Guid parentTaskItemId,
+        CreateTaskItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.ParentTaskItemId.HasValue && request.ParentTaskItemId.Value != parentTaskItemId)
+        {
+            throw new ValidationException("The parent task does not match the route.");
+        }
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var parent = await _taskItemRepository.GetByIdAsync(
+            parentTaskItemId,
+            context.WorkspaceId,
+            projectId: null,
+            trackChanges: false,
+            cancellationToken);
+        if (parent is null || !CanEditTask(context, currentSession, parent))
+        {
+            return null;
+        }
+
+        return await CreateAsync(
+            request with { ParentTaskItemId = parentTaskItemId },
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskItemSummaryResponse>?> ListSubtasksAsync(
+        Guid parentTaskItemId,
+        CancellationToken cancellationToken)
+    {
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var parent = await _taskItemRepository.GetByIdAsync(
+            parentTaskItemId,
+            context.WorkspaceId,
+            projectId: null,
+            trackChanges: false,
+            cancellationToken);
+
+        if (parent is null || !CanReadTask(context, currentSession, parent))
+        {
+            return null;
+        }
+
+        var query = await BuildQueryAsync(
+            context.WorkspaceId,
+            context.IsSharedOnly,
+            new TaskItemListRequest(Scope: TaskItemListScope.All),
+            cancellationToken);
+        query = query with { ParentTaskItemId = parentTaskItemId };
+        var subtasks = await _taskItemRepository.ListAsync(query, cancellationToken);
+        var syncStates = await _syncService.ListTaskSyncStatesAsync(
+            context.WorkspaceId,
+            subtasks.Select(taskItem => taskItem.Id).ToArray(),
+            cancellationToken);
+
+        return subtasks
+            .Select(taskItem => MapSummary(taskItem, syncStates.GetValueOrDefault(taskItem.Id)))
+            .ToList();
     }
 
     private async Task<DevelopmentWorkspaceContext> GetRequiredWorkspaceContextAsync(
@@ -220,11 +332,16 @@ internal sealed class TaskItemService : ITaskItemService
             context.WorkspaceId,
             taskItems.Select(taskItem => taskItem.Id).ToArray(),
             cancellationToken);
+        var subtaskCounts = await _taskItemRepository.CountChildrenByParentIdsAsync(
+            context.WorkspaceId,
+            taskItems.Select(taskItem => taskItem.Id).ToArray(),
+            cancellationToken);
 
         return taskItems
             .Select(taskItem => MapSummary(
                 taskItem,
-                syncStates.GetValueOrDefault(taskItem.Id)))
+                syncStates.GetValueOrDefault(taskItem.Id),
+                subtaskCounts.GetValueOrDefault(taskItem.Id)))
             .ToList();
     }
 
@@ -297,8 +414,16 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem,
             includeDeleted: true,
             cancellationToken);
+        var subtaskCounts = await _taskItemRepository.CountChildrenByParentIdsAsync(
+            context.WorkspaceId,
+            [taskItem.Id],
+            cancellationToken);
 
-        return MapDetail(taskItem, taskTemplate, await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken));
+        return MapDetail(
+            taskItem,
+            taskTemplate,
+            await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken),
+            subtaskCounts.GetValueOrDefault(taskItem.Id));
     }
 
     public async Task<TaskItemDetailResponse?> UpdateAsync(
@@ -428,18 +553,18 @@ internal sealed class TaskItemService : ITaskItemService
             throw new ValidationException("Destination board was not found.");
         }
 
-        var sourceTasks = await _taskItemRepository.ListByIdsAsync(
+        var explicitlySelectedTasks = await _taskItemRepository.ListByIdsAsync(
             sourceContext.WorkspaceId,
             requestedTaskIds,
             trackChanges: false,
             cancellationToken);
 
-        if (sourceTasks.Count != requestedTaskIds.Length)
+        if (explicitlySelectedTasks.Count != requestedTaskIds.Length)
         {
             throw new ValidationException("One or more selected tasks were not found.");
         }
 
-        var inaccessibleTask = sourceTasks.FirstOrDefault(taskItem =>
+        var inaccessibleTask = explicitlySelectedTasks.FirstOrDefault(taskItem =>
             !CanReadTask(sourceContext, currentSession, taskItem));
 
         if (inaccessibleTask is not null)
@@ -447,12 +572,29 @@ internal sealed class TaskItemService : ITaskItemService
             throw new ValidationException("One or more selected tasks were not found.");
         }
 
+        var selectedParentIds = explicitlySelectedTasks
+            .Where(taskItem => taskItem.ParentTaskItemId is null)
+            .Select(taskItem => taskItem.Id)
+            .ToArray();
+        var readableChildren = (await _taskItemRepository.ListChildrenByParentIdsAsync(
+                sourceContext.WorkspaceId,
+                selectedParentIds,
+                trackChanges: false,
+                cancellationToken))
+            .Where(taskItem => CanReadTask(sourceContext, currentSession, taskItem));
+        var sourceTasks = explicitlySelectedTasks
+            .Concat(readableChildren)
+            .DistinctBy(taskItem => taskItem.Id)
+            .ToArray();
+
         var now = _clock.UtcNow;
         var copiedTasks = new List<TaskItemDetailResponse>();
+        var copiedTaskEntitiesBySourceId = new Dictionary<Guid, TaskItem>();
         var copiedTemplatesBySourceId = new Dictionary<Guid, CopiedTemplate>();
 
-        foreach (var sourceTask in sourceTasks.OrderBy(task =>
-                     Array.IndexOf(requestedTaskIds, task.Id)))
+        foreach (var sourceTask in sourceTasks
+                     .OrderBy(task => task.ParentTaskItemId.HasValue)
+                     .ThenBy(task => Array.IndexOf(requestedTaskIds, task.Id)))
         {
             await EnsureTaskQuotaAsync(request.DestinationWorkspaceId, cancellationToken);
 
@@ -514,7 +656,17 @@ internal sealed class TaskItemService : ITaskItemService
                 CopyTimelineNotes(sourceTask, copiedTask, templateCopy?.FieldMap, now);
             }
 
+            if (sourceTask.ParentTaskItemId.HasValue &&
+                copiedTaskEntitiesBySourceId.TryGetValue(
+                    sourceTask.ParentTaskItemId.Value,
+                    out var copiedParent))
+            {
+                copiedTask.MakeSubtaskOf(copiedParent, now);
+                copiedParent.RecordSubtaskAdded(copiedTask, now);
+            }
+
             await _taskItemRepository.AddAsync(copiedTask, cancellationToken);
+            copiedTaskEntitiesBySourceId[sourceTask.Id] = copiedTask;
             copiedTasks.Add(MapDetail(copiedTask, templateCopy?.Template));
         }
 
@@ -881,25 +1033,40 @@ internal sealed class TaskItemService : ITaskItemService
             throw new ValidationException("Only the board owner can permanently delete archived tasks.");
         }
 
-        var taskItems = await _taskItemRepository.ListByIdsAsync(
+        var explicitlySelectedTaskItems = await _taskItemRepository.ListByIdsAsync(
             context.WorkspaceId,
             taskIds,
             trackChanges: false,
             cancellationToken);
 
-        if (taskItems.Count != taskIds.Count)
+        if (explicitlySelectedTaskItems.Count != taskIds.Count)
         {
             throw new ValidationException("One or more selected tasks were not found.");
         }
 
+        var selectedParentIds = explicitlySelectedTaskItems
+            .Where(taskItem => taskItem.ParentTaskItemId is null)
+            .Select(taskItem => taskItem.Id)
+            .ToArray();
+        var childTaskItems = await _taskItemRepository.ListChildrenByParentIdsAsync(
+            context.WorkspaceId,
+            selectedParentIds,
+            trackChanges: false,
+            cancellationToken);
+        var taskItems = explicitlySelectedTaskItems
+            .Concat(childTaskItems)
+            .DistinctBy(taskItem => taskItem.Id)
+            .ToArray();
+
         if (taskItems.Any(taskItem => taskItem.ArchivedAt is null))
         {
-            throw new ValidationException("Only archived tasks can be permanently deleted.");
+            throw new ValidationException(
+                "Archive the task and all of its subtasks before permanently deleting it.");
         }
 
         var deletedCount = await _taskItemRepository.DeleteArchivedAsync(
             context.WorkspaceId,
-            taskIds,
+            taskItems.Select(taskItem => taskItem.Id).ToArray(),
             cancellationToken);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
 
@@ -1545,7 +1712,9 @@ internal sealed class TaskItemService : ITaskItemService
             request.SharedWithMe,
             ParseSortField(sort.Field),
             string.Equals(sort.Direction, "desc", StringComparison.OrdinalIgnoreCase),
-            _clock.UtcNow);
+            _clock.UtcNow,
+            ParentTaskItemId: null,
+            request.IncludeChildTasks || limitToSharedAccess);
     }
 
     private async Task<SavedViewFilterRequest> GetSavedViewFilterAsync(
@@ -2135,7 +2304,8 @@ internal sealed class TaskItemService : ITaskItemService
 
     private static TaskItemSummaryResponse MapSummary(
         TaskItem taskItem,
-        TaskSyncStateResponse? syncState = null)
+        TaskSyncStateResponse? syncState = null,
+        int subtaskCount = 0)
     {
         var latestTimelineEntry = taskItem.TimelineEntries
             .Where(entry => entry.DeletedAt == null && entry.Kind == TaskTimelineEntryKind.NoteAdded)
@@ -2171,13 +2341,16 @@ internal sealed class TaskItemService : ITaskItemService
                     latestTimelineEntry.Details,
                     latestTimelineEntry.OccurredAt,
                     latestTimelineEntry.UpdatedAt,
-                    MapFieldValues(latestTimelineEntry.FieldValues)));
+                    MapFieldValues(latestTimelineEntry.FieldValues)),
+            taskItem.ParentTaskItemId,
+            subtaskCount);
     }
 
     private static TaskItemDetailResponse MapDetail(
         TaskItem taskItem,
         TaskTemplate? taskTemplate,
-        TaskSyncStateResponse? syncState = null)
+        TaskSyncStateResponse? syncState = null,
+        int subtaskCount = 0)
     {
         return new TaskItemDetailResponse(
             taskItem.Id,
@@ -2212,7 +2385,9 @@ internal sealed class TaskItemService : ITaskItemService
                 .OrderBy(entry => entry.OccurredAt)
                 .ThenBy(entry => entry.Id)
                 .Select(MapTimelineEntry)
-                .ToList());
+                .ToList(),
+            taskItem.ParentTaskItemId,
+            subtaskCount);
     }
 
     private static TaskTimelineEntryResponse MapTimelineEntry(TaskTimelineEntry entry)

@@ -13,5 +13,6 @@ public enum TaskTimelineEntryKind
     CategoryChanged = 9,
     ColorChanged = 10,
     Shared = 11,
-    ShareRevoked = 12
+    ShareRevoked = 12,
+    ParentChanged = 13
 }

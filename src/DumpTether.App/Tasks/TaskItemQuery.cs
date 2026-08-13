@@ -43,4 +43,6 @@ public sealed record TaskItemQuery(
     bool SharedWithMe,
     TaskItemSortField SortField,
     bool SortDescending,
-    DateTimeOffset Now);
+    DateTimeOffset Now,
+    Guid? ParentTaskItemId = null,
+    bool IncludeChildTasks = false);

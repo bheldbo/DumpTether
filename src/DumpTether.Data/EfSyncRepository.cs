@@ -70,6 +70,18 @@ internal sealed class EfSyncRepository : ISyncRepository
         bool trackChanges,
         CancellationToken cancellationToken)
     {
+        if (trackChanges)
+        {
+            var trackedMapping = _dbContext.SyncMappings.Local.SingleOrDefault(mapping =>
+                mapping.SyncRootId == syncRootId &&
+                mapping.EntityType == entityType &&
+                mapping.LocalId == localId);
+            if (trackedMapping is not null)
+            {
+                return trackedMapping;
+            }
+        }
+
         var query = _dbContext.SyncMappings
             .Where(mapping =>
                 mapping.SyncRootId == syncRootId &&
@@ -120,7 +132,19 @@ internal sealed class EfSyncRepository : ISyncRepository
             query = query.AsNoTracking();
         }
 
-        return await query.ToListAsync(cancellationToken);
+        var persisted = await query.ToListAsync(cancellationToken);
+        if (!trackChanges)
+        {
+            return persisted;
+        }
+
+        var persistedIds = persisted.Select(mapping => mapping.Id).ToHashSet();
+        return persisted
+            .Concat(_dbContext.SyncMappings.Local.Where(mapping =>
+                mapping.SyncRootId == syncRootId &&
+                mapping.EntityType == entityType &&
+                !persistedIds.Contains(mapping.Id)))
+            .ToList();
     }
 
     public async Task<CloudSyncAccount?> GetCloudAccountForUserAsync(

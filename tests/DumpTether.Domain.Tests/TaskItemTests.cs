@@ -86,4 +86,52 @@ public sealed class TaskItemTests
         Assert.Equal(createdAt, taskItem.LastTouchedAt);
         Assert.Single(taskItem.TimelineEntries);
     }
+
+    [Fact]
+    public void MakeSubtaskOf_SameWorkspace_RecordsHierarchyAndEvidence()
+    {
+        var workspaceId = Guid.NewGuid();
+        var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);
+        var parent = TaskItem.Create(workspaceId, null, "Plan the trip", createdAt);
+        var child = TaskItem.Create(workspaceId, null, "Book the train", createdAt);
+
+        child.MakeSubtaskOf(parent, createdAt.AddMinutes(1));
+        parent.RecordSubtaskAdded(child, createdAt.AddMinutes(1));
+
+        Assert.Equal(parent.Id, child.ParentTaskItemId);
+        Assert.Equal(TaskTimelineEntryKind.ParentChanged, child.TimelineEntries.Last().Kind);
+        Assert.Equal(TaskTimelineEntryKind.ParentChanged, parent.TimelineEntries.Last().Kind);
+        Assert.Equal(createdAt.AddMinutes(1), parent.LastTouchedAt);
+    }
+
+    [Fact]
+    public void MakeSubtaskOf_DifferentWorkspace_RejectsRelationship()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var parent = TaskItem.Create(Guid.NewGuid(), null, "Parent", now);
+        var child = TaskItem.Create(Guid.NewGuid(), null, "Child", now);
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            child.MakeSubtaskOf(parent, now));
+
+        Assert.Equal("A subtask must belong to the same board as its parent.", exception.Message);
+        Assert.Null(child.ParentTaskItemId);
+    }
+
+    [Fact]
+    public void MakeSubtaskOf_ChildParent_RejectsNestedSubtask()
+    {
+        var workspaceId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var root = TaskItem.Create(workspaceId, null, "Root", now);
+        var child = TaskItem.Create(workspaceId, null, "Child", now);
+        var grandchild = TaskItem.Create(workspaceId, null, "Grandchild", now);
+        child.MakeSubtaskOf(root, now);
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            grandchild.MakeSubtaskOf(child, now));
+
+        Assert.Equal("Nested subtasks are not supported.", exception.Message);
+        Assert.Null(grandchild.ParentTaskItemId);
+    }
 }

@@ -418,6 +418,28 @@ export function getTaskItem(
   return request<TaskItemDetailResponse>(`/api/tasks/${id}`, undefined, options);
 }
 
+export function listSubtasks(
+  parentTaskItemId: string,
+  options: ApiRequestOptions = {},
+): Promise<TaskItemSummaryResponse[]> {
+  return request<TaskItemSummaryResponse[]>(
+    `/api/tasks/${parentTaskItemId}/subtasks`,
+    undefined,
+    options,
+  );
+}
+
+export function createSubtask(
+  parentTaskItemId: string,
+  requestBody: CreateTaskItemRequest,
+  options: ApiRequestOptions = {},
+): Promise<TaskItemDetailResponse> {
+  return request<TaskItemDetailResponse>(`/api/tasks/${parentTaskItemId}/subtasks`, {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  }, options);
+}
+
 export function createTaskItem(
   requestBody: CreateTaskItemRequest,
   options: ApiRequestOptions = {},

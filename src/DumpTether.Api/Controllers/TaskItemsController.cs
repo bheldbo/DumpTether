@@ -56,6 +56,7 @@ public sealed class TaskItemsController : ControllerBase
         [FromQuery] bool sharedWithMe,
         [FromQuery] string? sort,
         [FromQuery] string? direction,
+        [FromQuery] bool includeChildTasks,
         CancellationToken cancellationToken)
     {
         if (scope == 0)
@@ -81,7 +82,8 @@ public sealed class TaskItemsController : ControllerBase
                     sharedWith,
                     sharedWithMe,
                     sort,
-                    direction),
+                    direction,
+                    includeChildTasks),
                 cancellationToken);
             return Ok(response);
         }
@@ -139,6 +141,43 @@ public sealed class TaskItemsController : ControllerBase
     {
         var response = await _taskItemService.GetByIdAsync(id, cancellationToken);
         return response is null ? NotFound() : Ok(response);
+    }
+
+    [HttpGet("{id:guid}/subtasks")]
+    public async Task<ActionResult<IReadOnlyList<TaskItemSummaryResponse>>> ListSubtasks(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var response = await _taskItemService.ListSubtasksAsync(id, cancellationToken);
+        return response is null ? NotFound() : Ok(response);
+    }
+
+    [EnableRateLimiting("task-writes")]
+    [HttpPost("{id:guid}/subtasks")]
+    public async Task<ActionResult<TaskItemDetailResponse>> CreateSubtask(
+        Guid id,
+        CreateTaskItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.CreateSubtaskAsync(id, request, cancellationToken);
+            return response is null
+                ? NotFound()
+                : CreatedAtAction(nameof(GetById), new { id = response.Id }, response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
     }
 
     [EnableRateLimiting("task-writes")]

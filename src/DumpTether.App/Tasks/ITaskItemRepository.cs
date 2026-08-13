@@ -20,6 +20,17 @@ public interface ITaskItemRepository
         IReadOnlyDictionary<Guid, TaskItemQuery> queries,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyDictionary<Guid, int>> CountChildrenByParentIdsAsync(
+        Guid workspaceId,
+        IReadOnlyCollection<Guid> parentTaskItemIds,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<TaskItem>> ListChildrenByParentIdsAsync(
+        Guid workspaceId,
+        IReadOnlyCollection<Guid> parentTaskItemIds,
+        bool trackChanges,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<TaskItem>> ListByProjectAsync(
         Guid workspaceId,
         Guid projectId,

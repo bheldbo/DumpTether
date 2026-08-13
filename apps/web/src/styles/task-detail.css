@@ -469,6 +469,15 @@ button.task-sync-indicator {
   overflow: auto;
 }
 
+.task-card-pending-detail {
+  grid-column: 1 / -1;
+  min-height: calc(100vh - 32px);
+}
+
+.task-card-pending-detail .task-card-detail {
+  min-height: 100%;
+}
+
 .board-loading-indicator,
 .task-detail-loading-indicator {
   position: absolute;

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using DumpTether.App.ArchiveResolutions;
+using DumpTether.App.Auth;
 using DumpTether.App.Tasks;
 using DumpTether.Data;
 using DumpTether.Domain;
@@ -67,6 +68,105 @@ public sealed class TaskItemsApiTests
 
         Assert.NotNull(taskItems);
         Assert.Contains(taskItems, taskItem => taskItem.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task Subtasks_CreateAndListWithoutClutteringBoardWall()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var parent = await CreateTaskItemAsync(client, "Prepare release");
+
+        var createResponse = await client.PostAsJsonAsync(
+            $"/api/tasks/{parent.Id}/subtasks",
+            new CreateTaskItemRequest("Write release notes"));
+        createResponse.EnsureSuccessStatusCode();
+        var child = (await createResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+        var boardTasks = (await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks"))!;
+        var subtasks = (await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>(
+            $"/api/tasks/{parent.Id}/subtasks"))!;
+        var refreshedParent = (await client.GetFromJsonAsync<TaskItemDetailResponse>(
+            $"/api/tasks/{parent.Id}"))!;
+
+        Assert.Equal(parent.Id, child.ParentTaskItemId);
+        Assert.DoesNotContain(boardTasks, task => task.Id == child.Id);
+        Assert.Contains(boardTasks, task => task.Id == parent.Id);
+        Assert.Single(subtasks, task => task.Id == child.Id);
+        Assert.Equal(1, refreshedParent.SubtaskCount);
+        Assert.True(refreshedParent.LastTouchedAt >= parent.LastTouchedAt);
+    }
+
+    [Fact]
+    public async Task Subtasks_RejectNestedChildren()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var parent = await CreateTaskItemAsync(client, "Parent");
+        var childResponse = await client.PostAsJsonAsync(
+            $"/api/tasks/{parent.Id}/subtasks",
+            new CreateTaskItemRequest("Child"));
+        childResponse.EnsureSuccessStatusCode();
+        var child = (await childResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/tasks/{child.Id}/subtasks",
+            new CreateTaskItemRequest("Grandchild"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CopyTaskItems_WithParentSelected_IncludesChildAndPreservesHierarchy()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop");
+        using var client = factory.CreateClient();
+        var loginResponse = await client.PostAsync("/api/auth/local-desktop", content: null);
+        loginResponse.EnsureSuccessStatusCode();
+        var login = (await loginResponse.Content.ReadFromJsonAsync<LoginUserResponse>())!;
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", login.SessionToken);
+        var parent = await CreateTaskItemAsync(client, "Release checklist");
+        var childResponse = await client.PostAsJsonAsync(
+            $"/api/tasks/{parent.Id}/subtasks",
+            new CreateTaskItemRequest("Publish packages"));
+        childResponse.EnsureSuccessStatusCode();
+        var child = (await childResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+
+        var copyResponse = await client.PostAsJsonAsync(
+            "/api/tasks/copy",
+            new CopyTaskItemsRequest(
+                [parent.Id],
+                parent.WorkspaceId));
+        copyResponse.EnsureSuccessStatusCode();
+        var copied = (await copyResponse.Content.ReadFromJsonAsync<CopyTaskItemsResponse>())!.Tasks;
+        var copiedParent = Assert.Single(copied, task => task.ParentTaskItemId is null);
+        var copiedChild = Assert.Single(copied, task => task.ParentTaskItemId.HasValue);
+
+        Assert.Equal(copiedParent.Id, copiedChild.ParentTaskItemId);
+        Assert.Equal(parent.Title, copiedParent.Title);
+        Assert.Equal(child.Title, copiedChild.Title);
+    }
+
+    [Fact]
+    public async Task Subtasks_RejectReusingClientGeneratedIdWithDifferentParent()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var firstParent = await CreateTaskItemAsync(client, "First parent");
+        var secondParent = await CreateTaskItemAsync(client, "Second parent");
+        var clientGeneratedId = Guid.NewGuid();
+        var firstResponse = await client.PostAsJsonAsync(
+            $"/api/tasks/{firstParent.Id}/subtasks",
+            new CreateTaskItemRequest("Stable child", ClientGeneratedId: clientGeneratedId));
+        firstResponse.EnsureSuccessStatusCode();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/tasks/{secondParent.Id}/subtasks",
+            new CreateTaskItemRequest("Stable child", ClientGeneratedId: clientGeneratedId));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -447,6 +547,41 @@ public sealed class TaskItemsApiTests
 
         var fetchResponse = await client.GetAsync($"/api/tasks/{created.Id}");
         Assert.Equal(HttpStatusCode.NotFound, fetchResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostTaskPermanentDelete_ExpandsArchivedChildrenButRejectsActiveChildren()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var parent = await CreateTaskItemAsync(client, "Archived parent");
+        var childResponse = await client.PostAsJsonAsync(
+            $"/api/tasks/{parent.Id}/subtasks",
+            new CreateTaskItemRequest("Child lifecycle"));
+        childResponse.EnsureSuccessStatusCode();
+        var child = (await childResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+        var archiveResolutionId = await CreateArchiveResolutionAsync(
+            factory,
+            parent.WorkspaceId,
+            "Completed");
+        await PostArchiveAsync(client, parent.Id, new { archiveResolutionId });
+
+        var rejected = await client.PostAsJsonAsync(
+            "/api/tasks/permanent-delete",
+            new { taskItemIds = new[] { parent.Id } });
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+
+        await PostArchiveAsync(client, child.Id, new { archiveResolutionId });
+        var deleted = await client.PostAsJsonAsync(
+            "/api/tasks/permanent-delete",
+            new { taskItemIds = new[] { parent.Id } });
+        deleted.EnsureSuccessStatusCode();
+        var result = await deleted.Content.ReadFromJsonAsync<TaskItemBatchResponse>();
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Count);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/tasks/{parent.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/tasks/{child.Id}")).StatusCode);
     }
 
     private static async Task<TaskItemDetailResponse> CreateTaskItemAsync(

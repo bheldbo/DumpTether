@@ -523,6 +523,37 @@ public sealed class SyncApiTests
     }
 
     [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenDesktop_PushesSubtaskAfterParent()
+    {
+        var cloud = new FakeCloudSyncClient();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+        var parent = await CreateTaskItemAsync(client, "Cloud parent");
+        var childResponse = await client.PostAsJsonAsync(
+            $"/api/tasks/{parent.Id}/subtasks",
+            new CreateTaskItemRequest("Cloud child"));
+        childResponse.EnsureSuccessStatusCode();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest("https://cloud.example", "cloud-token"));
+
+        response.EnsureSuccessStatusCode();
+        var sync = (await response.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+        var remoteTasks = cloud.TasksByWorkspace[cloud.Workspaces.Single().Id];
+        var remoteParent = Assert.Single(remoteTasks, task => task.ParentTaskItemId is null);
+        var remoteChild = Assert.Single(remoteTasks, task => task.ParentTaskItemId.HasValue);
+
+        Assert.Equal(2, sync.Pushed);
+        Assert.Equal(remoteParent.Id, remoteChild.ParentTaskItemId);
+    }
+
+    [Fact]
     public async Task SyncWorkspaceWithCloud_WhenRemoteCreateSucceededBeforeFailure_RetryDoesNotDuplicateTask()
     {
         var cloud = new FakeCloudSyncClient
@@ -705,6 +736,47 @@ public sealed class SyncApiTests
         Assert.Equal(1, sync.Pulled);
         var pulled = Assert.Single(tasks!, task => task.Title == "Pulled from cloud");
         Assert.Equal(SyncMappingStatus.Synced.ToString(), pulled.SyncState?.Status);
+    }
+
+    [Fact]
+    public async Task SyncWorkspaceWithCloud_WhenDesktop_PullsParentBeforeSubtask()
+    {
+        var cloud = new FakeCloudSyncClient();
+        var remoteWorkspace = cloud.AddWorkspace("Cloud board");
+        var remoteParent = cloud.AddTask(
+            remoteWorkspace.Id,
+            "Remote parent",
+            lastTouchedAt: DateTimeOffset.UtcNow);
+        cloud.AddTask(
+            remoteWorkspace.Id,
+            "Remote child",
+            lastTouchedAt: DateTimeOffset.UtcNow,
+            parentTaskItemId: remoteParent.Id);
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            environmentName: "Desktop",
+            cloudSyncClient: cloud);
+        using var client = factory.CreateClient();
+        var login = await LoginDesktopAsync(client);
+        var workspaceId = login.Workspaces.Single().Id;
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/sync/workspaces/{workspaceId}/run",
+            new SyncWorkspaceWithCloudRequest(
+                "https://cloud.example",
+                "cloud-token",
+                remoteWorkspace.Id,
+                PushLocalChanges: false));
+
+        response.EnsureSuccessStatusCode();
+        var sync = (await response.Content.ReadFromJsonAsync<SyncWorkspaceWithCloudResponse>())!;
+        var localTasks = (await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>(
+            "/api/tasks?includeChildTasks=true"))!;
+        var localParent = Assert.Single(localTasks, task => task.ParentTaskItemId is null);
+        var localChild = Assert.Single(localTasks, task => task.ParentTaskItemId.HasValue);
+
+        Assert.Equal(2, sync.Pulled);
+        Assert.Equal(localParent.Id, localChild.ParentTaskItemId);
     }
 
     [Fact]
@@ -1265,7 +1337,8 @@ public sealed class SyncApiTests
                 DateTimeOffset.UtcNow,
                 request.FieldValues,
                 request.ClientGeneratedId,
-                MapTimelineEntries(request.TimelineEntries));
+                MapTimelineEntries(request.TimelineEntries),
+                request.ParentTaskItemId);
 
             if (FailAfterNextTaskCreate)
             {
@@ -1350,7 +1423,8 @@ public sealed class SyncApiTests
             DateTimeOffset? lastTouchedAt = null,
             IReadOnlyDictionary<Guid, string>? fieldValues = null,
             Guid? id = null,
-            IReadOnlyList<CloudSyncTimelineEntryResponse>? timelineEntries = null)
+            IReadOnlyList<CloudSyncTimelineEntryResponse>? timelineEntries = null,
+            Guid? parentTaskItemId = null)
         {
             var createdAt = lastTouchedAt ?? DateTimeOffset.UtcNow;
             var taskId = id ?? Guid.NewGuid();
@@ -1376,7 +1450,8 @@ public sealed class SyncApiTests
                 followUpAt,
                 ArchivedAt: null,
                 MapFieldValues(fieldValues),
-                timelineEntries);
+                timelineEntries,
+                parentTaskItemId);
 
             TasksByWorkspace[workspaceId].Add(task);
 
