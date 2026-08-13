@@ -76,6 +76,25 @@ internal sealed class EfTaskTemplateRepository : ITaskTemplateRepository
                 cancellationToken);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, TaskTemplate>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken)
+    {
+        if (ids.Count == 0)
+        {
+            return new Dictionary<Guid, TaskTemplate>();
+        }
+
+        var templates = await _dbContext.TaskTemplates
+            .AsNoTracking()
+            .Include("_fieldDefinitions")
+            .AsSplitQuery()
+            .Where(template => ids.Contains(template.Id))
+            .ToListAsync(cancellationToken);
+
+        return templates.ToDictionary(template => template.Id);
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         await _dbContext.SaveChangesAsync(cancellationToken);

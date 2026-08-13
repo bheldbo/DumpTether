@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<ISyncService, SyncService>();
         services.AddScoped<ITaskItemService, TaskItemService>();
+        services.AddScoped<IBuiltInTaskTemplateProvisioner, BuiltInTaskTemplateProvisioner>();
         services.AddScoped<ITaskTemplateService, TaskTemplateService>();
         services.AddScoped<ISavedViewService, SavedViewService>();
         services.AddScoped<IWorkspaceService, WorkspaceService>();

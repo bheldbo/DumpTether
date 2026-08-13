@@ -21,6 +21,15 @@ export interface TaskItemSummaryResponse {
   latestTimelineEntry: TaskTimelineEntryResponse | null;
   parentTaskItemId: string | null;
   subtaskCount: number;
+  builtInTemplateKind: string | null;
+  todoEntries: TaskTodoEntryResponse[] | null;
+}
+
+export interface TaskTodoEntryResponse {
+  timelineEntryId: string;
+  label: string;
+  isDone: boolean;
+  doneFieldDefinitionId: string;
 }
 
 export interface TaskItemDetailResponse extends TaskItemSummaryResponse {
@@ -533,6 +542,8 @@ export interface TaskTemplateSummaryResponse {
   createdAt: string;
   updatedAt: string;
   fieldCount: number;
+  builtInKind: string | null;
+  isProtected: boolean;
 }
 
 export interface TaskTemplateDetailResponse {
@@ -542,6 +553,8 @@ export interface TaskTemplateDetailResponse {
   updatedAt: string;
   layout: TaskTemplateLayoutResponse;
   fields: FieldDefinitionResponse[];
+  builtInKind: string | null;
+  isProtected: boolean;
 }
 
 export interface TaskTemplateLayoutResponse {

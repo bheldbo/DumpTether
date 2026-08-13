@@ -19,17 +19,20 @@ internal sealed class TaskTemplateService : ITaskTemplateService
     private readonly IClock _clock;
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
+    private readonly IBuiltInTaskTemplateProvisioner _builtInTaskTemplateProvisioner;
     private readonly ITaskTemplateRepository _taskTemplateRepository;
 
     public TaskTemplateService(
         IClock clock,
         ICurrentUserSessionProvider currentUserSessionProvider,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
+        IBuiltInTaskTemplateProvisioner builtInTaskTemplateProvisioner,
         ITaskTemplateRepository taskTemplateRepository)
     {
         _clock = clock;
         _currentUserSessionProvider = currentUserSessionProvider;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
+        _builtInTaskTemplateProvisioner = builtInTaskTemplateProvisioner;
         _taskTemplateRepository = taskTemplateRepository;
     }
 
@@ -39,6 +42,7 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         var ownerUserId = await GetTemplateOwnerUserIdAsync(
             requireWritableDevelopmentWorkspace: false,
             cancellationToken);
+        await EnsureBuiltInTemplatesAsync(ownerUserId, cancellationToken);
         var templates = await _taskTemplateRepository.ListAsync(
             ownerUserId,
             cancellationToken);
@@ -55,6 +59,7 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         var ownerUserId = await GetTemplateOwnerUserIdAsync(
             requireWritableDevelopmentWorkspace: false,
             cancellationToken);
+        await EnsureBuiltInTemplatesAsync(ownerUserId, cancellationToken);
         var template = await _taskTemplateRepository.GetByIdAsync(
             id,
             ownerUserId,
@@ -74,6 +79,7 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         var ownerUserId = await GetTemplateOwnerUserIdAsync(
             requireWritableDevelopmentWorkspace: true,
             cancellationToken);
+        await EnsureBuiltInTemplatesAsync(ownerUserId, cancellationToken);
         var name = NormalizeName(request.Name);
         await EnsureUniqueActiveNameAsync(
             ownerUserId,
@@ -133,6 +139,11 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         if (template is null)
         {
             return null;
+        }
+
+        if (template.IsProtected)
+        {
+            throw new ValidationException("Built-in task templates cannot be changed.");
         }
 
         var now = _clock.UtcNow;
@@ -195,6 +206,11 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             return false;
         }
 
+        if (template.IsProtected)
+        {
+            throw new ValidationException("Built-in task templates cannot be deleted.");
+        }
+
         template.SoftDelete(_clock.UtcNow);
         await _taskTemplateRepository.SaveChangesAsync(cancellationToken);
 
@@ -220,6 +236,14 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         }
 
         return null;
+    }
+
+    private async Task EnsureBuiltInTemplatesAsync(
+        Guid? ownerUserId,
+        CancellationToken cancellationToken)
+    {
+        await _builtInTaskTemplateProvisioner.EnsureAsync(ownerUserId, cancellationToken);
+        await _taskTemplateRepository.SaveChangesAsync(cancellationToken);
     }
 
     private static void EnsureCanWriteDevelopmentWorkspace(DevelopmentWorkspaceContext context)
@@ -614,7 +638,9 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             template.Name,
             template.CreatedAt,
             template.UpdatedAt,
-            template.FieldDefinitions.Count(field => field.IsActive));
+            template.FieldDefinitions.Count(field => field.IsActive),
+            MapBuiltInKind(template),
+            template.IsProtected);
     }
 
     internal static TaskTemplateDetailResponse MapDetail(TaskTemplate template)
@@ -634,8 +660,15 @@ internal sealed class TaskTemplateService : ITaskTemplateService
             MapLayout(template, activeFields),
             activeFields
                 .Select(MapField)
-                .ToList());
+                .ToList(),
+            MapBuiltInKind(template),
+            template.IsProtected);
     }
+
+    private static string? MapBuiltInKind(TaskTemplate template) =>
+        template.BuiltInKind == TaskTemplateBuiltInKind.None
+            ? null
+            : template.BuiltInKind.ToString();
 
     internal static TaskTemplateLayoutResponse MapLayout(
         TaskTemplate template,

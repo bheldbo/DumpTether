@@ -505,6 +505,7 @@ function AddTimelineEntryForm({
   const [note, setNote] = useState('');
   const [fieldValues, setFieldValues] = useState<FieldValueMap>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasEntryFields = entryFields.length > 0;
 
@@ -524,15 +525,44 @@ function AddTimelineEntryForm({
     }
 
     setIsSubmitting(true);
-    await onAddTimelineEntry(trimmedNote, entryFieldValues);
-    setNote('');
-    setFieldValues({});
-    setIsSubmitting(false);
-    textareaRef.current?.focus();
+    try {
+      await onAddTimelineEntry(trimmedNote, entryFieldValues);
+      setNote('');
+      setFieldValues({});
+      requestAnimationFrame(() => {
+        const primaryEntryControl = formRef.current?.querySelector<HTMLElement>(
+          '.entry-field-editor-cell input:not([type="checkbox"]), .entry-field-editor-cell textarea',
+        );
+        (primaryEntryControl ?? textareaRef.current)?.focus();
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <form className="timeline-form" onSubmit={handleSubmit}>
+    <form
+      className="timeline-form"
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) {
+          return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+          return;
+        }
+
+        if (target instanceof HTMLInputElement && target.type !== 'text') {
+          return;
+        }
+
+        event.preventDefault();
+        event.currentTarget.requestSubmit();
+      }}
+      onSubmit={handleSubmit}
+      ref={formRef}
+    >
       {hasEntryFields ? (
         <EntryFieldEditorRow
           fields={entryFields}

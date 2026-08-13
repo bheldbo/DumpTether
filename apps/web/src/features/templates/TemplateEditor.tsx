@@ -844,15 +844,16 @@ export function TemplateEditor({
       .sort((first, second) => first.sortOrder - second.sortOrder)
       .map((field) => normalizeFieldToLayoutRows(field, layoutRows.Header))
   );
+  const isProtected = template?.isProtected === true;
 
   return (
-    <form className="template-editor" onSubmit={handleSubmit}>
+    <form className="template-editor" data-protected={isProtected} onSubmit={handleSubmit}>
       <div className="detail-header">
         <div>
           <p className="detail-kicker">{template ? 'Edit template' : 'New template'}</p>
           <h2>{template?.name ?? 'New template'}</h2>
         </div>
-        {template ? (
+        {template && !isProtected ? (
           <button
             className="secondary-action"
             onClick={() => void onDeleteTemplate(template.id)}
@@ -864,18 +865,26 @@ export function TemplateEditor({
         ) : null}
       </div>
 
-      <label className="template-name">
-        Name
-        <input
-          placeholder="Template name"
-          onChange={(event) => setName(event.target.value)}
-          required
-          type="text"
-          value={name}
-        />
-      </label>
+      {isProtected ? (
+        <p className="protected-template-copy">
+          <Icon name="lock" />
+          This built-in template is always available and cannot be edited or deleted.
+        </p>
+      ) : null}
 
-      <section className="template-field-scope">
+      <fieldset className="template-editor-fields" disabled={isProtected}>
+        <label className="template-name">
+          Name
+          <input
+            placeholder="Template name"
+            onChange={(event) => setName(event.target.value)}
+            required
+            type="text"
+            value={name}
+          />
+        </label>
+
+        <section className="template-field-scope">
         <TemplateScopeHelp />
         <div className="section-heading">
           <span>
@@ -908,9 +917,9 @@ export function TemplateEditor({
             splitLayoutCell('Header', rowIndex, column)}
           onStartDrag={setDraggedFieldId}
         />
-      </section>
+        </section>
 
-      <section className="template-field-scope">
+        <section className="template-field-scope">
         <TemplateScopeHelp />
         <div className="section-heading">
           <span>
@@ -943,14 +952,15 @@ export function TemplateEditor({
             splitLayoutCell('Entry', rowIndex, column)}
           onStartDrag={setDraggedFieldId}
         />
-      </section>
+        </section>
+      </fieldset>
 
-      <div className="dialog-actions">
+      {!isProtected ? <div className="dialog-actions">
         <button disabled={!name.trim() || isSubmitting} type="submit">
           Save template
         </button>
-      </div>
-      {fieldModal ? (
+      </div> : null}
+      {!isProtected && fieldModal ? (
         <TemplateFieldDialog
           draft={fieldDraft}
           isExistingField={Boolean(fieldModal.clientId)}

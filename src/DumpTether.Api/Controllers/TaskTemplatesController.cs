@@ -80,7 +80,14 @@ public sealed class TaskTemplatesController : ControllerBase
         Guid id,
         CancellationToken cancellationToken)
     {
-        var deleted = await _taskTemplateService.DeleteAsync(id, cancellationToken);
-        return deleted ? NoContent() : NotFound();
+        try
+        {
+            var deleted = await _taskTemplateService.DeleteAsync(id, cancellationToken);
+            return deleted ? NoContent() : NotFound();
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
     }
 }

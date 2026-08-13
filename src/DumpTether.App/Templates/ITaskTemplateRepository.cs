@@ -17,6 +17,10 @@ public interface ITaskTemplateRepository
         bool includeDeleted,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyDictionary<Guid, TaskTemplate>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken);
+
     Task<bool> AnyActiveWithNameAsync(
         Guid? ownerUserId,
         string name,

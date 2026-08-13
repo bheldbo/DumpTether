@@ -9,6 +9,113 @@ namespace DumpTether.Api.Tests;
 public sealed class TaskTemplatesApiTests
 {
     [Fact]
+    public async Task GetTemplates_ProvisionsProtectedBasicAndTodoTemplates()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+
+        var templates = await client.GetFromJsonAsync<List<TaskTemplateSummaryResponse>>(
+            "/api/templates");
+
+        Assert.NotNull(templates);
+        var basic = Assert.Single(templates, template => template.BuiltInKind == "Basic");
+        var todo = Assert.Single(templates, template => template.BuiltInKind == "Todo");
+        Assert.True(basic.IsProtected);
+        Assert.True(todo.IsProtected);
+
+        var todoDetail = await client.GetFromJsonAsync<TaskTemplateDetailResponse>(
+            $"/api/templates/{todo.Id}");
+        Assert.NotNull(todoDetail);
+        Assert.Contains(todoDetail.Fields, field =>
+            field.Scope == "Header" && field.Type == "LongText" && field.Key == "description");
+        Assert.Contains(todoDetail.Fields, field =>
+            field.Scope == "Entry" && field.Type == "Text" && field.Key == "item");
+        Assert.Contains(todoDetail.Fields, field =>
+            field.Scope == "Entry" && field.Type == "Checkbox" && field.Key == "done");
+        Assert.Equal(new[] { 4d, 1d }, todoDetail.Layout.Entry.Single().ColumnWeights);
+
+        var secondRead = await client.GetFromJsonAsync<List<TaskTemplateSummaryResponse>>(
+            "/api/templates");
+        Assert.NotNull(secondRead);
+        Assert.Equal(templates.Select(template => template.Id), secondRead.Select(template => template.Id));
+        Assert.Equal(2, secondRead.Count(template => template.IsProtected));
+    }
+
+    [Fact]
+    public async Task ProtectedTemplate_CannotBePatchedOrDeleted()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var templates = await client.GetFromJsonAsync<List<TaskTemplateSummaryResponse>>(
+            "/api/templates");
+        var basic = Assert.Single(templates!, template => template.BuiltInKind == "Basic");
+
+        var patchResponse = await client.PatchAsJsonAsync(
+            $"/api/templates/{basic.Id}",
+            new { name = "Changed Basic" });
+        var deleteResponse = await client.DeleteAsync($"/api/templates/{basic.Id}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, patchResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, deleteResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task BuiltInTodoTask_ProjectsInteractiveEntriesOnTaskWall()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var templates = await client.GetFromJsonAsync<List<TaskTemplateSummaryResponse>>(
+            "/api/templates");
+        var todoSummary = Assert.Single(
+            templates!,
+            template => template.BuiltInKind == "Todo");
+        var todo = await client.GetFromJsonAsync<TaskTemplateDetailResponse>(
+            $"/api/templates/{todoSummary.Id}");
+        Assert.NotNull(todo);
+        var itemField = todo.Fields.Single(field => field.Key == "item");
+        var doneField = todo.Fields.Single(field => field.Key == "done");
+        var created = await CreateTaskItemAsync(
+            client,
+            "Pack for Copenhagen",
+            todo.Id,
+            new Dictionary<Guid, object?>());
+        var withEntry = await PostTimelineEntryAsync(
+            client,
+            created.Id,
+            new
+            {
+                fieldValues = new Dictionary<Guid, object?>
+                {
+                    [itemField.Id] = "Bring charger",
+                    [doneField.Id] = false
+                }
+            });
+        var timelineEntry = withEntry.TimelineEntries.Last();
+
+        var wall = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+        var projected = wall!.Single(task => task.Id == created.Id);
+        var todoEntry = Assert.Single(projected.TodoEntries!);
+        Assert.Equal("Todo", projected.BuiltInTemplateKind);
+        Assert.Equal("Bring charger", todoEntry.Label);
+        Assert.False(todoEntry.IsDone);
+
+        await PatchTimelineEntryAsync(
+            client,
+            created.Id,
+            timelineEntry.Id,
+            new
+            {
+                fieldValues = new Dictionary<Guid, object?>
+                {
+                    [doneField.Id] = true
+                }
+            });
+
+        wall = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks");
+        Assert.True(wall!.Single(task => task.Id == created.Id).TodoEntries!.Single().IsDone);
+    }
+
+    [Fact]
     public async Task PostTemplates_CreatesTemplate()
     {
         using var factory = new DumpTetherApiFactory();

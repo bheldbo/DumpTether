@@ -25,6 +25,8 @@ public sealed class TaskTemplate
 
     public string Name { get; private set; } = string.Empty;
 
+    public TaskTemplateBuiltInKind BuiltInKind { get; private set; }
+
     public string HeaderLayoutJson { get; private set; } = "[]";
 
     public string EntryLayoutJson { get; private set; } = "[]";
@@ -36,6 +38,8 @@ public sealed class TaskTemplate
     public DateTimeOffset? DeletedAt { get; private set; }
 
     public bool IsActive => DeletedAt is null;
+
+    public bool IsProtected => BuiltInKind != TaskTemplateBuiltInKind.None;
 
     public IReadOnlyCollection<FieldDefinition> FieldDefinitions => _fieldDefinitions.AsReadOnly();
 
@@ -88,6 +92,7 @@ public sealed class TaskTemplate
 
     public void Rename(string name, DateTimeOffset updatedAt)
     {
+        EnsureEditable();
         var normalizedName = DomainGuards.NotBlank(name, nameof(name));
 
         if (Name == normalizedName)
@@ -109,6 +114,7 @@ public sealed class TaskTemplate
         string entryLayoutJson,
         DateTimeOffset updatedAt)
     {
+        EnsureEditable();
         HeaderLayoutJson = DomainGuards.NotBlank(headerLayoutJson, nameof(headerLayoutJson));
         EntryLayoutJson = DomainGuards.NotBlank(entryLayoutJson, nameof(entryLayoutJson));
         UpdatedAt = updatedAt;
@@ -116,6 +122,7 @@ public sealed class TaskTemplate
 
     public void SoftDelete(DateTimeOffset deletedAt)
     {
+        EnsureEditable();
         DeletedAt ??= deletedAt;
         UpdatedAt = deletedAt;
     }
@@ -124,5 +131,53 @@ public sealed class TaskTemplate
     {
         OwnerUserId = null;
         UpdatedAt = updatedAt;
+    }
+
+    public void MarkAsBuiltIn(TaskTemplateBuiltInKind kind, DateTimeOffset updatedAt)
+    {
+        if (kind == TaskTemplateBuiltInKind.None || !Enum.IsDefined(kind))
+        {
+            throw new ArgumentException("A supported built-in template kind is required.", nameof(kind));
+        }
+
+        if (BuiltInKind != TaskTemplateBuiltInKind.None && BuiltInKind != kind)
+        {
+            throw new InvalidOperationException("A built-in template kind cannot be changed.");
+        }
+
+        BuiltInKind = kind;
+        UpdatedAt = updatedAt;
+    }
+
+    public void RestoreBuiltInDefinition(
+        TaskTemplateBuiltInKind kind,
+        string name,
+        string headerLayoutJson,
+        string entryLayoutJson,
+        DateTimeOffset updatedAt)
+    {
+        if (kind == TaskTemplateBuiltInKind.None || !Enum.IsDefined(kind))
+        {
+            throw new ArgumentException("A supported built-in template kind is required.", nameof(kind));
+        }
+
+        if (BuiltInKind != TaskTemplateBuiltInKind.None && BuiltInKind != kind)
+        {
+            throw new InvalidOperationException("A built-in template kind cannot be changed.");
+        }
+
+        BuiltInKind = kind;
+        Name = DomainGuards.NotBlank(name, nameof(name));
+        HeaderLayoutJson = DomainGuards.NotBlank(headerLayoutJson, nameof(headerLayoutJson));
+        EntryLayoutJson = DomainGuards.NotBlank(entryLayoutJson, nameof(entryLayoutJson));
+        UpdatedAt = updatedAt;
+    }
+
+    private void EnsureEditable()
+    {
+        if (IsProtected)
+        {
+            throw new InvalidOperationException("Built-in task templates cannot be changed or deleted.");
+        }
     }
 }

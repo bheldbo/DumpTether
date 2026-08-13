@@ -174,7 +174,9 @@ public sealed record CloudSyncTaskTemplateResponse(
     string Name,
     DateTimeOffset UpdatedAt,
     CloudSyncTaskTemplateLayoutResponse Layout,
-    IReadOnlyList<CloudSyncFieldDefinitionResponse> Fields);
+    IReadOnlyList<CloudSyncFieldDefinitionResponse> Fields,
+    string? BuiltInKind = null,
+    bool IsProtected = false);
 
 public sealed record CloudSyncTaskTemplateLayoutResponse(
     IReadOnlyList<CloudSyncTaskTemplateLayoutRowResponse> Header,
