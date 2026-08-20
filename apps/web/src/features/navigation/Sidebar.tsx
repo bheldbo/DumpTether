@@ -111,6 +111,8 @@ export function Sidebar({
   const workspaceCreateFormRef = useRef<HTMLFormElement>(null);
   const workspaceInputRef = useRef<HTMLInputElement>(null);
   const workspaceCreateToggleRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const onToggleSidebarRef = useRef(onToggleSidebar);
   const workspaceMembershipsById = useMemo(
     () => new Map(currentUser?.workspaces.map((workspaceItem) => [workspaceItem.id, workspaceItem]) ?? []),
     [currentUser],
@@ -175,6 +177,74 @@ export function Sidebar({
     };
   }, [workspaceCreateIsOpen]);
 
+  useEffect(() => {
+    onToggleSidebarRef.current = onToggleSidebar;
+  }, [onToggleSidebar]);
+
+  useEffect(() => {
+    if (
+      sidebarIsCollapsed ||
+      !window.matchMedia('(max-width: 620px)').matches
+    ) {
+      return undefined;
+    }
+
+    const previouslyFocusedElement = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const previousBodyOverflow = document.body.style.overflow;
+    const focusableSelector = [
+      'button:not([disabled])',
+      'a[href]',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
+
+    document.body.style.overflow = 'hidden';
+    sidebarRef.current?.querySelector<HTMLElement>('.sidebar-toggle')?.focus();
+
+    const handleDrawerKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onToggleSidebarRef.current();
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const focusableElements = Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
+      ).filter((element) => element.offsetParent !== null);
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (!firstElement || !lastElement) {
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleDrawerKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleDrawerKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+      previouslyFocusedElement?.focus();
+    };
+  }, [sidebarIsCollapsed]);
+
   const displayedConnectionState = localDesktopSessionIsActive ? 'local' : connectionStatus;
   const displayedConnectionLabel = localDesktopSessionIsActive
     ? t('localDesktopModeShort')
@@ -195,7 +265,7 @@ export function Sidebar({
     }
 
     if (
-      event.target instanceof HTMLElement &&
+      event.target instanceof Element &&
       event.target.closest('button, a, input, select, textarea')
     ) {
       return;
@@ -204,8 +274,21 @@ export function Sidebar({
     onToggleSidebar();
   };
 
+  const closeMobileSidebar = () => {
+    if (
+      !sidebarIsCollapsed &&
+      window.matchMedia('(max-width: 620px)').matches
+    ) {
+      onToggleSidebar();
+    }
+  };
+
   const submitWorkspace = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (workspaceIsSubmitting) {
+      return;
+    }
 
     const trimmedName = workspaceDraft.trim();
 
@@ -218,6 +301,7 @@ export function Sidebar({
       await onCreateWorkspace(trimmedName);
       setWorkspaceDraft('');
       setWorkspaceCreateIsOpen(false);
+      closeMobileSidebar();
     } finally {
       setWorkspaceIsSubmitting(false);
     }
@@ -249,8 +333,15 @@ export function Sidebar({
   return (
     <>
       <aside
+        aria-modal={!sidebarIsCollapsed && window.matchMedia('(max-width: 620px)').matches
+          ? true
+          : undefined}
         className="sidebar"
         aria-label="DumpTether navigation"
+        ref={sidebarRef}
+        role={!sidebarIsCollapsed && window.matchMedia('(max-width: 620px)').matches
+          ? 'dialog'
+          : undefined}
         style={getSidebarStyle(workspace?.color ?? null)}
       >
         <div className="brand" onClick={handleBrandClick}>
@@ -273,6 +364,7 @@ export function Sidebar({
             title={connectionTitle}
           />
           <button
+            aria-expanded={!sidebarIsCollapsed}
             className="icon-button sidebar-toggle"
             onClick={onToggleSidebar}
             title={sidebarIsCollapsed ? t('expandSidebar') : t('collapseSidebar')}
@@ -398,7 +490,10 @@ export function Sidebar({
                     aria-current={workspace?.id === candidate.id ? 'page' : undefined}
                     className={`nav-item workspace-nav-item${isSharedAccess ? ' is-shared-access' : ''}`}
                     disabled={!workspaceAccessIsEnabled}
-                    onClick={() => onSelectWorkspace(candidate.id)}
+                    onClick={() => {
+                      onSelectWorkspace(candidate.id);
+                      closeMobileSidebar();
+                    }}
                     title={isSharedAccess
                       ? `${formatWorkspaceName(candidate.name, t)} - ${t('sharedWorkspace')}`
                       : formatWorkspaceName(candidate.name, t)}
@@ -481,6 +576,8 @@ export function Sidebar({
             >
               <input
                 aria-label={t('newWorkspace')}
+                autoFocus
+                enterKeyHint="done"
                 onChange={(event) => setWorkspaceDraft(event.target.value)}
                 placeholder={t('newWorkspace')}
                 ref={workspaceInputRef}
@@ -523,7 +620,10 @@ export function Sidebar({
               className="nav-item"
               disabled={!workspaceAccessIsEnabled}
               key={view.id}
-              onClick={() => onSelectView(view.id)}
+              onClick={() => {
+                onSelectView(view.id);
+                closeMobileSidebar();
+              }}
               title={formatSavedViewName(view.name, t)}
               type="button"
             >
@@ -541,7 +641,10 @@ export function Sidebar({
             <button
               aria-current={mode === 'tour' ? 'page' : undefined}
               className="nav-item"
-              onClick={onOpenTour}
+              onClick={() => {
+                onOpenTour();
+                closeMobileSidebar();
+              }}
               type="button"
             >
               <Icon name="help" />
@@ -552,7 +655,10 @@ export function Sidebar({
             aria-current={mode === 'templates' ? 'page' : undefined}
             className="nav-item"
             disabled={!workspaceAccessIsEnabled}
-            onClick={onOpenTemplates}
+            onClick={() => {
+              onOpenTemplates();
+              closeMobileSidebar();
+            }}
             type="button"
           >
             <Icon name="templates" />
@@ -562,14 +668,24 @@ export function Sidebar({
           <button
             className="nav-item"
             disabled={!workspaceAccessIsEnabled}
-            onClick={onOpenSettings}
+            onClick={() => {
+              onOpenSettings();
+              closeMobileSidebar();
+            }}
             type="button"
           >
             <Icon name="settings" />
             <span className="nav-label">{t('settings')}</span>
             <span className="nav-count">{language.toUpperCase()}</span>
           </button>
-          <button className="nav-item" onClick={onOpenAccount} type="button">
+          <button
+            className="nav-item"
+            onClick={() => {
+              onOpenAccount();
+              closeMobileSidebar();
+            }}
+            type="button"
+          >
             <Icon name="user" />
             <span className="nav-label">{t('account')}</span>
             {accountNotificationCount > 0 ? (
@@ -614,6 +730,14 @@ export function Sidebar({
           </div>
         </div>
       </aside>
+      {!sidebarIsCollapsed ? (
+        <button
+          aria-label={t('close')}
+          className="mobile-sidebar-backdrop"
+          onClick={onToggleSidebar}
+          type="button"
+        />
+      ) : null}
       {pendingDeleteWorkspace ? (
         <DeleteWorkspaceDialog
           onClose={() => setPendingDeleteWorkspace(null)}

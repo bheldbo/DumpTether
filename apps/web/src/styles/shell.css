@@ -25,6 +25,10 @@
   background: #f8fafb;
 }
 
+.mobile-sidebar-backdrop {
+  display: none;
+}
+
 .brand {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) 34px;
