@@ -15,12 +15,31 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace DumpTether.Api.Tests;
 
 public sealed class AuthApiTests
 {
+    [Fact]
+    public void HostingRequestDiagnostics_AreSuppressedBelowWarning()
+    {
+        using var factory = new DumpTetherApiFactory();
+        var options = factory.Services
+            .GetRequiredService<IOptions<LoggerFilterOptions>>()
+            .Value;
+
+        Assert.Contains(
+            options.Rules,
+            rule => string.Equals(
+                        rule.CategoryName,
+                        "Microsoft.AspNetCore.Hosting.Diagnostics",
+                        StringComparison.Ordinal) &&
+                    rule.LogLevel == LogLevel.Warning);
+    }
+
     [Fact]
     public async Task AccountNotifications_DefaultOffAndPersistUpdates()
     {
@@ -1484,6 +1503,24 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public void Startup_WhenProductionSignupAllowsUnverifiedEmail_ThrowsHelpfulError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:SignupMode"] = "Open",
+                ["EmailConfirmation:Enabled"] = "false"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: false));
+
+        Assert.Contains("EmailConfirmation:Enabled must be true", exception.Message);
+        Assert.Contains("email-addressed invitations", exception.Message);
+    }
+
+    [Fact]
     public void Startup_WhenNotificationsEnabledWithoutProvider_ThrowsHelpfulError()
     {
         var configuration = new ConfigurationBuilder()
@@ -1660,6 +1697,34 @@ public sealed class AuthApiTests
 
         var response = await client.GetAsync(
             "/api/auth/oauth/microsoft/complete?returnUrl=%2F");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/?oauthError=external_login_failed", response.Headers.Location?.OriginalString);
+    }
+
+    [Theory]
+    [InlineData("//attacker.example/path")]
+    [InlineData("/\\attacker.example/path")]
+    [InlineData("https://attacker.example/path")]
+    [InlineData("http://localhost:9999/path")]
+    public async Task CompleteOAuth_WhenReturnUrlIsNotLocalOrSameOrigin_RedirectsLocally(
+        string returnUrl)
+    {
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: new Dictionary<string, string?>
+            {
+                ["OAuth:Microsoft:Enabled"] = "true",
+                ["OAuth:Microsoft:ClientId"] = "test-client-id",
+                ["OAuth:Microsoft:ClientSecret"] = "test-client-secret",
+                ["OAuth:Microsoft:TenantId"] = "common"
+            });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync(
+            $"/api/auth/oauth/microsoft/complete?returnUrl={Uri.EscapeDataString(returnUrl)}");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/?oauthError=external_login_failed", response.Headers.Location?.OriginalString);

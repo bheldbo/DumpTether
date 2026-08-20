@@ -33,7 +33,11 @@ The first implementation uses a simple first-party auth foundation:
 - `AppUser` with a framework password hash.
 - `UserSession` with a random opaque session token returned to the client and stored only as a hash.
 - `WorkspaceMembership` as the authorization boundary for authenticated workspace access.
-- Secure, HttpOnly cookies in production when cookie auth is used, plus bearer token support for API testing and future desktop clients.
+- Secure, HttpOnly cookies for the hosted website, without retaining bearer
+  tokens in browser storage, plus bearer token support for API testing and
+  desktop/local-sidecar clients.
+- Production sign-up requires email confirmation whenever registration is
+  available because email-addressed sharing depends on proven address ownership.
 
 Future hardened server authentication should use:
 

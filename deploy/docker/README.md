@@ -52,9 +52,10 @@ DUMPTETHER_SIGNUP_INVITE_CODE_0=<long private invite code>
 Use `Whitelist` with `DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0` or `DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0` if you would rather allow specific people/domains without sending invite codes. Do not use `Open` until email confirmation/OAuth and traffic protection are ready.
 
 Choose one email provider with `DUMPTETHER_EMAIL_PROVIDER=None`, `Smtp`, or
-`BrevoApi`. If email confirmation or Microsoft login is enabled, the API
-validates the matching `.env.prod` values at startup and fails with a clear
-missing-key error. `DUMPTETHER_EMAIL_MFA_ENABLED` is reserved for a future MFA
+`BrevoApi`. Outside Development, any registration mode other than `Closed`
+requires email confirmation so email-addressed shares cannot be claimed without
+proving address ownership. The API validates the matching `.env.prod` values at
+startup and fails with a clear missing-key error. `DUMPTETHER_EMAIL_MFA_ENABLED` is reserved for a future MFA
 challenge flow and must remain `false`. Keep SMTP passwords, Brevo API keys,
 and the Microsoft client secret only in the server `.env.prod` or a secret
 store. Mailpit is for local capture and is not part of production Compose.
