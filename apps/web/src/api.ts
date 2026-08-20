@@ -2,9 +2,6 @@ import type {
   AddTaskTimelineEntryRequest,
   AcceptShareLinkRequest,
   AcceptWorkspaceInvitationRequest,
-  ArchiveProjectTasksRequest,
-  ArchiveResolutionResponse,
-  ArchiveTaskItemRequest,
   AccountDeletionResponse,
   AccountNotificationPreferencesResponse,
   AuthClientOptionsResponse,
@@ -12,7 +9,6 @@ import type {
   CloudSyncAccountResponse,
   ConnectCloudAccountRequest,
   CurrentUserResponse,
-  CreateArchiveResolutionRequest,
   CopyTaskItemsRequest,
   CopyTaskItemsResponse,
   DeleteTaskItemsRequest,
@@ -49,7 +45,6 @@ import type {
   TaskItemViewCountResponse,
   UpdateTaskItemRequest,
   UpdateTaskTimelineEntryRequest,
-  UpdateArchiveResolutionRequest,
   UpdateAccountNotificationPreferencesRequest,
   UpdateSavedViewRequest,
   UpdateTaskTemplateRequest,
@@ -498,12 +493,10 @@ export function addTaskTimelineEntry(
 
 export function archiveTaskItem(
   id: string,
-  requestBody: ArchiveTaskItemRequest,
   options: ApiRequestOptions = {},
 ): Promise<TaskItemDetailResponse> {
   return request<TaskItemDetailResponse>(`/api/tasks/${id}/archive`, {
     method: 'POST',
-    body: JSON.stringify(requestBody),
   }, options);
 }
 
@@ -537,37 +530,6 @@ export function deleteTaskItemsPermanently(
   }, options);
 }
 
-export function listArchiveResolutions(
-  options: ApiRequestOptions = {},
-): Promise<ArchiveResolutionResponse[]> {
-  return request<ArchiveResolutionResponse[]>('/api/archive-resolutions', undefined, options);
-}
-
-export function createArchiveResolution(
-  requestBody: CreateArchiveResolutionRequest,
-): Promise<ArchiveResolutionResponse> {
-  return request<ArchiveResolutionResponse>('/api/archive-resolutions', {
-    method: 'POST',
-    body: JSON.stringify(requestBody),
-  });
-}
-
-export function updateArchiveResolution(
-  id: string,
-  requestBody: UpdateArchiveResolutionRequest,
-): Promise<ArchiveResolutionResponse> {
-  return request<ArchiveResolutionResponse>(`/api/archive-resolutions/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(requestBody),
-  });
-}
-
-export function deleteArchiveResolution(id: string): Promise<void> {
-  return request<void>(`/api/archive-resolutions/${id}`, {
-    method: 'DELETE',
-  });
-}
-
 export function listProjects(options: ApiRequestOptions = {}): Promise<ProjectResponse[]> {
   return request<ProjectResponse[]>('/api/projects', undefined, options);
 }
@@ -587,16 +549,6 @@ export function updateProject(
 ): Promise<ProjectResponse> {
   return request<ProjectResponse>(`/api/projects/${id}`, {
     method: 'PATCH',
-    body: JSON.stringify(requestBody),
-  });
-}
-
-export function archiveProjectTasks(
-  id: string,
-  requestBody: ArchiveProjectTasksRequest,
-): Promise<ProjectArchiveResponse> {
-  return request<ProjectArchiveResponse>(`/api/projects/${id}/archive-tasks`, {
-    method: 'POST',
     body: JSON.stringify(requestBody),
   });
 }

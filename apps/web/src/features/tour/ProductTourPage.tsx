@@ -232,7 +232,7 @@ function TourTaskDetail({ onBack, task, t }: { onBack: () => void; task: TourTas
 }
 
 function TourSettings({ t }: { t: Translate }) {
-  return <section className="tour-example-panel"><header><Icon name="settings" /><div><p className="detail-kicker">{t('tourNavSettings')}</p><h2>{t('tourSettingsTitle')}</h2><p>{t('tourSettingsIntro')}</p></div></header><div className="tour-setting-row"><div><strong>{t('tourStatusSettings')}</strong><p>{t('tourStatusSettingsHelp')}</p></div><span>{t('tourStatusActive')}</span><span>{t('tourStatusWaiting')}</span><span>{t('tourStatusDone')}</span></div><div className="tour-setting-row"><div><strong>{t('tourArchiveSettings')}</strong><p>{t('tourArchiveSettingsHelp')}</p></div><span>{t('tourArchiveCompleted')}</span><span>{t('tourArchiveDropped')}</span></div><p className="tour-example-note"><Icon name="shield" />{t('tourExamplesOnly')}</p></section>;
+  return <section className="tour-example-panel"><header><Icon name="settings" /><div><p className="detail-kicker">{t('tourNavSettings')}</p><h2>{t('tourSettingsTitle')}</h2><p>{t('tourSettingsIntro')}</p></div></header><div className="tour-setting-row"><div><strong>{t('tourStatusSettings')}</strong><p>{t('tourStatusSettingsHelp')}</p></div><span>{t('tourStatusActive')}</span><span>{t('tourStatusWaiting')}</span><span>{t('tourStatusDone')}</span></div><p className="tour-example-note"><Icon name="shield" />{t('tourExamplesOnly')}</p></section>;
 }
 
 function TourAccount({ t }: { t: Translate }) {

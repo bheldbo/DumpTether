@@ -14,7 +14,6 @@ export interface TaskItemSummaryResponse {
   lastTouchedAt: string;
   followUpAt: string | null;
   archivedAt: string | null;
-  archiveResolutionId: string | null;
   noteCount: number;
   shares: TaskItemShareResponse[];
   syncState: TaskSyncStateResponse | null;
@@ -155,25 +154,6 @@ export interface TaskTimelineEntryResponse {
   occurredAt: string;
   updatedAt: string;
   fieldValues: FieldValueResponse[];
-}
-
-export interface ArchiveResolutionResponse {
-  id: string;
-  name: string;
-  description: string | null;
-  requiresExplanation: boolean;
-}
-
-export interface CreateArchiveResolutionRequest {
-  name: string;
-  description?: string | null;
-  requiresExplanation?: boolean;
-}
-
-export interface UpdateArchiveResolutionRequest {
-  name?: string | null;
-  description?: string | null;
-  requiresExplanation?: boolean | null;
 }
 
 export interface ProjectResponse {
@@ -654,16 +634,6 @@ export interface AddTaskTimelineEntryRequest {
 export interface UpdateTaskTimelineEntryRequest {
   note?: string | null;
   fieldValues?: FieldValueMap;
-}
-
-export interface ArchiveTaskItemRequest {
-  archiveResolutionId: string;
-  note?: string | null;
-}
-
-export interface ArchiveProjectTasksRequest {
-  archiveResolutionId: string;
-  note?: string | null;
 }
 
 export interface ReopenTaskItemRequest {

@@ -37,8 +37,6 @@ import {
   uniqueSorted,
 } from '../../taskUtils';
 import type {
-  ArchiveResolutionResponse,
-  ArchiveTaskItemRequest,
   CloudSyncAccountResponse,
   CreateTaskShareLinkRequest,
   CreateTaskShareRequest,
@@ -66,11 +64,7 @@ import type {
   WorkspaceResponse,
 } from '../../types';
 import { type CreateTaskItemOptions } from './taskWallTypes';
-import {
-  ArchiveDialog,
-  PermanentDeleteDialog,
-  ReopenDialog,
-} from '../task-detail/TaskDialogs';
+import { PermanentDeleteDialog, ReopenDialog } from '../task-detail/TaskDialogs';
 import { TaskDetail } from '../task-detail/TaskDetail';
 import { ShareDialog } from '../sharing/ShareDialog';
 import { BoardLoadingState } from './BoardLoadingState';
@@ -87,8 +81,6 @@ interface DraftTaskTarget {
   selectedProjectId: string;
 }
 export function TaskBoard({
-  archiveDialogIsOpen,
-  archiveResolutions,
   colorOptions,
   currentView,
   currentUserEmail,
@@ -100,7 +92,6 @@ export function TaskBoard({
   onAddTimelineEntry,
   onArchive,
   onArchiveTaskItems,
-  onCloseArchiveDialog,
   onCopyTaskItemsToWorkspace,
   onCreateProject,
   onCreateTaskShareLink,
@@ -112,7 +103,6 @@ export function TaskBoard({
   onDeleteTimelineEntry,
   onImportTaskTemplate,
   onListSubtasks,
-  onOpenArchiveDialog,
   onReopen,
   onReopenTaskItems,
   onDeleteTaskItemsPermanently,
@@ -146,8 +136,6 @@ export function TaskBoard({
   workspace,
   workspaces,
 }: {
-  archiveDialogIsOpen: boolean;
-  archiveResolutions: ArchiveResolutionResponse[];
   colorOptions: string[];
   currentView: SavedViewResponse | null;
   currentUserEmail: string | null;
@@ -157,9 +145,8 @@ export function TaskBoard({
   isRefreshing: boolean;
   localDesktopSessionIsActive: boolean;
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
-  onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
-  onArchiveTaskItems: (taskItemIds: string[], requestBody: ArchiveTaskItemRequest) => Promise<void>;
-  onCloseArchiveDialog: () => void;
+  onArchive: () => Promise<void>;
+  onArchiveTaskItems: (taskItemIds: string[]) => Promise<void>;
   onCopyTaskItemsToWorkspace: (taskItemIds: string[], workspaceId: string) => Promise<void>;
   onCreateProject: (name: string, color?: string | null) => Promise<void>;
   onCreateTaskShareLink: (
@@ -186,7 +173,6 @@ export function TaskBoard({
   onDeleteProject: (projectId: string) => Promise<void>;
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
   onImportTaskTemplate: (taskItemId: string) => Promise<void>;
-  onOpenArchiveDialog: () => void;
   onReopen: (note?: string) => Promise<void>;
   onReopenTaskItems: (taskItemIds: string[], note?: string) => Promise<void>;
   onDeleteTaskItemsPermanently: (taskItemIds: string[]) => Promise<void>;
@@ -306,7 +292,6 @@ export function TaskBoard({
   };
   const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
-  const [batchArchiveIsOpen, setBatchArchiveIsOpen] = useState(false);
   const [batchReopenIsOpen, setBatchReopenIsOpen] = useState(false);
   const [batchPermanentDeleteIsOpen, setBatchPermanentDeleteIsOpen] = useState(false);
   const [batchShareIsOpen, setBatchShareIsOpen] = useState(false);
@@ -402,7 +387,6 @@ export function TaskBoard({
   const closeEditMode = useCallback(() => {
     setEditModeIsEnabled(false);
     setSelectedTaskIds([]);
-    setBatchArchiveIsOpen(false);
     setBatchReopenIsOpen(false);
     setBatchPermanentDeleteIsOpen(false);
     setBatchShareIsOpen(false);
@@ -496,7 +480,7 @@ export function TaskBoard({
   }, [onShowToast, t]);
 
   useEffect(() => {
-    if (!selectedTaskId || archiveDialogIsOpen) {
+    if (!selectedTaskId) {
       return undefined;
     }
 
@@ -511,7 +495,7 @@ export function TaskBoard({
     window.addEventListener('keydown', handleKeyDown);
 
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [archiveDialogIsOpen, closeFocusedTask, selectedTaskId]);
+  }, [closeFocusedTask, selectedTaskId]);
 
   useEffect(() => {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -841,16 +825,12 @@ export function TaskBoard({
                     </div>
                   ) : (
                     <TaskDetail
-                      archiveDialogIsOpen={archiveDialogIsOpen}
-                      archiveResolutions={archiveResolutions}
                       onAddTimelineEntry={onAddTimelineEntry}
                       onCreateSubtask={(requestBody) => onCreateSubtask(selectedTask, requestBody)}
                       onListSubtasks={() => onListSubtasks(selectedTask)}
                       onOpenSubtask={(subtask) => onSelectTaskItem(subtask.id, subtask.workspaceId)}
                       onArchive={onArchive}
                       onClose={closeFocusedTask}
-                      onCloseArchiveDialog={onCloseArchiveDialog}
-                      onOpenArchiveDialog={onOpenArchiveDialog}
                       onReopen={onReopen}
                       onQueueDeleteTimelineEntry={(entryId) =>
                         setPendingDeletedNoteIds((currentIds) =>
@@ -915,7 +895,12 @@ export function TaskBoard({
             closeEditMode();
           }}
           onOpenCreateTask={openCreateTask}
-          onOpenBatchArchive={() => setBatchArchiveIsOpen(true)}
+          onOpenBatchArchive={() => {
+            void (async () => {
+              await onArchiveTaskItems(selectedTaskIds);
+              closeEditMode();
+            })();
+          }}
           onOpenBatchReopen={() => setBatchReopenIsOpen(true)}
           onOpenBatchPermanentDelete={() => setBatchPermanentDeleteIsOpen(true)}
           onOpenBatchShare={() => setBatchShareIsOpen(true)}
@@ -945,18 +930,6 @@ export function TaskBoard({
           roleMode="task"
           t={t}
           title={`${selectedTaskIds.length} ${t('selectedTasks')}`}
-        />
-      ) : null}
-      {batchArchiveIsOpen ? (
-        <ArchiveDialog
-          archiveResolutions={archiveResolutions}
-          onArchive={async (requestBody) => {
-            await onArchiveTaskItems(selectedTaskIds, requestBody);
-            closeEditMode();
-          }}
-          onClose={() => setBatchArchiveIsOpen(false)}
-          t={t}
-          taskTitle={`${selectedTaskIds.length} ${t('selectedTasks')}`}
         />
       ) : null}
       {batchReopenIsOpen ? (

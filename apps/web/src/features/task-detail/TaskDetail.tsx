@@ -31,11 +31,8 @@ import { withDefaultFieldValues } from '../../templateFieldUtils';
 import { TimelinePanel } from '../timeline/TimelinePanel';
 import { SubtaskWall } from './subtasks/SubtaskWall';
 import { TaskShareStrip } from '../sharing/ShareDialog';
-import { ArchiveDialog } from './TaskDialogs';
 import { CategoryMultiSelect } from './CategoryMultiSelect';
 import type {
-  ArchiveResolutionResponse,
-  ArchiveTaskItemRequest,
   CreateTaskShareRequest,
   CreateTaskItemRequest,
   FieldValueMap,
@@ -48,8 +45,6 @@ import type {
 } from '../../types';
 
 interface TaskDetailProps {
-  archiveDialogIsOpen: boolean;
-  archiveResolutions: ArchiveResolutionResponse[];
   canCreateSubtasks: boolean;
   canManageSharing: boolean;
   colorOptions: string[];
@@ -57,10 +52,8 @@ interface TaskDetailProps {
   onCreateSubtask: (requestBody: CreateTaskItemRequest) => Promise<TaskItemDetailResponse>;
   onListSubtasks: () => Promise<TaskItemSummaryResponse[]>;
   onOpenSubtask: (taskItem: TaskItemSummaryResponse) => void;
-  onArchive: (requestBody: ArchiveTaskItemRequest) => Promise<void>;
+  onArchive: () => Promise<void>;
   onClose: () => Promise<void>;
-  onCloseArchiveDialog: () => void;
-  onOpenArchiveDialog: () => void;
   onRequestSync: () => void;
   onReopen: (note?: string) => Promise<void>;
   onCreateTaskShareLink: (
@@ -92,8 +85,6 @@ interface TaskDetailProps {
 }
 
 export function TaskDetail({
-  archiveDialogIsOpen,
-  archiveResolutions,
   canCreateSubtasks,
   canManageSharing,
   colorOptions,
@@ -103,8 +94,6 @@ export function TaskDetail({
   onOpenSubtask,
   onArchive,
   onClose,
-  onCloseArchiveDialog,
-  onOpenArchiveDialog,
   onRequestSync,
   onReopen,
   onCreateTaskShareLink,
@@ -285,7 +274,11 @@ export function TaskDetail({
               <button type="submit">Reopen</button>
             </form>
           ) : (
-            <button className="secondary-action" onClick={onOpenArchiveDialog} type="button">
+            <button
+              className="secondary-action"
+              onClick={() => void onArchive()}
+              type="button"
+            >
               <Icon name="archive" />
               <span>{t('archiveAction')}</span>
             </button>
@@ -398,15 +391,6 @@ export function TaskDetail({
         timelineEntries={taskItem.timelineEntries}
       />
 
-      {archiveDialogIsOpen ? (
-        <ArchiveDialog
-          archiveResolutions={archiveResolutions}
-          onArchive={onArchive}
-          onClose={onCloseArchiveDialog}
-          t={t}
-          taskTitle={taskItem.title}
-        />
-      ) : null}
     </section>
   );
 }

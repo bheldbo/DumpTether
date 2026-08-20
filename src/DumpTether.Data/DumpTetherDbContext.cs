@@ -57,8 +57,6 @@ public sealed class DumpTetherDbContext : DbContext
     public DbSet<TaskTimelineEntryFieldValue> TaskTimelineEntryFieldValues =>
         Set<TaskTimelineEntryFieldValue>();
 
-    public DbSet<ArchiveResolution> ArchiveResolutions => Set<ArchiveResolution>();
-
     public DbSet<SavedView> SavedViews => Set<SavedView>();
 
     public DbSet<SyncRoot> SyncRoots => Set<SyncRoot>();

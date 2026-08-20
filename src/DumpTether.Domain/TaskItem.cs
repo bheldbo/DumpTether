@@ -61,8 +61,6 @@ public sealed class TaskItem
 
     public DateTimeOffset? ArchivedAt { get; private set; }
 
-    public Guid? ArchiveResolutionId { get; private set; }
-
     public IReadOnlyCollection<FieldValue> FieldValues => _fieldValues.AsReadOnly();
 
     public IReadOnlyCollection<TaskItemShare> Shares => _shares.AsReadOnly();
@@ -474,35 +472,20 @@ public sealed class TaskItem
         return changed;
     }
 
-    public void Archive(
-        ArchiveResolution archiveResolution,
-        DateTimeOffset archivedAt,
-        string? note = null)
+    public void Archive(DateTimeOffset archivedAt)
     {
-        ArgumentNullException.ThrowIfNull(archiveResolution);
-
-        if (archiveResolution.WorkspaceId != WorkspaceId)
+        if (ArchivedAt.HasValue)
         {
-            throw new InvalidOperationException(
-                "Archive resolution must belong to the same workspace as the task item.");
-        }
-
-        var normalizedNote = DomainGuards.OptionalTrimmed(note);
-
-        if (archiveResolution.RequiresExplanation && string.IsNullOrWhiteSpace(normalizedNote))
-        {
-            throw new InvalidOperationException(
-                "Archive note is required for the selected archive resolution.");
+            throw new InvalidOperationException("Task item is already archived.");
         }
 
         ArchivedAt = archivedAt;
-        ArchiveResolutionId = archiveResolution.Id;
 
         AddTimelineEntry(
             TaskTimelineEntryKind.Archived,
-            $"Archived as {archiveResolution.Name}",
+            "Task item archived",
             archivedAt,
-            normalizedNote);
+            details: null);
     }
 
     public void Reopen(DateTimeOffset reopenedAt, string? note = null)
@@ -513,7 +496,6 @@ public sealed class TaskItem
         }
 
         ArchivedAt = null;
-        ArchiveResolutionId = null;
 
         AddTimelineEntry(
             TaskTimelineEntryKind.Reopened,

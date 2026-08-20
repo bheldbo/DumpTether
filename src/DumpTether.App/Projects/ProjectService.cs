@@ -115,54 +115,6 @@ internal sealed class ProjectService : IProjectService
         return MapProject(project);
     }
 
-    public async Task<ProjectArchiveResponse?> ArchiveTasksAndDeactivateAsync(
-        Guid id,
-        ArchiveProjectTasksRequest request,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (!request.ArchiveResolutionId.HasValue ||
-            request.ArchiveResolutionId.Value == Guid.Empty)
-        {
-            throw new ValidationException("ArchiveResolutionId is required.");
-        }
-
-        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
-        EnsureCanWriteWorkspace(context);
-        var project = await _projectRepository.GetByIdAsync(
-            id,
-            context.WorkspaceId,
-            cancellationToken);
-
-        if (project is null)
-        {
-            return null;
-        }
-
-        var archiveResolution = await _taskItemRepository.GetArchiveResolutionByIdAsync(
-            request.ArchiveResolutionId.Value,
-            context.WorkspaceId,
-            cancellationToken) ??
-            throw new ValidationException("Archive resolution was not found.");
-        var now = _clock.UtcNow;
-        var taskItems = await _taskItemRepository.ListByProjectAsync(
-            context.WorkspaceId,
-            project.Id,
-            includeArchived: false,
-            cancellationToken);
-
-        foreach (var taskItem in taskItems)
-        {
-            taskItem.Archive(archiveResolution, now, request.Note);
-        }
-
-        project.Deactivate();
-        await _projectRepository.SaveChangesAsync(cancellationToken);
-
-        return new ProjectArchiveResponse(project.Id, taskItems.Count);
-    }
-
     public async Task<ProjectArchiveResponse?> DeleteAsync(
         Guid id,
         CancellationToken cancellationToken)

@@ -62,7 +62,6 @@ public interface ITaskItemService
 
     Task<TaskItemDetailResponse?> ArchiveAsync(
         Guid id,
-        ArchiveTaskItemRequest request,
         CancellationToken cancellationToken);
 
     Task<TaskItemDetailResponse?> ReopenAsync(

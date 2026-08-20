@@ -19,7 +19,7 @@ DumpTether runs in two connected shapes. The hosted website uses ASP.NET Core an
 - Set custom statuses and follow-up dates.
 - Filter by text, status, category, color, follow-up, stale/not touched and sharing.
 - Add structured notes to tasks.
-- Archive and reopen tasks with archive reasons.
+- Archive and reopen tasks without losing their history.
 - Share boards or tasks when online.
 - Use Owner, Member and Read-only/Guest-style access.
 - Use English or Danish UI text.
@@ -578,7 +578,7 @@ The schema is mostly normalized relational data:
 - field definitions
 - field values
 - timeline/note entries
-- archive resolutions
+- archive state and timeline evidence
 
 Flexible pieces such as template layout and field values use JSON where it keeps the product adaptable.
 
@@ -624,7 +624,7 @@ Other local database actions:
 .\scripts\db.ps1 -Action RemoveLocalSqlite
 ```
 
-`seed-test-data` creates or reuses a local development user, a sample board, default archive reasons, Basic/ToDo templates and a couple of sample tasks. Override the demo login with `DUMPTETHER_SEED_EMAIL` and `DUMPTETHER_SEED_PASSWORD` in your local environment or `.env`.
+`seed-test-data` creates or reuses a local development user, a sample board, Basic/ToDo templates and a couple of sample tasks. Override the demo login with `DUMPTETHER_SEED_EMAIL` and `DUMPTETHER_SEED_PASSWORD` in your local environment or `.env`.
 
 Destructive actions ask for typed confirmation unless you pass `-Yes`.
 

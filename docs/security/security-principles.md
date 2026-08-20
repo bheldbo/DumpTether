@@ -18,15 +18,12 @@ Provider settings can live in the database when integrations are introduced, but
 
 Task timeline entries are evidence. Meaningful task changes should append timeline entries, and timeline history must not be deleted as part of normal product behavior.
 
-## Enforce Effective Archive Policy
+## Preserve Archive Evidence
 
-Archiving must enforce the policy of the task's owning board. A board override
-takes precedence over the owner's user default. Without either, the system
-fallback does not require a resolution and treats the archive note as optional.
-
-A selected resolution may require an explanation. Historical evidence should
-retain the meaning of the selected resolution even if its configuration later
-changes.
+Archiving is a direct task action and does not require a resolution or note.
+Authorization remains backend-authoritative, and the archive operation must add
+timeline evidence without deleting or rewriting prior history. Reopening adds
+its own timeline evidence and retains the task's earlier notes.
 
 ## Keep the MVP Small
 

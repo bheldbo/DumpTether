@@ -2,7 +2,6 @@ namespace DumpTether.Domain;
 
 public sealed class Workspace
 {
-    private readonly List<ArchiveResolution> _archiveResolutions = [];
     private readonly List<WorkspaceMembership> _memberships = [];
     private readonly List<Project> _projects = [];
     private readonly List<SavedView> _savedViews = [];
@@ -30,8 +29,6 @@ public sealed class Workspace
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public IReadOnlyCollection<Project> Projects => _projects.AsReadOnly();
-
-    public IReadOnlyCollection<ArchiveResolution> ArchiveResolutions => _archiveResolutions.AsReadOnly();
 
     public IReadOnlyCollection<WorkspaceMembership> Memberships => _memberships.AsReadOnly();
 
@@ -84,24 +81,6 @@ public sealed class Workspace
         _projects.Add(project);
 
         return project;
-    }
-
-    public ArchiveResolution AddArchiveResolution(
-        string name,
-        DateTimeOffset createdAt,
-        string? description = null,
-        bool requiresExplanation = false)
-    {
-        var archiveResolution = ArchiveResolution.Create(
-            Id,
-            name,
-            createdAt,
-            description,
-            requiresExplanation);
-
-        _archiveResolutions.Add(archiveResolution);
-
-        return archiveResolution;
     }
 
     public SavedView AddWorkspaceView(

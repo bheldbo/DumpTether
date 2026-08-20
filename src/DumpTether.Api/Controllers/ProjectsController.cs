@@ -79,29 +79,4 @@ public sealed class ProjectsController : ControllerBase
         return response is null ? NotFound() : Ok(response);
     }
 
-    [HttpPost("{id:guid}/archive-tasks")]
-    [Authorize(Policy = AuthPolicies.WorkspaceWriteRequired)]
-    public async Task<ActionResult<ProjectArchiveResponse>> ArchiveTasksAndDeactivate(
-        Guid id,
-        ArchiveProjectTasksRequest request,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var response = await _projectService.ArchiveTasksAndDeactivateAsync(
-                id,
-                request,
-                cancellationToken);
-
-            return response is null ? NotFound() : Ok(response);
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new { error = exception.Message });
-        }
-        catch (ValidationException exception)
-        {
-            return BadRequest(new { error = exception.Message });
-        }
-    }
 }

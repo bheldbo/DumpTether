@@ -537,12 +537,16 @@ public sealed class SharingApiTests
             });
         createResponse.EnsureSuccessStatusCode();
         var created = await createResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>();
+        var archiveResponse = await memberClient.PostAsync(
+            $"/api/tasks/{created!.Id}/archive",
+            content: null);
 
         SetWorkspaceHeader(ownerClient, ownerWorkspaceId);
         var ownerTasks = await ownerClient.GetFromJsonAsync<List<TaskItemSummaryResponse>>(
             "/api/tasks");
 
-        Assert.Contains(ownerTasks!, taskItem => taskItem.Id == created!.Id);
+        archiveResponse.EnsureSuccessStatusCode();
+        Assert.DoesNotContain(ownerTasks!, taskItem => taskItem.Id == created.Id);
     }
 
     [Fact]
@@ -604,6 +608,9 @@ public sealed class SharingApiTests
             {
                 name = "Should not be created"
             });
+        var archiveTaskResponse = await readOnlyClient.PostAsync(
+            $"/api/tasks/{ownerTask.Id}/archive",
+            content: null);
 
         var visibleWorkspace = Assert.Single(
             currentUser.Workspaces,
@@ -612,6 +619,7 @@ public sealed class SharingApiTests
         Assert.Contains(visibleTasks!, taskItem => taskItem.Id == ownerTask.Id);
         Assert.Equal(HttpStatusCode.BadRequest, createTaskResponse.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, updateTaskResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, archiveTaskResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, createCategoryResponse.StatusCode);
     }
 
@@ -645,7 +653,6 @@ public sealed class SharingApiTests
         Assert.False(await dbContext.Workspaces.AnyAsync(candidate => candidate.Id == workspace.Id));
         Assert.False(await dbContext.TaskItems.AnyAsync(taskItem => taskItem.WorkspaceId == workspace.Id));
         Assert.False(await dbContext.TaskTimelineEntries.AnyAsync(entry => entry.TaskItemId == task.Id));
-        Assert.False(await dbContext.ArchiveResolutions.AnyAsync(reason => reason.WorkspaceId == workspace.Id));
         Assert.False(await dbContext.Projects.AnyAsync(project => project.WorkspaceId == workspace.Id));
     }
 
@@ -805,11 +812,19 @@ public sealed class SharingApiTests
             "/api/tasks");
         var sharedDetail = await sharedClient.GetAsync($"/api/tasks/{sharedTask.Id}");
         var privateDetail = await sharedClient.GetAsync($"/api/tasks/{privateTask.Id}");
+        var privateArchive = await sharedClient.PostAsync(
+            $"/api/tasks/{privateTask.Id}/archive",
+            content: null);
+        var sharedArchive = await sharedClient.PostAsync(
+            $"/api/tasks/{sharedTask.Id}/archive",
+            content: null);
 
         Assert.Contains(visibleTasks!, taskItem => taskItem.Id == sharedTask.Id);
         Assert.DoesNotContain(visibleTasks!, taskItem => taskItem.Id == privateTask.Id);
         sharedDetail.EnsureSuccessStatusCode();
         Assert.Equal(HttpStatusCode.NotFound, privateDetail.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, privateArchive.StatusCode);
+        sharedArchive.EnsureSuccessStatusCode();
     }
 
     [Fact]

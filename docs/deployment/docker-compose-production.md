@@ -320,7 +320,7 @@ User/workspace config:
 - categories
 - statuses
 - colors
-- archive reasons
+- archive retention preferences
 
 Integration config:
 

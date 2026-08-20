@@ -8,12 +8,7 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
 {
     public void Configure(EntityTypeBuilder<TaskItem> builder)
     {
-        builder.ToTable("task_items", tableBuilder =>
-        {
-            tableBuilder.HasCheckConstraint(
-                "ck_task_items_archive_requires_resolution",
-                "(archived_at IS NULL AND archive_resolution_id IS NULL) OR (archived_at IS NOT NULL AND archive_resolution_id IS NOT NULL)");
-        });
+        builder.ToTable("task_items");
 
         builder.HasKey(taskItem => taskItem.Id);
 
@@ -67,9 +62,6 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
 
         builder.Property(taskItem => taskItem.ArchivedAt)
             .HasColumnName("archived_at");
-
-        builder.Property(taskItem => taskItem.ArchiveResolutionId)
-            .HasColumnName("archive_resolution_id");
 
         builder.Ignore(taskItem => taskItem.FieldValues);
         builder.Ignore(taskItem => taskItem.TimelineEntries);
@@ -126,11 +118,6 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.HasOne<TaskTemplate>()
             .WithMany()
             .HasForeignKey(taskItem => taskItem.TaskTemplateId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasOne<ArchiveResolution>()
-            .WithMany()
-            .HasForeignKey(taskItem => taskItem.ArchiveResolutionId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne<TaskItem>()

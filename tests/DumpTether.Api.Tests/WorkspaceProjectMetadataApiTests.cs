@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Projects;
 using DumpTether.App.Tasks;
 using DumpTether.App.Workspaces;
@@ -164,70 +163,6 @@ public sealed class WorkspaceProjectMetadataApiTests
         Assert.DoesNotContain(archivedTasks!, candidate => candidate.Id == task.Id);
     }
 
-    [Fact]
-    public async Task PostProjectArchiveTasks_ArchivesTasksAndHidesProject()
-    {
-        using var factory = new DumpTetherApiFactory();
-        using var client = factory.CreateClient();
-        var project = await CreateProjectAsync(client, "Cleanup");
-        var firstTask = await CreateTaskAsync(client, "First cleanup task", project);
-        var secondTask = await CreateTaskAsync(client, "Second cleanup task", project);
-        var resolution = await GetArchiveResolutionAsync(client, "Completed");
-
-        var response = await client.PostAsJsonAsync(
-            $"/api/projects/{project.Id}/archive-tasks",
-            new { archiveResolutionId = resolution.Id });
-
-        response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<ProjectArchiveResponse>();
-        var projects = await client.GetFromJsonAsync<List<ProjectResponse>>("/api/projects");
-        var archivedTasks = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>(
-            "/api/tasks?archive=Archived");
-
-        Assert.NotNull(result);
-        Assert.Equal(2, result.ArchivedTaskCount);
-        Assert.DoesNotContain(projects!, candidate => candidate.Id == project.Id);
-        Assert.Contains(archivedTasks!, task => task.Id == firstTask.Id);
-        Assert.Contains(archivedTasks!, task => task.Id == secondTask.Id);
-    }
-
-    [Fact]
-    public async Task ArchiveResolutionEndpoints_CreateUpdateAndDeactivateReasons()
-    {
-        using var factory = new DumpTetherApiFactory();
-        using var client = factory.CreateClient();
-
-        var createResponse = await client.PostAsJsonAsync(
-            "/api/archive-resolutions",
-            new
-            {
-                name = "No longer needed",
-                description = "User decided this should leave the wall.",
-                requiresExplanation = true
-            });
-        createResponse.EnsureSuccessStatusCode();
-        var created = await createResponse.Content.ReadFromJsonAsync<ArchiveResolutionResponse>();
-
-        var updateResponse = await client.PatchAsJsonAsync(
-            $"/api/archive-resolutions/{created!.Id}",
-            new
-            {
-                name = "Parked",
-                requiresExplanation = false
-            });
-        updateResponse.EnsureSuccessStatusCode();
-        var updated = await updateResponse.Content.ReadFromJsonAsync<ArchiveResolutionResponse>();
-
-        var deleteResponse = await client.DeleteAsync($"/api/archive-resolutions/{created.Id}");
-        deleteResponse.EnsureSuccessStatusCode();
-        var reasons = await client.GetFromJsonAsync<List<ArchiveResolutionResponse>>(
-            "/api/archive-resolutions");
-
-        Assert.Equal("Parked", updated!.Name);
-        Assert.False(updated.RequiresExplanation);
-        Assert.DoesNotContain(reasons!, reason => reason.Id == created.Id);
-    }
-
     private static async Task<ProjectResponse> CreateProjectAsync(HttpClient client, string name)
     {
         var response = await client.PostAsJsonAsync("/api/projects", new { name });
@@ -254,13 +189,4 @@ public sealed class WorkspaceProjectMetadataApiTests
         return (await response.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
     }
 
-    private static async Task<ArchiveResolutionResponse> GetArchiveResolutionAsync(
-        HttpClient client,
-        string name)
-    {
-        var resolutions = await client.GetFromJsonAsync<List<ArchiveResolutionResponse>>(
-            "/api/archive-resolutions");
-
-        return Assert.Single(resolutions!, resolution => resolution.Name == name);
-    }
 }

@@ -561,20 +561,6 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<ArchiveResolution?> GetArchiveResolutionByIdAsync(
-        Guid id,
-        Guid workspaceId,
-        CancellationToken cancellationToken)
-    {
-        return await _dbContext.ArchiveResolutions
-            .SingleOrDefaultAsync(
-                archiveResolution =>
-                    archiveResolution.Id == id &&
-                    archiveResolution.WorkspaceId == workspaceId &&
-                    archiveResolution.IsActive,
-                cancellationToken);
-    }
-
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         await _dbContext.SaveChangesAsync(cancellationToken);

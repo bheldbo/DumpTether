@@ -26,7 +26,7 @@ The hosted service should become multi-tenant around explicit user and workspace
 - `UserSession`
 - `RefreshToken`
 
-Workspace-scoped data such as tasks, projects, templates, fields, notes, archive reasons, and saved filters remains tied to `WorkspaceId`.
+Workspace-scoped data such as tasks, projects, templates, fields, notes, archive state, and saved filters remains tied to `WorkspaceId`.
 
 The first implementation uses a simple first-party auth foundation:
 

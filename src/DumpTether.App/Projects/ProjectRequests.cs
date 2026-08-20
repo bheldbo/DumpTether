@@ -7,7 +7,3 @@ public sealed record UpdateProjectRequest(
 public sealed record CreateProjectRequest(
     string Name,
     string? Color = null);
-
-public sealed record ArchiveProjectTasksRequest(
-    Guid? ArchiveResolutionId,
-    string? Note = null);
