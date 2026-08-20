@@ -92,6 +92,7 @@ export function TaskBoard({
   onAddTimelineEntry,
   onArchive,
   onArchiveTaskItems,
+  onBeforeTaskNavigation,
   onCopyTaskItemsToWorkspace,
   onCreateProject,
   onCreateTaskShareLink,
@@ -111,6 +112,7 @@ export function TaskBoard({
   onRevokeWorkspaceInvitation,
   onCloseTaskItem,
   onSelectTaskItem,
+  onUnsavedChangesChange,
   onUpdateFieldValues,
   onUpdateProject,
   onSyncWorkspaceWithCloud,
@@ -147,6 +149,7 @@ export function TaskBoard({
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   onArchive: () => Promise<void>;
   onArchiveTaskItems: (taskItemIds: string[]) => Promise<void>;
+  onBeforeTaskNavigation: () => boolean;
   onCopyTaskItemsToWorkspace: (taskItemIds: string[], workspaceId: string) => Promise<void>;
   onCreateProject: (name: string, color?: string | null) => Promise<void>;
   onCreateTaskShareLink: (
@@ -181,6 +184,7 @@ export function TaskBoard({
   onRevokeWorkspaceInvitation: (id: string) => Promise<void>;
   onCloseTaskItem: () => void;
   onSelectTaskItem: (id: string, workspaceId: string) => void;
+  onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
   onSyncWorkspaceWithCloud: (
@@ -335,6 +339,18 @@ export function TaskBoard({
     () => buildTaskFilterOptions(taskItems, colorOptions),
     [colorOptions, taskItems],
   );
+  useEffect(() => {
+    setFilters((currentFilters) => {
+      if (!currentFilters.sharedWith) {
+        return currentFilters;
+      }
+
+      const selectedEmail = currentFilters.sharedWith.trim().toLowerCase();
+      return filterOptions.sharedWith.some((email) => email.toLowerCase() === selectedEmail)
+        ? currentFilters
+        : { ...currentFilters, sharedWith: '' };
+    });
+  }, [filterOptions.sharedWith]);
   const filtersAreActive = taskWallFiltersAreActive(filters);
   const selectedProjectIds = filters.projectIds;
   const [draftTaskTarget, setDraftTaskTarget] = useState<DraftTaskTarget | null>(null);
@@ -422,6 +438,10 @@ export function TaskBoard({
   useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
 
   const closeFocusedTask = useCallback(async () => {
+    if (!onBeforeTaskNavigation()) {
+      return;
+    }
+
     const idsToDelete = pendingDeletedNoteIds;
 
     setPendingDeletedNoteIds([]);
@@ -431,7 +451,7 @@ export function TaskBoard({
     }
 
     onCloseTaskItem();
-  }, [onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
+  }, [onBeforeTaskNavigation, onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
 
   const openCreateTask = useCallback(() => {
     const targetWorkspace = workspace;
@@ -846,6 +866,7 @@ export function TaskBoard({
                       onUpdateTaskShareRole={onUpdateTaskShareRole}
                       onUpdateTaskItem={onUpdateTaskItem}
                       onUpdateTimelineEntry={onUpdateTimelineEntry}
+                      onUnsavedChangesChange={onUnsavedChangesChange}
                       onImportTemplate={() => onImportTaskTemplate(selectedTask.id)}
                       onRequestSync={() => openCloudSync(selectedTask.workspaceId)}
                       colorOptions={colorOptions}

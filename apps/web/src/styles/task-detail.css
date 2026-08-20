@@ -1089,6 +1089,40 @@ button.task-sync-indicator {
   justify-self: start;
 }
 
+.timeline-form-footer {
+  min-height: 36px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timeline-unsaved-hint {
+  color: #9d342f;
+  font-size: 0.82rem;
+  font-weight: 650;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.timeline-unsaved-hint[data-visible="true"] {
+  opacity: 1;
+}
+
+.entry-unsaved-copy {
+  color: #9d342f;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.timeline-form[data-dirty="true"] > textarea,
+.timeline-form[data-dirty="true"] .entry-field-editor-row,
+.note-edit[data-dirty="true"] textarea,
+.entry-inline-edit[data-dirty="true"] .entry-field-editor-row {
+  border-color: #c7544d;
+  box-shadow: 0 0 0 3px rgba(199, 84, 77, 0.12);
+}
+
 .timeline-list {
   display: grid;
   gap: 12px;

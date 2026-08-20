@@ -55,6 +55,13 @@ export function buildTaskFilterOptions(
     statuses: uniqueSorted(taskItems.map((taskItem) => taskItem.status)),
     categories: uniqueSorted(taskItems.flatMap((taskItem) => splitTaskCategories(taskItem.category))),
     colors: colorOptions,
+    sharedWith: uniqueEmails(
+      taskItems.flatMap((taskItem) =>
+        taskItem.shares
+          .filter((share) => !share.revokedAt)
+          .map((share) => share.email),
+      ),
+    ),
   };
 }
 
@@ -168,7 +175,8 @@ export function applyTaskWallFilters(
     }
 
     if (sharedWith &&
-        !taskItem.shares.some((share) => share.email.toLowerCase().includes(sharedWith))) {
+        !taskItem.shares.some((share) =>
+          !share.revokedAt && share.email.trim().toLowerCase() === sharedWith)) {
       return false;
     }
 
@@ -336,6 +344,19 @@ export function uniqueSorted(values: Array<string | null>) {
   return Array.from(
     new Set(values.filter((value): value is string => Boolean(value))),
   ).sort((left, right) => left.localeCompare(right));
+}
+
+function uniqueEmails(values: string[]) {
+  const emails = new Map<string, string>();
+
+  for (const value of values) {
+    const normalized = value.trim().toLowerCase();
+    if (normalized && !emails.has(normalized)) {
+      emails.set(normalized, value.trim());
+    }
+  }
+
+  return Array.from(emails.values()).sort((left, right) => left.localeCompare(right));
 }
 
 function taskMatchesText(taskItem: TaskItemSummaryResponse, text: string) {

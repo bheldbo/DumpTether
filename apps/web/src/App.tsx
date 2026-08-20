@@ -123,6 +123,7 @@ import { TemplatesPage } from './features/templates/TemplatesPage';
 import { ProductTourPage } from './features/tour/ProductTourPage';
 import { TaskBoard } from './features/task-wall/TaskBoard';
 import { type CreateTaskItemOptions } from './features/task-wall/taskWallTypes';
+import { useUnsavedTaskChanges } from './features/task-detail/useUnsavedTaskChanges';
 import { startLiveUpdates, type LiveUpdateMessage } from './liveUpdates';
 import { type Language, type Translate, translate } from './localization';
 import {
@@ -268,6 +269,11 @@ function App() {
   const workspaceLoadAbortRef = useRef<AbortController | null>(null);
   const workspaceLoadSequenceRef = useRef(0);
   const t = useCallback<Translate>((key) => translate(language, key), [language]);
+  const {
+    confirmNavigation: confirmTaskNavigation,
+    hasUnsavedChangesNow: taskHasUnsavedChanges,
+    setHasUnsavedChanges: setTaskHasUnsavedChanges,
+  } = useUnsavedTaskChanges(t('discardUnsavedChanges'));
   const statusOptions = useMemo(
     () => uniqueSorted([...configuredStatuses, ...knownStatuses]),
     [configuredStatuses, knownStatuses],
@@ -676,7 +682,11 @@ function App() {
         writeCachedWorkspaceSnapshot(resolvedWorkspaceCacheKey, snapshot);
         setErrorMessage(null);
 
-        if (selectedTaskId && !selectedTasks.some((taskItem) => taskItem.id === selectedTaskId)) {
+        if (
+          selectedTaskId &&
+          !selectedTasks.some((taskItem) => taskItem.id === selectedTaskId) &&
+          !taskHasUnsavedChanges()
+        ) {
           setSelectedTaskId(null);
           setSelectedTaskWorkspaceId(null);
           setSelectedTask(null);
@@ -703,6 +713,7 @@ function App() {
       localDesktopSessionIsActive,
       selectedTaskId,
       selectedWorkspaceId,
+      taskHasUnsavedChanges,
     ],
   );
 
@@ -807,10 +818,18 @@ function App() {
       if (selectedTaskId && message.taskItemId === selectedTaskId) {
         void getTaskItem(selectedTaskId, { workspaceId: selectedTaskRequestWorkspaceId })
           .then((taskItem) => {
+            if (taskHasUnsavedChanges()) {
+              return;
+            }
+
             setSelectedTaskWorkspaceId(taskItem.workspaceId);
             setSelectedTask(taskItem);
           })
           .catch(() => {
+            if (taskHasUnsavedChanges()) {
+              return;
+            }
+
             setSelectedTaskId(null);
             setSelectedTaskWorkspaceId(null);
             setSelectedTask(null);
@@ -859,6 +878,7 @@ function App() {
     selectedWorkspaceId,
     showToast,
     t,
+    taskHasUnsavedChanges,
     temporarySessionIsActive,
   ]);
 
@@ -939,7 +959,9 @@ function App() {
           latestSelection.taskId === taskId &&
           latestSelection.taskWorkspaceId === workspaceId
         ) {
-          setSelectedTask(refreshedTask);
+          if (!taskHasUnsavedChanges()) {
+            setSelectedTask(refreshedTask);
+          }
         }
       }
     } catch (error) {
@@ -970,6 +992,7 @@ function App() {
     localDesktopSessionIsActive,
     showToast,
     t,
+    taskHasUnsavedChanges,
   ]);
 
   const reconcileCloudWorkspaceCatalog = useCallback(async () => {
@@ -1121,6 +1144,10 @@ function App() {
   }, [mode, selectedTaskId, selectedTaskRequestWorkspaceId]);
 
   const handleSelectSavedView = (viewId: string) => {
+    if (!confirmTaskNavigation()) {
+      return;
+    }
+
     setMode('tasks');
     setCurrentViewId(viewId);
     setSelectedTaskId(null);
@@ -1130,6 +1157,10 @@ function App() {
   };
 
   const handleSelectWorkspace = (workspaceId: string) => {
+    if (!confirmTaskNavigation()) {
+      return;
+    }
+
     setMode('tasks');
     setSelectedWorkspaceId(workspaceId);
     setCurrentViewId(null);
@@ -1290,6 +1321,13 @@ function App() {
   };
 
   const handleLeaveTaskShare = async (shareId: string) => {
+    if (
+      selectedTask?.shares.some((share) => share.id === shareId) &&
+      !confirmTaskNavigation()
+    ) {
+      return;
+    }
+
     try {
       await leaveTaskShare(shareId);
       setIncomingTaskShares((currentShares) =>
@@ -1359,6 +1397,10 @@ function App() {
 
   const handleLeaveWorkspaceAccess = async (workspaceId: string) => {
     const workspaceToLeave = workspaces.find((candidate) => candidate.id === workspaceId);
+
+    if (selectedTask?.workspaceId === workspaceId && !confirmTaskNavigation()) {
+      return;
+    }
 
     try {
       if (workspaceToLeave && isTaskShareWorkspace(workspaceToLeave)) {
@@ -1459,6 +1501,10 @@ function App() {
   };
 
   const handleLogin = async (requestBody: LoginUserRequest) => {
+    if (!confirmTaskNavigation()) {
+      return;
+    }
+
     try {
       const loggedIn = await loginUser(requestBody);
       await handleAuthenticated(loggedIn);
@@ -1527,6 +1573,10 @@ function App() {
   };
 
   const handleDevelopmentLogin = async () => {
+    if (!confirmTaskNavigation()) {
+      return;
+    }
+
     try {
       const loggedIn = await developmentLogin();
       await handleAuthenticated(loggedIn);
@@ -1541,6 +1591,10 @@ function App() {
   };
 
   const handleGuestLogin = async () => {
+    if (!confirmTaskNavigation()) {
+      return;
+    }
+
     try {
       const loggedIn = await guestLogin();
       await handleAuthenticated(loggedIn);
@@ -1554,7 +1608,7 @@ function App() {
   };
 
   const handleLogout = async () => {
-    if (localDesktopSessionIsActive) {
+    if (localDesktopSessionIsActive || !confirmTaskNavigation()) {
       return;
     }
 
@@ -1576,6 +1630,10 @@ function App() {
   const handleRevokeAuthSession = async (sessionId: string) => {
     const session = authSessions.find((candidate) => candidate.id === sessionId);
     if (session?.sessionType === 'DesktopLocal' || session?.sessionType === 2) {
+      return;
+    }
+
+    if (session?.isCurrent && !confirmTaskNavigation()) {
       return;
     }
 
@@ -1665,6 +1723,10 @@ function App() {
 
     const nextMode: WorkspaceMode = mode === 'templates' ? 'tasks' : 'templates';
 
+    if (nextMode === 'templates' && !confirmTaskNavigation()) {
+      return;
+    }
+
     setMode(nextMode);
     setSelectedTaskId(null);
     setSelectedTaskWorkspaceId(null);
@@ -1672,6 +1734,10 @@ function App() {
   };
 
   const handleOpenTour = () => {
+    if (!confirmTaskNavigation()) {
+      return;
+    }
+
     setMode('tour');
     setSelectedTaskId(null);
     setSelectedTaskWorkspaceId(null);
@@ -2042,6 +2108,7 @@ function App() {
       void performBackgroundCloudSync(updated.workspaceId);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+      throw error;
     }
   };
 
@@ -2065,6 +2132,7 @@ function App() {
       void performBackgroundCloudSync(updated.workspaceId);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+      throw error;
     }
   };
 
@@ -2107,7 +2175,7 @@ function App() {
   };
 
   const handleArchiveTaskItem = async () => {
-    if (!selectedTask) {
+    if (!selectedTask || !confirmTaskNavigation()) {
       return;
     }
 
@@ -2185,7 +2253,7 @@ function App() {
   };
 
   const handleReopenTaskItem = async (note?: string) => {
-    if (!selectedTask) {
+    if (!selectedTask || !confirmTaskNavigation()) {
       return;
     }
 
@@ -2435,6 +2503,10 @@ function App() {
   };
 
   const handleDeleteWorkspace = async (workspaceId: string) => {
+    if (selectedTask?.workspaceId === workspaceId && !confirmTaskNavigation()) {
+      return;
+    }
+
     try {
       const workspaceToDelete = workspaces.find((currentWorkspace) => currentWorkspace.id === workspaceId);
 
@@ -2590,6 +2662,7 @@ function App() {
             onAddTimelineEntry={handleAddTimelineEntry}
             onArchive={handleArchiveTaskItem}
             onArchiveTaskItems={handleArchiveTaskItems}
+            onBeforeTaskNavigation={confirmTaskNavigation}
             onCopyTaskItemsToWorkspace={handleCopyTaskItemsToWorkspace}
             onCreateTaskItem={handleCreateTaskItem}
             onCreateSubtask={handleCreateSubtask}
@@ -2608,6 +2681,10 @@ function App() {
             onRevokeWorkspaceInvitation={handleRevokeWorkspaceInvitation}
             onRemoveWorkspaceMember={handleRemoveWorkspaceMember}
             onSelectTaskItem={(id, workspaceId) => {
+              if (!confirmTaskNavigation()) {
+                return;
+              }
+
               setSelectedTaskId(id);
               setSelectedTaskWorkspaceId(workspaceId);
             }}
@@ -2628,6 +2705,7 @@ function App() {
             onUpdateTaskItems={handleUpdateTaskItems}
             onUpdateTaskItem={handleUpdateTaskItem}
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
+            onUnsavedChangesChange={setTaskHasUnsavedChanges}
             onToggleTodoEntry={handleToggleTodoEntry}
             onUpdateProject={handleUpdateProject}
             onSyncWorkspaceWithCloud={handleSyncWorkspaceWithCloud}

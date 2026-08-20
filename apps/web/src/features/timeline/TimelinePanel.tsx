@@ -31,6 +31,7 @@ export function TimelinePanel({
   entryFields,
   entryLayoutRows,
   onAddTimelineEntry,
+  onDirtyChange,
   onQueueDeleteTimelineEntry,
   onUndoDeleteTimelineEntry,
   onUpdateTimelineEntry,
@@ -41,6 +42,7 @@ export function TimelinePanel({
   entryFields: TaskTemplateDetailResponse['fields'];
   entryLayoutRows?: TaskTemplateLayoutRow[];
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
+  onDirtyChange: (isDirty: boolean) => void;
   onQueueDeleteTimelineEntry: (entryId: string) => void;
   onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateTimelineEntry: (
@@ -53,6 +55,29 @@ export function TimelinePanel({
   timelineEntries: TaskItemDetailResponse['timelineEntries'];
 }) {
   const notes = timelineEntries.filter((entry) => entry.kind === 'NoteAdded');
+  const [dirtySources, setDirtySources] = useState<Set<string>>(() => new Set());
+  const updateDirtySource = useCallback((source: string, isDirty: boolean) => {
+    setDirtySources((currentSources) => {
+      if (currentSources.has(source) === isDirty) {
+        return currentSources;
+      }
+
+      const nextSources = new Set(currentSources);
+      if (isDirty) {
+        nextSources.add(source);
+      } else {
+        nextSources.delete(source);
+      }
+
+      return nextSources;
+    });
+  }, []);
+
+  useEffect(() => {
+    onDirtyChange(dirtySources.size > 0);
+  }, [dirtySources, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   return (
     <section className="timeline-panel notes-panel" aria-labelledby="timeline-title">
@@ -65,6 +90,7 @@ export function TimelinePanel({
         entryFields={entryFields}
         entryLayoutRows={entryLayoutRows ?? []}
         onAddTimelineEntry={onAddTimelineEntry}
+        onDirtySourceChange={updateDirtySource}
         t={t}
       />
 
@@ -77,6 +103,7 @@ export function TimelinePanel({
             entryLayoutRows={entryLayoutRows ?? []}
             isPendingDelete={pendingDeletedNoteIds.includes(entry.id)}
             key={entry.id}
+            onDirtySourceChange={updateDirtySource}
             onQueueDeleteTimelineEntry={onQueueDeleteTimelineEntry}
             onUndoDeleteTimelineEntry={onUndoDeleteTimelineEntry}
             onUpdateTimelineEntry={onUpdateTimelineEntry}
@@ -93,6 +120,7 @@ function NoteEntry({
   entryFields,
   entryLayoutRows,
   isPendingDelete,
+  onDirtySourceChange,
   onQueueDeleteTimelineEntry,
   onUndoDeleteTimelineEntry,
   onUpdateTimelineEntry,
@@ -102,6 +130,7 @@ function NoteEntry({
   entryFields: TaskTemplateDetailResponse['fields'];
   entryLayoutRows: TaskTemplateLayoutRow[];
   isPendingDelete: boolean;
+  onDirtySourceChange: (source: string, isDirty: boolean) => void;
   onQueueDeleteTimelineEntry: (entryId: string) => void;
   onUndoDeleteTimelineEntry: (entryId: string) => void;
   onUpdateTimelineEntry: (
@@ -117,14 +146,27 @@ function NoteEntry({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [entryFieldsAreSaving, setEntryFieldsAreSaving] = useState(false);
   const editContainerRef = useRef<HTMLDivElement>(null);
+  const lastSavedNoteRef = useRef(entry.details ?? '');
   const hasEntryFields = entryFields.length > 0;
+  const noteIsDirty = isEditing && draft !== (entry.details ?? '');
 
   useEffect(() => {
-    setDraft(entry.details ?? '');
-    setIsEditing(false);
-    setIsConfirmingDelete(false);
-    setEntryFieldsAreSaving(false);
-  }, [entry]);
+    const nextNote = entry.details ?? '';
+    setDraft((currentDraft) => {
+      if (isEditing && currentDraft !== lastSavedNoteRef.current) {
+        return currentDraft;
+      }
+
+      lastSavedNoteRef.current = nextNote;
+      return nextNote;
+    });
+  }, [entry.details, isEditing]);
+
+  useEffect(() => {
+    const source = `note:${entry.id}`;
+    onDirtySourceChange(source, noteIsDirty);
+    return () => onDirtySourceChange(source, false);
+  }, [entry.id, noteIsDirty, onDirtySourceChange]);
 
   const cancelEdit = () => {
     setDraft(entry.details ?? '');
@@ -139,20 +181,28 @@ function NoteEntry({
     }
 
     setIsSubmitting(true);
-    await onUpdateTimelineEntry(
-      entry.id,
-      trimmedDraft,
-    );
-    setIsSubmitting(false);
-    setIsEditing(false);
+    try {
+      await onUpdateTimelineEntry(
+        entry.id,
+        trimmedDraft,
+      );
+      setIsEditing(false);
+    } catch {
+      // The application layer reports the error; keep the local draft intact.
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <li className="note-entry" data-pending-delete={isPendingDelete}>
       <span className="note-entry-time">
         <time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time>
+        {noteIsDirty ? (
+          <span className="entry-unsaved-copy" role="status">{t('unsaved')}</span>
+        ) : null}
         {entryFieldsAreSaving || isSubmitting ? (
-          <span aria-label="Saving" className="entry-saving-copy" role="status" />
+          <span aria-label={t('saving')} className="entry-saving-copy" role="status" />
         ) : null}
       </span>
       {hasEntryFields ? (
@@ -160,12 +210,15 @@ function NoteEntry({
           entry={entry}
           fields={entryFields}
           layoutRows={entryLayoutRows}
+          onDirtySourceChange={onDirtySourceChange}
           onSavingChange={setEntryFieldsAreSaving}
           onUpdateTimelineEntry={onUpdateTimelineEntry}
+          t={t}
         />
       ) : isEditing ? (
         <div
           className="note-edit"
+          data-dirty={noteIsDirty}
           data-saving={isSubmitting}
           onBlur={(event) => {
             const nextTarget = event.relatedTarget;
@@ -260,31 +313,51 @@ function InlineEntryFieldRow({
   entry,
   fields,
   layoutRows,
+  onDirtySourceChange,
   onSavingChange,
   onUpdateTimelineEntry,
+  t,
 }: {
   entry: TaskItemDetailResponse['timelineEntries'][number];
   fields: FieldDefinitionResponse[];
   layoutRows: TaskTemplateLayoutRow[];
+  onDirtySourceChange: (source: string, isDirty: boolean) => void;
   onSavingChange: (isSaving: boolean) => void;
   onUpdateTimelineEntry: (
     entryId: string,
     note: string | null,
     fieldValues?: FieldValueMap,
   ) => Promise<void>;
+  t: Translate;
 }) {
   const [fieldDraft, setFieldDraft] = useState<FieldValueMap>(
     () => withDefaultFieldValues(fields, toFieldValueMap(entry.fieldValues)),
   );
   const [isSaving, setIsSaving] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedValuesRef = useRef('');
+  const lastSavedValuesRef = useRef(
+    JSON.stringify(withDefaultFieldValues(fields, toFieldValueMap(entry.fieldValues))),
+  );
   const note = entry.details?.trim() || null;
+  const serializedFieldDraft = JSON.stringify(withDefaultFieldValues(fields, fieldDraft));
+  const fieldsAreDirty = serializedFieldDraft !== lastSavedValuesRef.current;
 
   useEffect(() => {
     const nextValues = withDefaultFieldValues(fields, toFieldValueMap(entry.fieldValues));
-    setFieldDraft(nextValues);
-    lastSavedValuesRef.current = JSON.stringify(nextValues);
+    const serializedNextValues = JSON.stringify(nextValues);
+
+    setFieldDraft((currentValues) => {
+      const serializedCurrentValues = JSON.stringify(
+        withDefaultFieldValues(fields, currentValues),
+      );
+
+      if (serializedCurrentValues !== lastSavedValuesRef.current) {
+        return currentValues;
+      }
+
+      lastSavedValuesRef.current = serializedNextValues;
+      return nextValues;
+    });
   }, [entry.fieldValues, fields]);
 
   useEffect(() => () => {
@@ -292,6 +365,12 @@ function InlineEntryFieldRow({
       clearTimeout(saveTimerRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    const source = `fields:${entry.id}`;
+    onDirtySourceChange(source, fieldsAreDirty);
+    return () => onDirtySourceChange(source, false);
+  }, [entry.id, fieldsAreDirty, onDirtySourceChange]);
 
   const saveValues = useCallback(
     async (values: FieldValueMap) => {
@@ -311,6 +390,8 @@ function InlineEntryFieldRow({
       try {
         await onUpdateTimelineEntry(entry.id, note, nextValues);
         lastSavedValuesRef.current = serializedValues;
+      } catch {
+        // The application layer reports the error; keep the local draft dirty.
       } finally {
         setIsSaving(false);
         onSavingChange(false);
@@ -350,6 +431,7 @@ function InlineEntryFieldRow({
   return (
     <div
       className="entry-inline-edit"
+      data-dirty={fieldsAreDirty}
       data-saving={isSaving}
       onBlur={(event) => {
         const nextTarget = event.relatedTarget;
@@ -370,6 +452,9 @@ function InlineEntryFieldRow({
         onChange={updateField}
         values={fieldDraft}
       />
+      {fieldsAreDirty ? (
+        <span className="entry-unsaved-copy" role="status">{t('unsaved')}</span>
+      ) : null}
     </div>
   );
 }
@@ -495,11 +580,13 @@ function AddTimelineEntryForm({
   entryFields,
   entryLayoutRows,
   onAddTimelineEntry,
+  onDirtySourceChange,
   t,
 }: {
   entryFields: TaskTemplateDetailResponse['fields'];
   entryLayoutRows: TaskTemplateLayoutRow[];
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
+  onDirtySourceChange: (source: string, isDirty: boolean) => void;
   t: Translate;
 }) {
   const [note, setNote] = useState('');
@@ -508,6 +595,13 @@ function AddTimelineEntryForm({
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasEntryFields = entryFields.length > 0;
+  const formIsDirty = Boolean(note.trim()) ||
+    (hasEntryFields && entryFieldsHaveContent(entryFields, fieldValues));
+
+  useEffect(() => {
+    onDirtySourceChange('composer', formIsDirty);
+    return () => onDirtySourceChange('composer', false);
+  }, [formIsDirty, onDirtySourceChange]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -535,6 +629,8 @@ function AddTimelineEntryForm({
         );
         (primaryEntryControl ?? textareaRef.current)?.focus();
       });
+    } catch {
+      // The application layer reports the error; keep the composer contents intact.
     } finally {
       setIsSubmitting(false);
     }
@@ -543,6 +639,7 @@ function AddTimelineEntryForm({
   return (
     <form
       className="timeline-form"
+      data-dirty={formIsDirty}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) {
           return;
@@ -591,17 +688,26 @@ function AddTimelineEntryForm({
           value={note}
         />
       )}
-      <button
-        disabled={
-          (!note.trim() &&
-            (!hasEntryFields || !entryFieldsHaveContent(entryFields, fieldValues))) ||
-          isSubmitting
-        }
-        type="submit"
-      >
-        <Icon name="note" />
-        <span>{t('note')}</span>
-      </button>
+      <div className="timeline-form-footer">
+        <button
+          disabled={
+            (!note.trim() &&
+              (!hasEntryFields || !entryFieldsHaveContent(entryFields, fieldValues))) ||
+            isSubmitting
+          }
+          type="submit"
+        >
+          <Icon name="note" />
+          <span>{t('note')}</span>
+        </button>
+        <span
+          aria-live="polite"
+          className="timeline-unsaved-hint"
+          data-visible={formIsDirty}
+        >
+          {formIsDirty ? t('unsavedEntry') : '\u00a0'}
+        </span>
+      </div>
     </form>
   );
 }
