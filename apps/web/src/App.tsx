@@ -203,7 +203,9 @@ function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskWorkspaceId, setSelectedTaskWorkspaceId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskItemDetailResponse | null>(null);
-  const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
+  const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(
+    () => window.matchMedia('(max-width: 620px)').matches,
+  );
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const storedWidth = Number(window.localStorage.getItem(sidebarWidthStorageKey));
     return Number.isFinite(storedWidth)
@@ -295,6 +297,17 @@ function App() {
   useEffect(() => {
     syncRootsRef.current = syncRoots;
   }, [syncRoots]);
+
+  useEffect(() => {
+    const mobileSidebarQuery = window.matchMedia('(max-width: 620px)');
+    const handleViewportChange = (event: MediaQueryListEvent) => {
+      setSidebarIsCollapsed(event.matches);
+    };
+
+    mobileSidebarQuery.addEventListener('change', handleViewportChange);
+
+    return () => mobileSidebarQuery.removeEventListener('change', handleViewportChange);
+  }, []);
 
   const currentView = useMemo(
     () => savedViews.find((view) => view.id === currentViewId) ?? null,
@@ -2552,9 +2565,13 @@ function App() {
     }
   };
 
+  const mobileSidebarIsOpen = !sidebarIsCollapsed &&
+    window.matchMedia('(max-width: 620px)').matches;
+
   return (
     <main
       className="app-shell"
+      data-mobile-sidebar-open={mobileSidebarIsOpen}
       data-sidebar-collapsed={sidebarIsCollapsed}
       style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
     >
@@ -2592,7 +2609,11 @@ function App() {
         workspaces={workspaces}
       />
 
-      <section className="workspace" aria-label="Task workspace">
+      <section
+        aria-hidden={mobileSidebarIsOpen ? true : undefined}
+        aria-label="Task workspace"
+        className="workspace"
+      >
         {resetPasswordToken ? (
           <AuthPanel
             authOptions={authOptions}
