@@ -17,6 +17,7 @@ interface TaskFilterBarProps {
     statuses: string[];
     categories: string[];
     colors: string[];
+    sharedWith: string[];
   };
   t: Translate;
 }
@@ -91,13 +92,20 @@ export function TaskFilterBar({
         value={filters.notTouchedDays}
       />
 
-      <input
-        aria-label={t('sharedWith')}
-        onChange={(event) => updateFilter({ sharedWith: event.target.value })}
-        placeholder={t('sharedWith')}
-        type="search"
-        value={filters.sharedWith}
-      />
+      {options.sharedWith.length > 0 ? (
+        <select
+          aria-label={t('sharedWith')}
+          onChange={(event) => updateFilter({ sharedWith: event.target.value })}
+          value={filters.sharedWith}
+        >
+          <option value="">{t('anySharedPerson')}</option>
+          {options.sharedWith.map((email) => (
+            <option key={email.toLowerCase()} value={email}>
+              {email}
+            </option>
+          ))}
+        </select>
+      ) : null}
 
       <button
         aria-hidden={!filtersAreActive}

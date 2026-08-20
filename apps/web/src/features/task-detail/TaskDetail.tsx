@@ -56,6 +56,7 @@ interface TaskDetailProps {
   onClose: () => Promise<void>;
   onRequestSync: () => void;
   onReopen: (note?: string) => Promise<void>;
+  onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void;
   onCreateTaskShareLink: (
     taskItemId: string,
     requestBody: CreateTaskShareRequest,
@@ -96,6 +97,7 @@ export function TaskDetail({
   onClose,
   onRequestSync,
   onReopen,
+  onUnsavedChangesChange,
   onCreateTaskShareLink,
   onQueueDeleteTimelineEntry,
   onRevokeTaskShare,
@@ -383,6 +385,7 @@ export function TaskDetail({
         entryFields={entryFields}
         entryLayoutRows={taskItem.template?.layout.entry ?? []}
         onAddTimelineEntry={onAddTimelineEntry}
+        onDirtyChange={onUnsavedChangesChange}
         onQueueDeleteTimelineEntry={onQueueDeleteTimelineEntry}
         onUndoDeleteTimelineEntry={onUndoDeleteTimelineEntry}
         onUpdateTimelineEntry={onUpdateTimelineEntry}
