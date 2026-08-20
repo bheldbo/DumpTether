@@ -272,6 +272,19 @@ export interface RequestAccountDeletionRequest {
   currentPassword?: string | null;
 }
 
+export interface AccountNotificationPreferencesResponse {
+  emailDeliveryAvailable: boolean;
+  sharingActivityEmailEnabled: boolean;
+  dailySummaryEmailEnabled: boolean;
+  followUpReminderEmailEnabled: boolean;
+}
+
+export interface UpdateAccountNotificationPreferencesRequest {
+  sharingActivityEmailEnabled: boolean;
+  dailySummaryEmailEnabled: boolean;
+  followUpReminderEmailEnabled: boolean;
+}
+
 export type UserSessionType =
   | 'Browser'
   | 'DesktopLocal'

@@ -3,6 +3,7 @@ using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using DumpTether.App.LiveUpdates;
+using DumpTether.App.Notifications;
 using DumpTether.App.Projects;
 using DumpTether.App.Sync;
 using DumpTether.App.Tasks;
@@ -29,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<IAdministrationService, AdministrationService>();
         services.AddScoped<IArchiveResolutionService, ArchiveResolutionService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserNotificationService, UserNotificationService>();
         services.AddScoped<ICurrentUserSessionProvider, CurrentUserSessionProvider>();
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<ISyncService, SyncService>();

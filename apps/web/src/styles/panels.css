@@ -1566,6 +1566,56 @@
   background: #fbfcfd;
 }
 
+.section-heading-with-icon {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.section-heading-with-icon > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.notification-preference-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.notification-preference-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 12px;
+  border: 1px solid #dbe3eb;
+  border-radius: 8px;
+  background: #fbfcfd;
+  cursor: pointer;
+}
+
+.notification-preference-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.notification-preference-row strong {
+  font-size: 0.86rem;
+}
+
+.notification-preference-row small {
+  color: #667586;
+  line-height: 1.35;
+}
+
+.notification-preference-row input {
+  width: 19px;
+  min-width: 19px;
+  min-height: 19px;
+  accent-color: #174f4b;
+}
+
 .account-help-section > .secondary-action,
 .account-deletion-form > .danger-action {
   justify-self: start;

@@ -1122,6 +1122,59 @@ namespace DumpTether.Data.Migrations
                     b.ToTable("task_timeline_entry_field_values", (string)null);
                 });
 
+            modelBuilder.Entity("DumpTether.Domain.UserNotificationPreference", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DailySummaryClaimedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("daily_summary_claimed_at");
+
+                    b.Property<bool>("DailySummaryEmailEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("daily_summary_email_enabled");
+
+                    b.Property<DateTimeOffset?>("FollowUpReminderClaimedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("follow_up_reminder_claimed_at");
+
+                    b.Property<bool>("FollowUpReminderEmailEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("follow_up_reminder_email_enabled");
+
+                    b.Property<DateTimeOffset?>("LastDailySummarySentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_daily_summary_sent_at");
+
+                    b.Property<DateTimeOffset?>("LastFollowUpReminderSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_follow_up_reminder_sent_at");
+
+                    b.Property<bool>("SharingActivityEmailEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("sharing_activity_email_enabled");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("user_notification_preferences", (string)null);
+                });
+
             modelBuilder.Entity("DumpTether.Domain.UserSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1529,6 +1582,15 @@ namespace DumpTether.Data.Migrations
                         .WithMany("FieldValues")
                         .HasForeignKey("TaskTimelineEntryId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DumpTether.Domain.UserNotificationPreference", b =>
+                {
+                    b.HasOne("DumpTether.Domain.AppUser", null)
+                        .WithOne()
+                        .HasForeignKey("DumpTether.Domain.UserNotificationPreference", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

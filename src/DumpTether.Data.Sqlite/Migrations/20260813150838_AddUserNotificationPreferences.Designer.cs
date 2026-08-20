@@ -3,6 +3,7 @@ using System;
 using DumpTether.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DumpTether.Data.Sqlite.Migrations
 {
     [DbContext(typeof(DumpTetherDbContext))]
-    partial class DumpTetherDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260813150838_AddUserNotificationPreferences")]
+    partial class AddUserNotificationPreferences
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.0");

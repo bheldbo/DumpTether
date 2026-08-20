@@ -3,56 +3,64 @@ using System;
 using DumpTether.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace DumpTether.Data.Sqlite.Migrations
+namespace DumpTether.Data.Migrations
 {
     [DbContext(typeof(DumpTetherDbContext))]
-    partial class DumpTetherDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260813150823_AddUserNotificationPreferences")]
+    partial class AddUserNotificationPreferences
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.0");
+            modelBuilder
+                .HasAnnotation("ProductVersion", "8.0.0")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("DumpTether.Domain.AccountDeletionRequest", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("ClaimedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("claimed_at");
 
                     b.Property<DateTimeOffset?>("ReminderClaimedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("reminder_claimed_at");
 
                     b.Property<DateTimeOffset>("ReminderDueAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("reminder_due_at");
 
                     b.Property<DateTimeOffset?>("ReminderSentAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("reminder_sent_at");
 
                     b.Property<DateTimeOffset>("RequestedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("requested_at");
 
                     b.Property<DateTimeOffset>("ScheduledFor")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("scheduled_for");
 
                     b.Property<int>("State")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasColumnName("state");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
@@ -70,59 +78,59 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.AppUser", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("display_name");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("email");
 
                     b.Property<DateTimeOffset?>("EmailConfirmedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("email_confirmed_at");
 
                     b.Property<bool>("HasPasswordCredential")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasDefaultValue(true)
                         .HasColumnName("has_password_credential");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
                     b.Property<DateTimeOffset?>("LastLoginAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_login_at");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("normalized_email");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(1024)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(1024)")
                         .HasColumnName("password_hash");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
@@ -136,34 +144,34 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.ArchiveResolution", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(1000)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(160)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(160)")
                         .HasColumnName("name");
 
                     b.Property<bool>("RequiresExplanation")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasColumnName("requires_explanation");
 
                     b.Property<Guid>("WorkspaceId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("workspace_id");
 
                     b.HasKey("Id");
@@ -177,59 +185,59 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.CloudSyncAccount", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<string>("CloudApiBaseUrl")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(512)")
                         .HasColumnName("cloud_api_base_url");
 
                     b.Property<string>("CloudDisplayName")
                         .IsRequired()
                         .HasMaxLength(160)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(160)")
                         .HasColumnName("cloud_display_name");
 
                     b.Property<string>("CloudEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("cloud_email");
 
                     b.Property<Guid>("CloudUserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("cloud_user_id");
 
                     b.Property<DateTimeOffset>("ConnectedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("connected_at");
 
                     b.Property<DateTimeOffset?>("DisconnectedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("disconnected_at");
 
                     b.Property<DateTimeOffset?>("LastVerifiedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_verified_at");
 
                     b.Property<string>("ProtectedSessionToken")
                         .IsRequired()
                         .HasMaxLength(4096)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(4096)")
                         .HasColumnName("protected_session_token");
 
                     b.Property<DateTimeOffset>("SessionExpiresAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("session_expires_at");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
@@ -243,29 +251,29 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.EmailConfirmationToken", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(128)")
                         .HasColumnName("token_hash");
 
                     b.Property<DateTimeOffset?>("UsedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("used_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
@@ -281,37 +289,37 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.ExternalLogin", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("EmailAtLogin")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("email_at_login");
 
                     b.Property<DateTimeOffset>("LastUsedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_used_at");
 
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(50)")
                         .HasColumnName("provider");
 
                     b.Property<string>("ProviderUserId")
                         .IsRequired()
                         .HasMaxLength(256)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(256)")
                         .HasColumnName("provider_user_id");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
@@ -327,83 +335,83 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.FieldDefinition", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("DeactivatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("deactivated_at");
 
                     b.Property<bool>("IsRequired")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasColumnName("is_required");
 
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasMaxLength(120)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(120)")
                         .HasColumnName("key");
 
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("label");
 
                     b.Property<int>("LayoutColumn")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasDefaultValue(1)
                         .HasColumnName("layout_column");
 
                     b.Property<int>("LayoutColumnSpan")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasDefaultValue(1)
                         .HasColumnName("layout_column_span");
 
                     b.Property<int>("LayoutRow")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasDefaultValue(1)
                         .HasColumnName("layout_row");
 
                     b.Property<int>("LayoutRowSpan")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasDefaultValue(1)
                         .HasColumnName("layout_row_span");
 
                     b.Property<double>("LayoutWeight")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("REAL")
+                        .HasColumnType("double precision")
                         .HasDefaultValue(1.0)
                         .HasColumnName("layout_weight");
 
                     b.Property<string>("OptionsJson")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("jsonb")
                         .HasColumnName("options");
 
                     b.Property<string>("Scope")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasDefaultValue("Header")
                         .HasColumnName("scope");
 
                     b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasColumnName("sort_order");
 
                     b.Property<Guid>("TaskTemplateId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("task_template_id");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasColumnName("type");
 
                     b.HasKey("Id");
@@ -418,24 +426,24 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.FieldValue", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<Guid>("FieldDefinitionId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("field_definition_id");
 
                     b.Property<Guid>("TaskItemId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("task_item_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("ValueJson")
                         .IsRequired()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("jsonb")
                         .HasColumnName("value");
 
                     b.HasKey("Id");
@@ -451,25 +459,25 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.LegalAcceptance", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("AcceptedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("accepted_at");
 
                     b.Property<int>("DocumentType")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasColumnName("document_type");
 
                     b.Property<string>("DocumentVersion")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(50)")
                         .HasColumnName("document_version");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
@@ -483,39 +491,39 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.OperatorAuditEvent", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(120)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(120)")
                         .HasColumnName("action");
 
                     b.Property<string>("Actor")
                         .IsRequired()
                         .HasMaxLength(160)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(160)")
                         .HasColumnName("actor");
 
                     b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("occurred_at");
 
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(1000)")
                         .HasColumnName("reason");
 
                     b.Property<string>("TargetEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("target_email");
 
                     b.Property<Guid>("TargetUserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("target_user_id");
 
                     b.HasKey("Id");
@@ -530,29 +538,29 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.PasswordResetToken", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(128)")
                         .HasColumnName("token_hash");
 
                     b.Property<DateTimeOffset?>("UsedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("used_at");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
@@ -568,32 +576,32 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.Project", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<string>("Color")
                         .HasMaxLength(7)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(7)")
                         .HasColumnName("color");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
                     b.Property<Guid>("WorkspaceId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("workspace_id");
 
                     b.HasKey("Id");
@@ -607,53 +615,53 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.SavedView", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DefinitionJson")
                         .IsRequired()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("jsonb")
                         .HasColumnName("definition");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
                     b.Property<Guid?>("ProjectId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("project_id");
 
                     b.Property<string>("Scope")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasColumnName("scope");
 
                     b.Property<string>("SortJson")
                         .IsRequired()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("jsonb")
                         .HasColumnName("sort");
 
                     b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasColumnName("sort_order");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.Property<Guid>("WorkspaceId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("workspace_id");
 
                     b.HasKey("Id");
@@ -677,57 +685,57 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.SyncMapping", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("EntityType")
                         .IsRequired()
                         .HasMaxLength(60)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(60)")
                         .HasColumnName("entity_type");
 
                     b.Property<DateTimeOffset?>("LastAttemptedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_attempted_at");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(1000)")
                         .HasColumnName("last_error");
 
                     b.Property<string>("LastRemoteVersion")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("last_remote_version");
 
                     b.Property<DateTimeOffset?>("LastSyncedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_synced_at");
 
                     b.Property<Guid>("LocalId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("local_id");
 
                     b.Property<Guid?>("RemoteId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("remote_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasColumnName("status");
 
                     b.Property<Guid>("SyncRootId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("sync_root_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
@@ -745,59 +753,59 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.SyncRoot", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("CloudUserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("cloud_user_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DeviceId")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(128)")
                         .HasColumnName("device_id");
 
                     b.Property<DateTimeOffset?>("LastSyncedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_synced_at");
 
                     b.Property<Guid>("LocalWorkspaceId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("local_workspace_id");
 
                     b.Property<string>("Origin")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasColumnName("origin");
 
                     b.Property<string>("RemoteAccessKind")
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasColumnName("remote_access_kind");
 
                     b.Property<string>("RemoteRole")
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasColumnName("remote_role");
 
                     b.Property<Guid?>("RemoteWorkspaceId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("remote_workspace_id");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasColumnName("status");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
@@ -815,68 +823,68 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.TaskItem", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("ArchiveResolutionId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("archive_resolution_id");
 
                     b.Property<DateTimeOffset?>("ArchivedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("archived_at");
 
                     b.Property<string>("Category")
                         .HasMaxLength(120)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(120)")
                         .HasColumnName("category");
 
                     b.Property<string>("Color")
                         .HasMaxLength(7)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(7)")
                         .HasColumnName("color");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset?>("FollowUpAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("follow_up_at");
 
                     b.Property<DateTimeOffset>("LastTouchedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_touched_at");
 
                     b.Property<DateTimeOffset?>("LastViewedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_viewed_at");
 
                     b.Property<Guid?>("ParentTaskItemId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("parent_task_item_id");
 
                     b.Property<Guid?>("ProjectId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("project_id");
 
                     b.Property<string>("Status")
                         .HasMaxLength(120)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(120)")
                         .HasColumnName("status");
 
                     b.Property<Guid?>("TaskTemplateId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("task_template_id");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(500)")
                         .HasColumnName("title");
 
                     b.Property<Guid>("WorkspaceId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("workspace_id");
 
                     b.HasKey("Id");
@@ -910,62 +918,62 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.TaskItemShare", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("AcceptedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("accepted_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("email");
 
                     b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("normalized_email");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("revoked_at");
 
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(50)")
                         .HasColumnName("role");
 
                     b.Property<Guid>("SharedByUserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("shared_by_user_id");
 
                     b.Property<Guid?>("SharedWithUserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("shared_with_user_id");
 
                     b.Property<Guid>("TaskItemId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("task_item_id");
 
                     b.Property<string>("TokenHash")
                         .HasMaxLength(512)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(512)")
                         .HasColumnName("token_hash");
 
                     b.Property<Guid>("WorkspaceId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("workspace_id");
 
                     b.HasKey("Id");
@@ -986,49 +994,49 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.TaskTemplate", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<int>("BuiltInKind")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasDefaultValue(0)
                         .HasColumnName("built_in_kind");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("EntryLayoutJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("jsonb")
                         .HasDefaultValue("[]")
                         .HasColumnName("entry_layout_json");
 
                     b.Property<string>("HeaderLayoutJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("jsonb")
                         .HasDefaultValue("[]")
                         .HasColumnName("header_layout_json");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
                     b.Property<Guid?>("OwnerUserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("owner_user_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
@@ -1041,40 +1049,40 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.TaskTimelineEntry", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
                     b.Property<string>("Details")
                         .HasMaxLength(4000)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(4000)")
                         .HasColumnName("details");
 
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasColumnName("kind");
 
                     b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("occurred_at");
 
                     b.Property<string>("Summary")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(500)")
                         .HasColumnName("summary");
 
                     b.Property<Guid>("TaskItemId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("task_item_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
@@ -1087,24 +1095,24 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.TaskTimelineEntryFieldValue", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<Guid>("FieldDefinitionId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("field_definition_id");
 
                     b.Property<Guid>("TaskTimelineEntryId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("task_timeline_entry_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.Property<string>("ValueJson")
                         .IsRequired()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("jsonb")
                         .HasColumnName("value");
 
                     b.HasKey("Id");
@@ -1120,49 +1128,49 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.UserNotificationPreference", b =>
                 {
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<DateTimeOffset?>("DailySummaryClaimedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("daily_summary_claimed_at");
 
                     b.Property<bool>("DailySummaryEmailEnabled")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("daily_summary_email_enabled");
 
                     b.Property<DateTimeOffset?>("FollowUpReminderClaimedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("follow_up_reminder_claimed_at");
 
                     b.Property<bool>("FollowUpReminderEmailEnabled")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("follow_up_reminder_email_enabled");
 
                     b.Property<DateTimeOffset?>("LastDailySummarySentAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_daily_summary_sent_at");
 
                     b.Property<DateTimeOffset?>("LastFollowUpReminderSentAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_follow_up_reminder_sent_at");
 
                     b.Property<bool>("SharingActivityEmailEnabled")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("sharing_activity_email_enabled");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("UserId");
@@ -1173,54 +1181,54 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.UserSession", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("DeviceName")
                         .HasMaxLength(120)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(120)")
                         .HasColumnName("device_name");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
                     b.Property<string>("IpAddressHash")
                         .HasMaxLength(128)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(128)")
                         .HasColumnName("ip_address_hash");
 
                     b.Property<DateTimeOffset>("LastSeenAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_seen_at");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("revoked_at");
 
                     b.Property<string>("SessionTokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(128)")
                         .HasColumnName("session_token_hash");
 
                     b.Property<string>("SessionType")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(40)")
                         .HasColumnName("session_type");
 
                     b.Property<string>("UserAgent")
                         .HasMaxLength(512)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(512)")
                         .HasColumnName("user_agent");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
@@ -1236,26 +1244,26 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.Workspace", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<string>("Color")
                         .HasMaxLength(7)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(7)")
                         .HasColumnName("color");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
@@ -1268,55 +1276,55 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.WorkspaceInvitation", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset?>("AcceptedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("accepted_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("email");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
                     b.Property<Guid>("InvitedByUserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("invited_by_user_id");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("normalized_email");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("revoked_at");
 
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(50)")
                         .HasColumnName("role");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(128)")
                         .HasColumnName("token_hash");
 
                     b.Property<Guid>("WorkspaceId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("workspace_id");
 
                     b.HasKey("Id");
@@ -1334,25 +1342,25 @@ namespace DumpTether.Data.Sqlite.Migrations
             modelBuilder.Entity("DumpTether.Domain.WorkspaceMembership", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(50)")
                         .HasColumnName("role");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.Property<Guid>("WorkspaceId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("workspace_id");
 
                     b.HasKey("Id");

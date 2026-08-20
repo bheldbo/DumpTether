@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Auth;
 using DumpTether.App.LiveUpdates;
+using DumpTether.App.Notifications;
 using DumpTether.App.Tasks;
 using DumpTether.Domain;
 using Microsoft.Extensions.Options;
@@ -17,6 +18,7 @@ internal sealed class WorkspaceService : IWorkspaceService
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
     private readonly ILiveUpdatePublisher _liveUpdatePublisher;
+    private readonly IUserNotificationService _notificationService;
     private readonly ISessionTokenService _sessionTokenService;
     private readonly IWorkspaceRepository _workspaceRepository;
 
@@ -27,6 +29,7 @@ internal sealed class WorkspaceService : IWorkspaceService
         ICurrentUserSessionProvider currentUserSessionProvider,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
         ILiveUpdatePublisher liveUpdatePublisher,
+        IUserNotificationService notificationService,
         ISessionTokenService sessionTokenService,
         IWorkspaceRepository workspaceRepository)
     {
@@ -36,6 +39,7 @@ internal sealed class WorkspaceService : IWorkspaceService
         _currentUserSessionProvider = currentUserSessionProvider;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _liveUpdatePublisher = liveUpdatePublisher;
+        _notificationService = notificationService;
         _sessionTokenService = sessionTokenService;
         _workspaceRepository = workspaceRepository;
     }
@@ -858,6 +862,16 @@ internal sealed class WorkspaceService : IWorkspaceService
                 now,
                 now,
                 [currentSession.UserId]),
+            cancellationToken);
+
+        var workspace = await _workspaceRepository.GetByIdAsync(
+            invitation.WorkspaceId,
+            cancellationToken);
+        await _notificationService.NotifySharingAcceptedAsync(
+            invitation.InvitedByUserId,
+            currentSession.DisplayName,
+            workspace?.Name ?? "a board",
+            1,
             cancellationToken);
 
         return MapInvitation(invitation, token: null);

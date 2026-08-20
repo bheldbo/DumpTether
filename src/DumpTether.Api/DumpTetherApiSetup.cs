@@ -3,6 +3,7 @@ using DumpTether.App;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using DumpTether.App.LiveUpdates;
+using DumpTether.App.Notifications;
 using DumpTether.App.Sync;
 using DumpTether.App.Usage;
 using DumpTether.App.Workspaces;
@@ -34,6 +35,7 @@ internal static class DumpTetherApiSetup
         services.Configure<UsageOptions>(configuration.GetSection("Usage"));
         services.Configure<PasswordRecoveryOptions>(configuration.GetSection("PasswordRecovery"));
         services.Configure<AccountDeletionOptions>(configuration.GetSection("AccountDeletion"));
+        services.Configure<NotificationOptions>(configuration.GetSection("Notifications"));
         services.PostConfigure<AuthOptions>(options =>
         {
             if (!environment.IsDevelopment())
@@ -71,6 +73,7 @@ internal static class DumpTetherApiSetup
                 tags: ["ready"]);
         services.AddHostedService<SessionCleanupHostedService>();
         services.AddHostedService<AccountDeletionHostedService>();
+        services.AddHostedService<NotificationDeliveryHostedService>();
         if (environment.IsEnvironment("Desktop") &&
             configuration.GetValue<bool>("Desktop:CloudLiveRelayEnabled"))
         {

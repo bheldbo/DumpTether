@@ -44,6 +44,7 @@ import {
   acceptIncomingWorkspaceInvitation,
   archiveTaskItem,
   cancelAccountDeletion,
+  getAccountNotificationPreferences,
   checkHealth,
   connectCloudSyncAccount,
   copyTaskItems,
@@ -104,6 +105,7 @@ import {
   isTemporarySession,
   syncWorkspaceWithCloud,
   updateArchiveResolution,
+  updateAccountNotificationPreferences,
   updateProject,
   updateTaskShareRole,
   updateTaskItem,
@@ -138,6 +140,7 @@ import {
 import type {
   AuthClientOptionsResponse,
   AccountDeletionResponse,
+  AccountNotificationPreferencesResponse,
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   AuthSessionListItemResponse,
@@ -167,6 +170,7 @@ import type {
   WorkspaceInvitationResponse,
   WorkspaceMemberResponse,
   UpdateArchiveResolutionRequest,
+  UpdateAccountNotificationPreferencesRequest,
   UpdateProjectRequest,
   UpdateTaskShareRequest,
   UpdateTaskItemRequest,
@@ -218,6 +222,8 @@ function App() {
   const [settingsIsOpen, setSettingsIsOpen] = useState(false);
   const [accountIsOpen, setAccountIsOpen] = useState(false);
   const [accountDeletion, setAccountDeletion] = useState<AccountDeletionResponse | null>(null);
+  const [accountNotificationPreferences, setAccountNotificationPreferences] =
+    useState<AccountNotificationPreferencesResponse | null>(null);
   const [resetPasswordToken, setResetPasswordToken] = useState<string | null>(() => {
     const fragment = window.location.hash;
     return fragment.startsWith('#reset-password=')
@@ -411,6 +417,19 @@ function App() {
         }
       } else {
         setAccountDeletion(null);
+      }
+      if (
+        session.currentUser &&
+        !session.localDesktopSessionIsActive &&
+        !session.temporarySessionIsActive
+      ) {
+        try {
+          setAccountNotificationPreferences(await getAccountNotificationPreferences());
+        } catch {
+          setAccountNotificationPreferences(null);
+        }
+      } else {
+        setAccountNotificationPreferences(null);
       }
       setErrorMessage(null);
     } catch (error) {
@@ -1625,6 +1644,20 @@ function App() {
     }
   };
 
+  const handleUpdateAccountNotificationPreferences = async (
+    requestBody: UpdateAccountNotificationPreferencesRequest,
+  ) => {
+    try {
+      const updated = await updateAccountNotificationPreferences(requestBody);
+      setAccountNotificationPreferences(updated);
+      showToast(t('emailNotificationPreferencesSaved'));
+      return updated;
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error');
+      throw error;
+    }
+  };
+
   const handleCreateProject = async (name: string, color?: string | null) => {
     try {
       const created = await createProject({
@@ -2705,6 +2738,7 @@ function App() {
       {accountIsOpen ? (
         <AccountPanel
           accountDeletion={accountDeletion}
+          accountNotificationPreferences={accountNotificationPreferences}
           authSessions={authSessions}
           authOptions={authOptions}
           cloudSyncAccount={cloudSyncAccount}
@@ -2725,6 +2759,7 @@ function App() {
           onLogin={handleLogin}
           onLogout={handleLogout}
           onOpenTour={handleOpenTour}
+          onUpdateAccountNotificationPreferences={handleUpdateAccountNotificationPreferences}
           onRequestAccountDeletion={handleRequestAccountDeletion}
           onRegister={handleRegister}
           onRevokeAuthSession={handleRevokeAuthSession}

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using DumpTether.App.Auth;
+using DumpTether.App.Notifications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -12,10 +13,29 @@ namespace DumpTether.Api.Controllers;
 public sealed class AccountController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly IUserNotificationService _notificationService;
 
-    public AccountController(IAuthService authService)
+    public AccountController(
+        IAuthService authService,
+        IUserNotificationService notificationService)
     {
         _authService = authService;
+        _notificationService = notificationService;
+    }
+
+    [HttpGet("notifications")]
+    public async Task<ActionResult<AccountNotificationPreferencesResponse>> GetNotifications(
+        CancellationToken cancellationToken)
+    {
+        return Ok(await _notificationService.GetCurrentAsync(cancellationToken));
+    }
+
+    [HttpPut("notifications")]
+    public async Task<ActionResult<AccountNotificationPreferencesResponse>> UpdateNotifications(
+        UpdateAccountNotificationPreferencesRequest request,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await _notificationService.UpdateCurrentAsync(request, cancellationToken));
     }
 
     [HttpGet("deletion")]
