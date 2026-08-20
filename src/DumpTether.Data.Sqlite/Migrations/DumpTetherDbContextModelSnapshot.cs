@@ -133,47 +133,6 @@ namespace DumpTether.Data.Sqlite.Migrations
                     b.ToTable("app_users", (string)null);
                 });
 
-            modelBuilder.Entity("DumpTether.Domain.ArchiveResolution", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("TEXT")
-                        .HasColumnName("name");
-
-                    b.Property<bool>("RequiresExplanation")
-                        .HasColumnType("INTEGER")
-                        .HasColumnName("requires_explanation");
-
-                    b.Property<Guid>("WorkspaceId")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("workspace_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("WorkspaceId", "Name")
-                        .IsUnique();
-
-                    b.ToTable("archive_resolutions", (string)null);
-                });
-
             modelBuilder.Entity("DumpTether.Domain.CloudSyncAccount", b =>
                 {
                     b.Property<Guid>("Id")
@@ -818,10 +777,6 @@ namespace DumpTether.Data.Sqlite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("id");
 
-                    b.Property<Guid?>("ArchiveResolutionId")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("archive_resolution_id");
-
                     b.Property<DateTimeOffset?>("ArchivedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("archived_at");
@@ -881,8 +836,6 @@ namespace DumpTether.Data.Sqlite.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ArchiveResolutionId");
-
                     b.HasIndex("FollowUpAt");
 
                     b.HasIndex("ParentTaskItemId");
@@ -901,10 +854,7 @@ namespace DumpTether.Data.Sqlite.Migrations
 
                     b.HasIndex("WorkspaceId", "ParentTaskItemId", "ArchivedAt", "LastTouchedAt");
 
-                    b.ToTable("task_items", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_task_items_archive_requires_resolution", "(archived_at IS NULL AND archive_resolution_id IS NULL) OR (archived_at IS NOT NULL AND archive_resolution_id IS NOT NULL)");
-                        });
+                    b.ToTable("task_items", (string)null);
                 });
 
             modelBuilder.Entity("DumpTether.Domain.TaskItemShare", b =>
@@ -1374,15 +1324,6 @@ namespace DumpTether.Data.Sqlite.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("DumpTether.Domain.ArchiveResolution", b =>
-                {
-                    b.HasOne("DumpTether.Domain.Workspace", null)
-                        .WithMany("_archiveResolutions")
-                        .HasForeignKey("WorkspaceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("DumpTether.Domain.CloudSyncAccount", b =>
                 {
                     b.HasOne("DumpTether.Domain.AppUser", null)
@@ -1495,11 +1436,6 @@ namespace DumpTether.Data.Sqlite.Migrations
 
             modelBuilder.Entity("DumpTether.Domain.TaskItem", b =>
                 {
-                    b.HasOne("DumpTether.Domain.ArchiveResolution", null)
-                        .WithMany()
-                        .HasForeignKey("ArchiveResolutionId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("DumpTether.Domain.TaskItem", null)
                         .WithMany()
                         .HasForeignKey("ParentTaskItemId")
@@ -1661,8 +1597,6 @@ namespace DumpTether.Data.Sqlite.Migrations
 
             modelBuilder.Entity("DumpTether.Domain.Workspace", b =>
                 {
-                    b.Navigation("_archiveResolutions");
-
                     b.Navigation("_memberships");
 
                     b.Navigation("_projects");

@@ -54,11 +54,6 @@ public sealed record UpdateTaskTimelineEntryRequest(
     string? Note,
     Dictionary<Guid, JsonElement>? FieldValues = null);
 
-public sealed record ArchiveTaskItemRequest(
-    [Required]
-    Guid? ArchiveResolutionId,
-    [MaxLength(4000)] string? Note = null);
-
 public sealed record ReopenTaskItemRequest(
     [MaxLength(4000)] string? Note = null);
 

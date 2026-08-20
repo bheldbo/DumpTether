@@ -309,12 +309,11 @@ public sealed class TaskItemsController : ControllerBase
     [HttpPost("{id:guid}/archive")]
     public async Task<ActionResult<TaskItemDetailResponse>> Archive(
         Guid id,
-        ArchiveTaskItemRequest request,
         CancellationToken cancellationToken)
     {
         try
         {
-            var response = await _taskItemService.ArchiveAsync(id, request, cancellationToken);
+            var response = await _taskItemService.ArchiveAsync(id, cancellationToken);
             return response is null ? NotFound() : Ok(response);
         }
         catch (ArgumentException exception)

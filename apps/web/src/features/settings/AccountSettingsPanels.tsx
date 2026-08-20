@@ -1,4 +1,4 @@
-﻿import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { beginOAuthLogin } from '../../api';
 import type { SettingsSectionKey } from '../../appTypes';
 import { readCloudSyncApiBaseUrl } from '../../appSettings';
@@ -22,14 +22,12 @@ import {
 } from '../../appUtils';
 import type { Language, Translate } from '../../localization';
 import type {
-  ArchiveResolutionResponse,
   AccountDeletionResponse,
   AccountNotificationPreferencesResponse,
   AuthSessionListItemResponse,
   AuthClientOptionsResponse,
   CloudSyncAccountResponse,
   ConnectCloudAccountRequest,
-  CreateArchiveResolutionRequest,
   CurrentUserResponse,
   LoginUserRequest,
   RegisterUserRequest,
@@ -37,7 +35,6 @@ import type {
   ResetPasswordRequest,
   TaskShareInboxResponse,
   UpdateAccountNotificationPreferencesRequest,
-  UpdateArchiveResolutionRequest,
   WorkspaceInvitationInboxResponse,
   WorkspaceResponse,
 } from '../../types';
@@ -577,7 +574,6 @@ export function AuthPanel({
     </section>
   );
 }
-
 export function AccountPanel({
   accountDeletion,
   accountNotificationPreferences,
@@ -836,7 +832,6 @@ export function AccountPanel({
     </ModalFrame>
   );
 }
-
 function CloudAccountSection({
   cloudSyncAccount,
   onConnectCloudAccount,
@@ -969,7 +964,6 @@ function CloudAccountSection({
     </section>
   );
 }
-
 function normalizeSignupMode(
   signupMode: AuthClientOptionsResponse['signupMode'],
 ): 'Open' | 'Whitelist' | 'InviteOnly' | 'Closed' {
@@ -1036,7 +1030,6 @@ function sessionIcon(sessionType: AuthSessionListItemResponse['sessionType']): I
 }
 
 export function SettingsPanel({
-  archiveResolutions,
   cleanupCloudLinkedWorkspaceIds,
   cleanupPreferredWorkspaceId,
   cleanupWorkspaces,
@@ -1044,15 +1037,11 @@ export function SettingsPanel({
   language,
   onChangeLanguage,
   onClose,
-  onCreateArchiveResolution,
-  onDeleteArchiveResolution,
   onDeleteOldArchivedTasks,
   onDeleteWorkspace,
   onSaveStatusOptions,
-  onUpdateArchiveResolution,
   t,
 }: {
-  archiveResolutions: ArchiveResolutionResponse[];
   cleanupCloudLinkedWorkspaceIds: string[];
   cleanupPreferredWorkspaceId: string | null;
   cleanupWorkspaces: WorkspaceResponse[];
@@ -1060,8 +1049,6 @@ export function SettingsPanel({
   language: Language;
   onChangeLanguage: (language: Language) => void;
   onClose: () => void;
-  onCreateArchiveResolution: (requestBody: CreateArchiveResolutionRequest) => Promise<void>;
-  onDeleteArchiveResolution: (id: string) => Promise<void>;
   onDeleteOldArchivedTasks: (
     workspaceId: string,
     olderThanDays: number,
@@ -1069,16 +1056,10 @@ export function SettingsPanel({
   ) => Promise<number>;
   onDeleteWorkspace: ((workspaceId: string) => Promise<void>) | null;
   onSaveStatusOptions: (statuses: string[]) => void;
-  onUpdateArchiveResolution: (
-    id: string,
-    requestBody: UpdateArchiveResolutionRequest,
-  ) => Promise<void>;
   t: Translate;
 }) {
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>('general');
   const [statusDraft, setStatusDraft] = useState('');
-  const [archiveReasonName, setArchiveReasonName] = useState('');
-  const [archiveReasonRequiresNote, setArchiveReasonRequiresNote] = useState(false);
   const [workspacePendingDeletion, setWorkspacePendingDeletion] =
     useState<WorkspaceResponse | null>(null);
   const [archiveCleanupMode, setArchiveCleanupMode] =
@@ -1113,7 +1094,6 @@ export function SettingsPanel({
   const settingsSections: Array<{ key: SettingsSectionKey; label: string; icon: IconName }> = [
     { key: 'general', label: t('settingsGeneral'), icon: 'settings' },
     { key: 'statuses', label: t('statusOptions'), icon: 'status' },
-    { key: 'archive', label: t('archiveReasons'), icon: 'archive' },
     { key: 'cleanup', label: t('cleanup'), icon: 'trash' },
   ];
 
@@ -1127,22 +1107,6 @@ export function SettingsPanel({
 
     onSaveStatusOptions([...configuredStatuses, trimmedStatus]);
     setStatusDraft('');
-  };
-
-  const addArchiveReason = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmedName = archiveReasonName.trim();
-
-    if (!trimmedName) {
-      return;
-    }
-
-    await onCreateArchiveResolution({
-      name: trimmedName,
-      requiresExplanation: archiveReasonRequiresNote,
-    });
-    setArchiveReasonName('');
-    setArchiveReasonRequiresNote(false);
   };
 
   return (
@@ -1228,43 +1192,6 @@ export function SettingsPanel({
                         <Icon name="trash" />
                       </button>
                     </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {activeSection === 'archive' ? (
-              <div className="settings-section settings-section-flat">
-                <h3>{t('archiveReasons')}</h3>
-                <form className="settings-inline-form" onSubmit={(event) => void addArchiveReason(event)}>
-                  <input
-                    aria-label={t('addArchiveReason')}
-                    onChange={(event) => setArchiveReasonName(event.target.value)}
-                    placeholder={t('addArchiveReason')}
-                    type="text"
-                    value={archiveReasonName}
-                  />
-                  <label className="settings-checkbox">
-                    <input
-                      checked={archiveReasonRequiresNote}
-                      onChange={(event) => setArchiveReasonRequiresNote(event.target.checked)}
-                      type="checkbox"
-                    />
-                    {t('requireArchiveNote')}
-                  </label>
-                  <button className="icon-button" disabled={!archiveReasonName.trim()} type="submit">
-                    <Icon name="plus" />
-                  </button>
-                </form>
-                <div className="settings-list">
-                  {archiveResolutions.map((reason) => (
-                    <ArchiveResolutionSettingsRow
-                      key={reason.id}
-                      onDeleteArchiveResolution={onDeleteArchiveResolution}
-                      onUpdateArchiveResolution={onUpdateArchiveResolution}
-                      reason={reason}
-                      t={t}
-                    />
                   ))}
                 </div>
               </div>
@@ -1475,80 +1402,5 @@ function ArchiveCleanupDialog({
         </div>
       </section>
     </ModalFrame>
-  );
-}
-
-function ArchiveResolutionSettingsRow({
-  onDeleteArchiveResolution,
-  onUpdateArchiveResolution,
-  reason,
-  t,
-}: {
-  onDeleteArchiveResolution: (id: string) => Promise<void>;
-  onUpdateArchiveResolution: (
-    id: string,
-    requestBody: UpdateArchiveResolutionRequest,
-  ) => Promise<void>;
-  reason: ArchiveResolutionResponse;
-  t: Translate;
-}) {
-  const [name, setName] = useState(reason.name);
-  const [requiresExplanation, setRequiresExplanation] = useState(reason.requiresExplanation);
-
-  useEffect(() => {
-    setName(reason.name);
-    setRequiresExplanation(reason.requiresExplanation);
-  }, [reason]);
-
-  const saveReason = async () => {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setName(reason.name);
-      return;
-    }
-
-    await onUpdateArchiveResolution(reason.id, {
-      name: trimmedName,
-      requiresExplanation,
-    });
-  };
-
-  return (
-    <div className="settings-row">
-      <input
-        aria-label={reason.name}
-        onBlur={() => void saveReason()}
-        onChange={(event) => setName(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.currentTarget.blur();
-          }
-        }}
-        type="text"
-        value={name}
-      />
-      <label className="settings-checkbox">
-        <input
-          checked={requiresExplanation}
-          onChange={(event) => {
-            setRequiresExplanation(event.target.checked);
-            void onUpdateArchiveResolution(reason.id, {
-              name: name.trim() || reason.name,
-              requiresExplanation: event.target.checked,
-            });
-          }}
-          type="checkbox"
-        />
-        {t('requireArchiveNote')}
-      </label>
-      <button
-        className="tiny-icon-button danger-icon-button"
-        onClick={() => void onDeleteArchiveResolution(reason.id)}
-        title={t('deleteNote')}
-        type="button"
-      >
-        <Icon name="trash" />
-      </button>
-    </div>
   );
 }

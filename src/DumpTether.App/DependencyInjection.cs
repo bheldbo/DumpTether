@@ -1,5 +1,4 @@
 using DumpTether.App.Administration;
-using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
 using DumpTether.App.LiveUpdates;
@@ -28,7 +27,6 @@ public static class DependencyInjection
         services.AddSingleton<ICloudSyncClient, NoOpCloudSyncClient>();
         services.AddSingleton<ICloudSessionProtector, NoOpCloudSessionProtector>();
         services.AddScoped<IAdministrationService, AdministrationService>();
-        services.AddScoped<IArchiveResolutionService, ArchiveResolutionService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserNotificationService, UserNotificationService>();
         services.AddScoped<ICurrentUserSessionProvider, CurrentUserSessionProvider>();

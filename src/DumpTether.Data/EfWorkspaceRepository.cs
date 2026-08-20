@@ -327,10 +327,6 @@ internal sealed class EfWorkspaceRepository : IWorkspaceRepository
             await _dbContext.SavedViews
                 .Where(view => view.WorkspaceId == workspaceId)
                 .ToListAsync(cancellationToken));
-        _dbContext.ArchiveResolutions.RemoveRange(
-            await _dbContext.ArchiveResolutions
-                .Where(resolution => resolution.WorkspaceId == workspaceId)
-                .ToListAsync(cancellationToken));
         _dbContext.Projects.RemoveRange(
             await _dbContext.Projects
                 .Where(project => project.WorkspaceId == workspaceId)

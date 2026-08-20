@@ -202,9 +202,6 @@ static async Task<int> SeedTestDataAsync(IServiceProvider services, IConfigurati
 
     var generalProject = await EnsureProjectAsync(db, workspace.Id, "General", "#FFE36D", now);
     var followUpProject = await EnsureProjectAsync(db, workspace.Id, "Follow-up", "#A7D8FF", now);
-    await EnsureArchiveResolutionAsync(db, workspace.Id, "Done", false, now);
-    await EnsureArchiveResolutionAsync(db, workspace.Id, "No longer needed", true, now);
-
     var basicTemplate = await EnsureBasicTemplateAsync(db, user.Id, now);
     var todoTemplate = await EnsureTodoTemplateAsync(db, user.Id, now);
 
@@ -348,38 +345,13 @@ static async Task<Project> EnsureProjectAsync(
     return project;
 }
 
-static async Task EnsureArchiveResolutionAsync(
-    DumpTetherDbContext db,
-    Guid workspaceId,
-    string name,
-    bool requiresExplanation,
-    DateTimeOffset now)
-{
-    if (await db.ArchiveResolutions.AnyAsync(candidate =>
-            candidate.WorkspaceId == workspaceId &&
-            candidate.Name == name))
-    {
-        return;
-    }
-
-    await db.ArchiveResolutions.AddAsync(
-        ArchiveResolution.Create(
-            workspaceId,
-            name,
-            now,
-            requiresExplanation
-                ? "Use this when context matters later."
-                : "Seed archive reason.",
-            requiresExplanation));
-}
-
 static async Task<TaskTemplate> EnsureBasicTemplateAsync(
     DumpTetherDbContext db,
     Guid ownerUserId,
     DateTimeOffset now)
 {
     var template = await db.TaskTemplates
-        .Include(candidate => candidate.FieldDefinitions)
+        .Include("_fieldDefinitions")
         .FirstOrDefaultAsync(candidate =>
             candidate.OwnerUserId == ownerUserId &&
             candidate.Name == "Basic Task" &&
@@ -416,7 +388,7 @@ static async Task<TaskTemplate> EnsureTodoTemplateAsync(
     DateTimeOffset now)
 {
     var template = await db.TaskTemplates
-        .Include(candidate => candidate.FieldDefinitions)
+        .Include("_fieldDefinitions")
         .FirstOrDefaultAsync(candidate =>
             candidate.OwnerUserId == ownerUserId &&
             candidate.Name == "ToDo Task" &&

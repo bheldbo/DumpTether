@@ -48,7 +48,6 @@ import {
   checkHealth,
   connectCloudSyncAccount,
   copyTaskItems,
-  createArchiveResolution,
   createProject,
   createTaskShareLink,
   createTaskShareLinks,
@@ -57,7 +56,6 @@ import {
   createTaskTemplate,
   createWorkspace,
   createWorkspaceInvitation,
-  deleteArchiveResolution,
   deleteProject,
   deleteTaskItemsPermanently,
   deleteTaskTimelineEntry,
@@ -77,7 +75,6 @@ import {
   leaveCurrentWorkspace,
   leaveTaskShare,
   leaveWorkspaceTaskShares,
-  listArchiveResolutions,
   listProjects,
   listSavedViews,
   listWorkspaceSyncRoots,
@@ -104,7 +101,6 @@ import {
   setSessionToken,
   isTemporarySession,
   syncWorkspaceWithCloud,
-  updateArchiveResolution,
   updateAccountNotificationPreferences,
   updateProject,
   updateTaskShareRole,
@@ -141,13 +137,10 @@ import type {
   AuthClientOptionsResponse,
   AccountDeletionResponse,
   AccountNotificationPreferencesResponse,
-  ArchiveResolutionResponse,
-  ArchiveTaskItemRequest,
   AuthSessionListItemResponse,
   CloudSyncAccountResponse,
   ConnectCloudAccountRequest,
   CurrentUserResponse,
-  CreateArchiveResolutionRequest,
   CreateTaskShareRequest,
   CreateTaskShareLinkRequest,
   CreateTaskItemRequest,
@@ -169,7 +162,6 @@ import type {
   WorkspaceInvitationInboxResponse,
   WorkspaceInvitationResponse,
   WorkspaceMemberResponse,
-  UpdateArchiveResolutionRequest,
   UpdateAccountNotificationPreferencesRequest,
   UpdateProjectRequest,
   UpdateTaskShareRequest,
@@ -193,7 +185,6 @@ function App() {
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [taskItems, setTaskItems] = useState<TaskItemSummaryResponse[]>([]);
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
-  const [archiveResolutions, setArchiveResolutions] = useState<ArchiveResolutionResponse[]>([]);
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMemberResponse[]>([]);
   const [workspaceInvitations, setWorkspaceInvitations] = useState<WorkspaceInvitationResponse[]>([]);
   const [syncRoots, setSyncRoots] = useState<SyncRootResponse[]>([]);
@@ -211,7 +202,6 @@ function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskWorkspaceId, setSelectedTaskWorkspaceId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskItemDetailResponse | null>(null);
-  const [archiveDialogIsOpen, setArchiveDialogIsOpen] = useState(false);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const storedWidth = Number(window.localStorage.getItem(sidebarWidthStorageKey));
@@ -450,7 +440,6 @@ function App() {
     setSelectedWorkspaceId(snapshot.workspace?.id ?? fallbackWorkspaceId);
     setSavedViews(snapshot.savedViews);
     setProjects(snapshot.projects);
-    setArchiveResolutions(snapshot.archiveResolutions);
     setWorkspaceMembers(snapshot.workspaceMembers ?? []);
     setWorkspaceInvitations(snapshot.workspaceInvitations ?? []);
     setSyncRoots(snapshot.syncRoots ?? []);
@@ -557,7 +546,6 @@ function App() {
           workspaceInfo,
           views,
           projectList,
-          resolutions,
           templateSummaries,
           members,
           invitations,
@@ -566,7 +554,6 @@ function App() {
           getWorkspace(workspaceRequestOptions),
           listSavedViews(workspaceRequestOptions),
           listProjects(workspaceRequestOptions),
-          listArchiveResolutions(workspaceRequestOptions),
           listTaskTemplates(workspaceRequestOptions),
           listWorkspaceMembers(workspaceRequestOptions).catch(() => []),
           listWorkspaceInvitations(workspaceRequestOptions).catch(() => []),
@@ -661,7 +648,6 @@ function App() {
         setSelectedWorkspaceId(workspaceInfo.id);
         setSavedViews(views);
         setProjects(projectList);
-        setArchiveResolutions(resolutions);
         setWorkspaceMembers(members);
         setWorkspaceInvitations(invitations);
         setSyncRoots(roots);
@@ -672,7 +658,6 @@ function App() {
         setTaskItems(selectedTasks);
         setViewCounts(counts);
         const snapshot = {
-          archiveResolutions: resolutions,
           currentViewId: selectedViewId,
           knownStatuses: statuses,
           projects: projectList,
@@ -2121,7 +2106,7 @@ function App() {
     }
   };
 
-  const handleArchiveTaskItem = async (requestBody: ArchiveTaskItemRequest) => {
+  const handleArchiveTaskItem = async () => {
     if (!selectedTask) {
       return;
     }
@@ -2129,7 +2114,6 @@ function App() {
     try {
       const archived = await archiveTaskItem(
         selectedTask.id,
-        requestBody,
         { workspaceId: selectedTask.workspaceId },
       );
       const archiveViewId = findViewId(savedViews, 'Archive') ?? currentViewId;
@@ -2137,7 +2121,6 @@ function App() {
       setSelectedTaskId(archived.id);
       setSelectedTaskWorkspaceId(archived.workspaceId);
       setSelectedTask(archived);
-      setArchiveDialogIsOpen(false);
       updateUrl('tasks', archiveViewId);
       await loadWorkspace(archiveViewId);
     } catch (error) {
@@ -2145,10 +2128,7 @@ function App() {
     }
   };
 
-  const handleArchiveTaskItems = async (
-    taskItemIds: string[],
-    requestBody: ArchiveTaskItemRequest,
-  ) => {
+  const handleArchiveTaskItems = async (taskItemIds: string[]) => {
     if (taskItemIds.length === 0) {
       return;
     }
@@ -2157,13 +2137,12 @@ function App() {
       await Promise.all(
         taskItemIds.map((taskItemId) => {
           const taskItem = taskItems.find((currentTask) => currentTask.id === taskItemId);
-          return archiveTaskItem(taskItemId, requestBody, { workspaceId: taskItem?.workspaceId });
+          return archiveTaskItem(taskItemId, { workspaceId: taskItem?.workspaceId });
         }),
       );
       setSelectedTaskId(null);
       setSelectedTaskWorkspaceId(null);
       setSelectedTask(null);
-      setArchiveDialogIsOpen(false);
       await loadWorkspace(currentViewId);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -2402,45 +2381,6 @@ function App() {
     }
   };
 
-  const handleCreateArchiveResolution = async (
-    requestBody: CreateArchiveResolutionRequest,
-  ) => {
-    try {
-      const created = await createArchiveResolution(requestBody);
-      setArchiveResolutions((currentReasons) => [...currentReasons, created]);
-      setErrorMessage(null);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    }
-  };
-
-  const handleUpdateArchiveResolution = async (
-    id: string,
-    requestBody: UpdateArchiveResolutionRequest,
-  ) => {
-    try {
-      const updated = await updateArchiveResolution(id, requestBody);
-      setArchiveResolutions((currentReasons) =>
-        currentReasons.map((reason) => reason.id === updated.id ? updated : reason),
-      );
-      setErrorMessage(null);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    }
-  };
-
-  const handleDeleteArchiveResolution = async (id: string) => {
-    try {
-      await deleteArchiveResolution(id);
-      setArchiveResolutions((currentReasons) =>
-        currentReasons.filter((reason) => reason.id !== id),
-      );
-      setErrorMessage(null);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    }
-  };
-
   const handleSaveStatusOptions = (statuses: string[]) => {
     const normalizedStatuses = uniqueSorted(statuses);
     setConfiguredStatuses(normalizedStatuses);
@@ -2640,8 +2580,6 @@ function App() {
           />
         ) : (
           <TaskBoard
-            archiveDialogIsOpen={archiveDialogIsOpen}
-            archiveResolutions={archiveResolutions}
             cloudSyncAccount={cloudSyncAccount}
             currentView={currentView}
             currentUserEmail={currentUser?.user.email ?? null}
@@ -2652,7 +2590,6 @@ function App() {
             onAddTimelineEntry={handleAddTimelineEntry}
             onArchive={handleArchiveTaskItem}
             onArchiveTaskItems={handleArchiveTaskItems}
-            onCloseArchiveDialog={() => setArchiveDialogIsOpen(false)}
             onCopyTaskItemsToWorkspace={handleCopyTaskItemsToWorkspace}
             onCreateTaskItem={handleCreateTaskItem}
             onCreateSubtask={handleCreateSubtask}
@@ -2664,7 +2601,6 @@ function App() {
             onDeleteTimelineEntry={handleDeleteTimelineEntry}
             onDeleteProject={handleDeleteProject}
             onImportTaskTemplate={handleImportTaskTemplate}
-            onOpenArchiveDialog={() => setArchiveDialogIsOpen(true)}
             onReopen={handleReopenTaskItem}
             onReopenTaskItems={handleReopenTaskItems}
             onDeleteTaskItemsPermanently={handleDeleteTaskItemsPermanently}
@@ -2718,19 +2654,15 @@ function App() {
 
       {settingsIsOpen && workspaceAccessIsEnabled ? (
         <SettingsPanel
-          archiveResolutions={archiveResolutions}
           cleanupCloudLinkedWorkspaceIds={cloudLinkedWorkspaceIds}
           cleanupPreferredWorkspaceId={workspace?.id ?? null}
           cleanupWorkspaces={cleanupWorkspaces}
           configuredStatuses={configuredStatuses}
           language={language}
           onChangeLanguage={setLanguage}
-          onCreateArchiveResolution={handleCreateArchiveResolution}
-          onDeleteArchiveResolution={handleDeleteArchiveResolution}
           onDeleteOldArchivedTasks={handleDeleteOldArchivedTasks}
           onDeleteWorkspace={handleDeleteWorkspace}
           onSaveStatusOptions={handleSaveStatusOptions}
-          onUpdateArchiveResolution={handleUpdateArchiveResolution}
           onClose={() => setSettingsIsOpen(false)}
           t={t}
         />

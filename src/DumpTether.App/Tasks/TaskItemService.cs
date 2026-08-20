@@ -898,17 +898,8 @@ internal sealed class TaskItemService : ITaskItemService
 
     public async Task<TaskItemDetailResponse?> ArchiveAsync(
         Guid id,
-        ArchiveTaskItemRequest request,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (!request.ArchiveResolutionId.HasValue ||
-            request.ArchiveResolutionId.Value == Guid.Empty)
-        {
-            throw new ValidationException("ArchiveResolutionId is required.");
-        }
-
         var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
         var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
         var taskItem = await _taskItemRepository.GetByIdAsync(
@@ -928,17 +919,7 @@ internal sealed class TaskItemService : ITaskItemService
             return null;
         }
 
-        var archiveResolution = await _taskItemRepository.GetArchiveResolutionByIdAsync(
-            request.ArchiveResolutionId.Value,
-            context.WorkspaceId,
-            cancellationToken);
-
-        if (archiveResolution is null)
-        {
-            throw new ValidationException("Archive resolution was not found.");
-        }
-
-        taskItem.Archive(archiveResolution, _clock.UtcNow, request.Note);
+        taskItem.Archive(_clock.UtcNow);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
         await PublishTaskEventAsync(
             LiveUpdateEvents.TaskUpdated,
@@ -2355,7 +2336,6 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.LastTouchedAt,
             taskItem.FollowUpAt,
             taskItem.ArchivedAt,
-            taskItem.ArchiveResolutionId,
             noteCount,
             MapShares(taskItem),
             syncState,
@@ -2395,7 +2375,6 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem.LastTouchedAt,
             taskItem.FollowUpAt,
             taskItem.ArchivedAt,
-            taskItem.ArchiveResolutionId,
             CountNotes(taskItem),
             MapShares(taskItem),
             syncState,

@@ -20,13 +20,6 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
     private static readonly JsonSerializerOptions JsonSerializerOptions =
         new(JsonSerializerDefaults.Web);
 
-    private static readonly DevelopmentArchiveResolution[] DevelopmentArchiveResolutions =
-    [
-        new("Completed", "Work finished or captured elsewhere.", false),
-        new("No Longer Needed", "The task is intentionally dropped.", true),
-        new("Blocked", "The task cannot move forward right now.", true)
-    ];
-
     private static readonly string[] LegacyDevelopmentTaskTemplateNames =
     [
         "Work Task",
@@ -185,28 +178,6 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
         var project = projects.TryGetValue(defaultProjectName, out var defaultProject)
             ? defaultProject
             : projects.Values.OrderBy(candidate => candidate.Name).First();
-
-        foreach (var resolution in DevelopmentArchiveResolutions)
-        {
-            var exists = await _dbContext.ArchiveResolutions
-                .AnyAsync(
-                    candidate =>
-                        candidate.WorkspaceId == workspace.Id &&
-                        candidate.Name == resolution.Name,
-                    cancellationToken);
-
-            if (!exists)
-            {
-                await _dbContext.ArchiveResolutions.AddAsync(
-                    ArchiveResolution.Create(
-                        workspace.Id,
-                        resolution.Name,
-                        _clock.UtcNow,
-                        resolution.Description,
-                        resolution.RequiresExplanation),
-                    cancellationToken);
-            }
-        }
 
         var templateOwnerUserId = currentSession?.UserId;
 
@@ -441,11 +412,6 @@ internal sealed class DevelopmentWorkspaceProvider : IDevelopmentWorkspaceProvid
             await _dbContext.SavedViews.AddAsync(savedView, cancellationToken);
         }
     }
-
-    private sealed record DevelopmentArchiveResolution(
-        string Name,
-        string Description,
-        bool RequiresExplanation);
 
     private sealed record DevelopmentSavedView(
         string Name,

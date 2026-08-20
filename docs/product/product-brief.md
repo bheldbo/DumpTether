@@ -83,23 +83,17 @@ Failed synchronization must leave local work intact. Shared cloud data remains
 associated with the authenticated cloud profile and must be re-authorized when
 connectivity returns.
 
-## Archive Policy
+## Archive Behavior
 
-Archive behavior is policy-driven:
+Archiving is deliberately lightweight. An authorized user can archive a task
+directly without choosing a resolution or writing a note. The operation records
+timeline evidence, preserves all existing notes and fields, and removes the task
+from active walls. Reopening records another timeline entry and restores the
+task to active views.
 
-1. The owning board's archive policy applies when it has an override.
-2. Otherwise, a personal board uses its owner's user default.
-3. The system fallback does not require a resolution and treats the note as
-   optional.
-
-The board owner controls a shared board's archive policy. A task shared from a
-board keeps the originating board's policy. All Tasks has no archive policy of
-its own because every task resolves policy from its real board.
-
-Resolution requirement and archive-note requirement are separate settings. A
-specific resolution may still require an explanation. Historical archive
-evidence must remain understandable if a resolution is later renamed or
-deactivated.
+Status and task notes provide optional context when a user wants it. Archive
+permissions continue to follow the task's owning board or task-share access;
+read-only users cannot archive.
 
 ## Product Family
 
@@ -124,7 +118,7 @@ server switcher.
 - AD or identity-provider group assignment
 - team-lead task distribution and reporting
 - organization-managed saved views and work queues
-- advanced enterprise archive governance
+- advanced enterprise governance and reporting
 - AI, MCP, calendar, and email-derived task features
 
 These remain possible extensions after the personal web, desktop, mobile, sync,

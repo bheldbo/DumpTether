@@ -23,7 +23,6 @@ public sealed class TaskItemTests
         Assert.Null(taskItem.LastViewedAt);
         Assert.Null(taskItem.FollowUpAt);
         Assert.Null(taskItem.ArchivedAt);
-        Assert.Null(taskItem.ArchiveResolutionId);
 
         var entry = Assert.Single(taskItem.TimelineEntries);
         Assert.Equal(TaskTimelineEntryKind.Created, entry.Kind);
@@ -51,40 +50,40 @@ public sealed class TaskItemTests
     }
 
     [Fact]
-    public void Archive_WithResolution_SetsArchiveStateAndCreatesTimelineEntry()
+    public void Archive_SetsArchiveStateAndCreatesTimelineEntry()
     {
         var workspaceId = Guid.NewGuid();
         var createdAt = new DateTimeOffset(2026, 5, 20, 9, 30, 0, TimeSpan.Zero);
         var archivedAt = createdAt.AddHours(2);
-        var archiveResolution = ArchiveResolution.Create(workspaceId, "Completed", createdAt);
         var taskItem = TaskItem.Create(workspaceId, Guid.NewGuid(), "Draft readme", createdAt);
 
-        taskItem.Archive(archiveResolution, archivedAt, "Finished the initial pass.");
+        taskItem.Archive(archivedAt);
 
         Assert.Equal(archivedAt, taskItem.ArchivedAt);
-        Assert.Equal(archiveResolution.Id, taskItem.ArchiveResolutionId);
         Assert.Equal(archivedAt, taskItem.LastTouchedAt);
 
         var entry = taskItem.TimelineEntries.Last();
         Assert.Equal(TaskTimelineEntryKind.Archived, entry.Kind);
-        Assert.Equal($"Archived as {archiveResolution.Name}", entry.Summary);
-        Assert.Equal("Finished the initial pass.", entry.Details);
+        Assert.Equal("Task item archived", entry.Summary);
+        Assert.Null(entry.Details);
         Assert.Equal(archivedAt, entry.OccurredAt);
     }
 
     [Fact]
-    public void Archive_WithoutResolution_ThrowsAndLeavesTaskItemOpen()
+    public void Archive_WhenAlreadyArchived_RejectsDuplicateEvidence()
     {
-        var createdAt = new DateTimeOffset(2026, 5, 20, 9, 30, 0, TimeSpan.Zero);
-        var archivedAt = createdAt.AddHours(1);
-        var taskItem = TaskItem.Create(Guid.NewGuid(), Guid.NewGuid(), "Clean up notes", createdAt);
+        var workspaceId = Guid.NewGuid();
+        var createdAt = new DateTimeOffset(2026, 8, 20, 9, 30, 0, TimeSpan.Zero);
+        var archivedAt = createdAt.AddHours(2);
+        var taskItem = TaskItem.Create(workspaceId, null, "Archive once", createdAt);
+        taskItem.Archive(archivedAt);
 
-        Assert.Throws<ArgumentNullException>(() => taskItem.Archive(null!, archivedAt));
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            taskItem.Archive(archivedAt.AddHours(1)));
 
-        Assert.Null(taskItem.ArchivedAt);
-        Assert.Null(taskItem.ArchiveResolutionId);
-        Assert.Equal(createdAt, taskItem.LastTouchedAt);
-        Assert.Single(taskItem.TimelineEntries);
+        Assert.Equal("Task item is already archived.", exception.Message);
+        Assert.Equal(archivedAt, taskItem.ArchivedAt);
+        Assert.Equal(2, taskItem.TimelineEntries.Count);
     }
 
     [Fact]

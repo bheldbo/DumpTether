@@ -1,5 +1,4 @@
 import type {
-  ArchiveResolutionResponse,
   ProjectResponse,
   SavedViewResponse,
   SyncRootResponse,
@@ -11,7 +10,6 @@ import type {
 } from './types';
 
 export interface CachedWorkspaceSnapshot {
-  archiveResolutions: ArchiveResolutionResponse[];
   currentViewId: string | null;
   knownStatuses: string[];
   projects: ProjectResponse[];

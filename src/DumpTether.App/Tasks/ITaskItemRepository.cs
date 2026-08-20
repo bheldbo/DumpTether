@@ -103,10 +103,5 @@ public interface ITaskItemRepository
         Guid? ownerUserId,
         CancellationToken cancellationToken);
 
-    Task<ArchiveResolution?> GetArchiveResolutionByIdAsync(
-        Guid id,
-        Guid workspaceId,
-        CancellationToken cancellationToken);
-
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

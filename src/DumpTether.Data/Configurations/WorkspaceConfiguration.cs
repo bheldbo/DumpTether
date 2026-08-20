@@ -34,7 +34,6 @@ internal sealed class WorkspaceConfiguration : IEntityTypeConfiguration<Workspac
             .IsRequired();
 
         builder.Ignore(workspace => workspace.Projects);
-        builder.Ignore(workspace => workspace.ArchiveResolutions);
         builder.Ignore(workspace => workspace.SavedViews);
         builder.Ignore(workspace => workspace.Memberships);
 

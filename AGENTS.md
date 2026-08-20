@@ -4,7 +4,7 @@
 
 This project is called DumpTether.
 
-DumpTether is a lightweight personal task-and-note system that turns messy working notes into structured tasks with history, templates, views, and archive reasons.
+DumpTether is a lightweight personal task-and-note system that turns messy working notes into structured tasks with history, templates, filters, and a simple archive.
 
 The product should feel like a plain personal task wall with structured notes inside each task and powerful filtering when needed.
 
@@ -26,7 +26,7 @@ It is not a complex import or parser tool.
 - Projects are legacy terminology, not a separate product concept.
 - Temporary and reusable filters define how users narrow a board or All Tasks.
 - Organization-managed saved views are deferred enterprise behavior.
-- Archive requirements come from the task's effective board/user policy.
+- Archiving is direct and preserves timeline evidence; it does not require a resolution or note.
 - Sharing, calendar, email and AI are extensions.
 
 ## Architecture
@@ -72,7 +72,7 @@ Use these docs as the repo grows instead of rediscovering the same decisions fro
 - Core architecture/config: `docs/adr/0001-architecture.md`, `docs/adr/0002-configuration.md`
 - Desktop/offline/sync: `docs/adr/0003-desktop-offline-architecture.md`, `docs/adr/0006-local-offline-runtime-and-sync.md`
 - Auth/security: `docs/adr/0004-auth-server-sync-readiness.md`, `docs/security/auth-hardening.md`, `docs/security/security-principles.md`
-- Archive policy: `docs/adr/0007-effective-archive-policy.md`
+- Archive behavior (superseded policy decision): `docs/adr/0007-effective-archive-policy.md`
 - Task hierarchy: `docs/adr/0011-task-subtask-hierarchy.md`
 - Transactional email: `docs/adr/0008-transactional-email-boundary.md`
 - Server operations/admin: `docs/adr/0009-server-operations-and-administration.md`
@@ -107,7 +107,7 @@ Use `.agents/README.md` to select roles, reasoning effort and workflow.
 - Application services enforce use cases.
 - Domain entities enforce core invariants.
 - Every meaningful task change should create a TaskTimelineEntry.
-- Archiving must enforce the task's effective archive policy.
+- Archiving must preserve task history and create timeline evidence.
 - Do not delete timeline history.
 - Do not store deployment secrets in source control.
 
@@ -126,7 +126,6 @@ Separate configuration into three categories:
    - templates
    - fields
    - temporary and reusable filters
-   - user-default and board archive policies
    - categories
    - display preferences
 

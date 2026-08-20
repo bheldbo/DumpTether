@@ -142,15 +142,7 @@ public sealed class SavedViewsApiTests
         using var client = factory.CreateClient();
         var active = await CreateTaskItemAsync(client, "Keep active");
         var archived = await CreateTaskItemAsync(client, "Archive this");
-        var completedResolution = await GetArchiveResolutionIdAsync(client, "Completed");
-
-        await client.PostAsJsonAsync(
-            $"/api/tasks/{archived.Id}/archive",
-            new
-            {
-                archiveResolutionId = completedResolution,
-                note = "Done."
-            });
+        await client.PostAsync($"/api/tasks/{archived.Id}/archive", content: null);
 
         var archivedTaskItems = await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>(
             "/api/tasks?archive=Archived");
@@ -368,17 +360,6 @@ public sealed class SavedViewsApiTests
         return projects;
     }
 
-    private static async Task<Guid> GetArchiveResolutionIdAsync(
-        HttpClient client,
-        string name)
-    {
-        var resolutions = await client.GetFromJsonAsync<List<ArchiveResolutionDto>>(
-            "/api/archive-resolutions");
-        Assert.NotNull(resolutions);
-
-        return resolutions.Single(resolution => resolution.Name == name).Id;
-    }
-
     private static async Task<TaskItem> AddTaskItemAsync(
         DumpTetherApiFactory factory,
         ProjectResponse project,
@@ -406,7 +387,4 @@ public sealed class SavedViewsApiTests
         return taskItem;
     }
 
-    private sealed record ArchiveResolutionDto(
-        Guid Id,
-        string Name);
 }

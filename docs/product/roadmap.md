@@ -1,8 +1,8 @@
 # DumpTether Roadmap
 
 This roadmap is directional. The product should stay plain, fast, and focused
-on a personal task wall, structured notes, templates, filters, and archive
-policies.
+on a personal task wall, structured notes, templates, filters, and a simple
+archive.
 
 The repository has moved beyond several original phases. Current product
 terminology and priorities are defined in `product-brief.md`.
@@ -23,7 +23,7 @@ terminology and priorities are defined in `product-brief.md`.
 - React web UI.
 - PostgreSQL persistence.
 - Tasks with compact note history.
-- Archive reasons.
+- Direct archive and reopen with retained task history.
 - Basic templates, custom fields, and board filters.
 
 ## v0.2 Templates, Filters, and Search Hardening

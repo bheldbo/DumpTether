@@ -1,5 +1,4 @@
 using DumpTether.App.Administration;
-using DumpTether.App.ArchiveResolutions;
 using DumpTether.App.Auth;
 using DumpTether.App.Projects;
 using DumpTether.App.Notifications;
@@ -47,7 +46,6 @@ public static class DependencyInjection
                 options.UseNpgsql(connectionString));
         }
 
-        services.AddScoped<IArchiveResolutionRepository, EfArchiveResolutionRepository>();
         services.AddScoped<IAdministrationRepository, EfAdministrationRepository>();
         services.AddScoped<IAuthRepository, EfAuthRepository>();
         services.AddScoped<IUserNotificationRepository, EfUserNotificationRepository>();

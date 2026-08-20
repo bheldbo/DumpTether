@@ -2,62 +2,35 @@
 
 ## Status
 
-Proposed.
+Superseded on 2026-08-20 by direct archive behavior.
 
 ## Context
 
-Personal users may not need an archive reason for every task. Shared or future
-organization boards may require consistent resolutions or explanations for
-review. A single unconditional global rule cannot represent both cases.
+An earlier design proposed configurable user and board archive policies,
+resolution lists, and explanation requirements. That model added configuration,
+validation, persistence, and UI ceremony to an action that DumpTether users need
+to perform quickly.
 
-`All Tasks` is an aggregate across boards, so its tasks may have different
-archive requirements.
+## Superseding Decision
 
-## Decision
+Archiving is direct:
 
-Archive behavior resolves from an effective policy:
+- an authorized user can archive a task without a resolution or note
+- archiving sets `ArchivedAt` and creates a `TaskTimelineEntry`
+- prior timeline entries, notes, fields, and task structure are retained
+- archived tasks are excluded from active walls
+- reopening clears `ArchivedAt` and creates a new timeline entry
+- archive and reopen authorization remains backend-authoritative
 
-1. The task's owning board override.
-2. The board owner's user default.
-3. A system fallback where resolution is not required and note is optional.
-
-Suggested model:
-
-```text
-ArchivePolicy
-  Scope: UserDefault | Workspace
-  ResolutionRequirement: None | Optional | Required
-  NoteRequirement: Optional | Required
-
-ArchiveResolution
-  ArchivePolicyId
-  Name
-  Description
-  RequiresExplanation
-  IsActive
-```
-
-A selected resolution can require an explanation even when notes are otherwise
-optional. Deactivating a resolution prevents future selection without erasing
-historical evidence.
-
-For shared boards and task shares, the originating board policy applies.
-Members cannot replace it with their personal policy. Read-only users cannot
-archive. Other archive permission remains governed by task and board
-authorization.
-
-`All Tasks` has no policy of its own. Each task resolves policy from its owning
-board.
-
-Archive history should retain a snapshot of the selected resolution's display
-name so later configuration changes do not rewrite past meaning.
+Status and ordinary notes provide context when the user wants to record it.
+There is no `ArchiveResolution` entity, task foreign key, archive-policy setting,
+or resolution-management API.
 
 ## Consequences
 
-- Personal archiving can remain lightweight.
-- Board owners can require consistent evidence for shared work.
-- Archive validation moves from an unconditional entity rule to a policy-aware
-  application/domain operation.
-- Implementing this requires entities, migration, policy resolution, API
-  contracts, tests, and user/board settings UI.
-
+- The archive flow stays fast and consistent across web, desktop, and future
+  mobile clients.
+- Historical task evidence remains available without requiring audit ceremony.
+- The database and API no longer carry archive-resolution configuration.
+- If organization-level governance is reconsidered later, it must be proposed as
+  a new decision and must not silently complicate the personal task-wall flow.
