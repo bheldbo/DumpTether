@@ -21,6 +21,9 @@ public sealed class DumpTetherDbContext : DbContext
 
     public DbSet<UserSession> UserSessions => Set<UserSession>();
 
+    public DbSet<UserNotificationPreference> UserNotificationPreferences =>
+        Set<UserNotificationPreference>();
+
     public DbSet<WorkspaceMembership> WorkspaceMemberships => Set<WorkspaceMembership>();
 
     public DbSet<WorkspaceInvitation> WorkspaceInvitations => Set<WorkspaceInvitation>();

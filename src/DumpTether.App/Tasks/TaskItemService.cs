@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using DumpTether.App.Auth;
 using DumpTether.App.LiveUpdates;
+using DumpTether.App.Notifications;
 using DumpTether.App.Projects;
 using DumpTether.App.Sync;
 using DumpTether.App.Templates;
@@ -21,6 +22,7 @@ internal sealed class TaskItemService : ITaskItemService
     private readonly ICurrentUserSessionProvider _currentUserSessionProvider;
     private readonly IDevelopmentWorkspaceProvider _developmentWorkspaceProvider;
     private readonly ILiveUpdatePublisher _liveUpdatePublisher;
+    private readonly IUserNotificationService _notificationService;
     private readonly IProjectRepository _projectRepository;
     private readonly ISavedViewRepository _savedViewRepository;
     private readonly ISessionTokenService _sessionTokenService;
@@ -35,6 +37,7 @@ internal sealed class TaskItemService : ITaskItemService
         ICurrentUserSessionProvider currentUserSessionProvider,
         IDevelopmentWorkspaceProvider developmentWorkspaceProvider,
         ILiveUpdatePublisher liveUpdatePublisher,
+        IUserNotificationService notificationService,
         IProjectRepository projectRepository,
         ISavedViewRepository savedViewRepository,
         ISessionTokenService sessionTokenService,
@@ -48,6 +51,7 @@ internal sealed class TaskItemService : ITaskItemService
         _currentUserSessionProvider = currentUserSessionProvider;
         _developmentWorkspaceProvider = developmentWorkspaceProvider;
         _liveUpdatePublisher = liveUpdatePublisher;
+        _notificationService = notificationService;
         _projectRepository = projectRepository;
         _savedViewRepository = savedViewRepository;
         _sessionTokenService = sessionTokenService;
@@ -1277,6 +1281,7 @@ internal sealed class TaskItemService : ITaskItemService
         var now = _clock.UtcNow;
         var normalizedEmail = AppUser.NormalizeEmail(currentSession.Email);
         var acceptedTaskIds = new List<Guid>();
+        var acceptedShares = new List<(Guid OwnerUserId, string TaskTitle)>();
         Guid? workspaceId = null;
 
         foreach (var taskItem in taskItems)
@@ -1297,6 +1302,7 @@ internal sealed class TaskItemService : ITaskItemService
 
             share.Accept(currentSession.UserId, now);
             acceptedTaskIds.Add(taskItem.Id);
+            acceptedShares.Add((share.SharedByUserId, taskItem.Title));
             workspaceId ??= taskItem.WorkspaceId;
         }
 
@@ -1316,6 +1322,16 @@ internal sealed class TaskItemService : ITaskItemService
                 cancellationToken,
                 currentSession,
                 recipientUserIds: [currentSession.UserId]);
+        }
+
+        foreach (var acceptedByOwner in acceptedShares.GroupBy(item => item.OwnerUserId))
+        {
+            await _notificationService.NotifySharingAcceptedAsync(
+                acceptedByOwner.Key,
+                currentSession.DisplayName,
+                acceptedByOwner.First().TaskTitle,
+                acceptedByOwner.Count(),
+                cancellationToken);
         }
 
         return new ShareLinkAcceptResponse(

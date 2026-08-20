@@ -6,6 +6,7 @@ import type {
   ArchiveResolutionResponse,
   ArchiveTaskItemRequest,
   AccountDeletionResponse,
+  AccountNotificationPreferencesResponse,
   AuthClientOptionsResponse,
   AuthSessionListItemResponse,
   CloudSyncAccountResponse,
@@ -49,6 +50,7 @@ import type {
   UpdateTaskItemRequest,
   UpdateTaskTimelineEntryRequest,
   UpdateArchiveResolutionRequest,
+  UpdateAccountNotificationPreferencesRequest,
   UpdateSavedViewRequest,
   UpdateTaskTemplateRequest,
   UpdateProjectRequest,
@@ -320,6 +322,19 @@ export function requestAccountDeletion(
 export function cancelAccountDeletion(): Promise<void> {
   return request<void>('/api/account/deletion', {
     method: 'DELETE',
+  });
+}
+
+export function getAccountNotificationPreferences(): Promise<AccountNotificationPreferencesResponse> {
+  return request<AccountNotificationPreferencesResponse>('/api/account/notifications');
+}
+
+export function updateAccountNotificationPreferences(
+  requestBody: UpdateAccountNotificationPreferencesRequest,
+): Promise<AccountNotificationPreferencesResponse> {
+  return request<AccountNotificationPreferencesResponse>('/api/account/notifications', {
+    method: 'PUT',
+    body: JSON.stringify(requestBody),
   });
 }
 

@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using DumpTether.Api;
 using DumpTether.App.Auth;
 using DumpTether.App.Email;
+using DumpTether.App.Notifications;
 using DumpTether.App.Tasks;
 using DumpTether.Data;
 using DumpTether.Domain;
@@ -20,6 +21,103 @@ namespace DumpTether.Api.Tests;
 
 public sealed class AuthApiTests
 {
+    [Fact]
+    public async Task AccountNotifications_DefaultOffAndPersistUpdates()
+    {
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            extraConfiguration: NotificationConfiguration(),
+            emailSender: new ControllableEmailSender());
+        using var client = factory.CreateClient();
+        await RegisterAsync(client, "notifications@example.com", "correct horse battery");
+        var login = await LoginAsync(client, "notifications@example.com", "correct horse battery");
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+
+        var defaults = await client.GetFromJsonAsync<AccountNotificationPreferencesResponse>(
+            "/api/account/notifications");
+
+        Assert.NotNull(defaults);
+        Assert.True(defaults!.EmailDeliveryAvailable);
+        Assert.False(defaults.SharingActivityEmailEnabled);
+        Assert.False(defaults.DailySummaryEmailEnabled);
+        Assert.False(defaults.FollowUpReminderEmailEnabled);
+
+        var update = await client.PutAsJsonAsync(
+            "/api/account/notifications",
+            new
+            {
+                sharingActivityEmailEnabled = true,
+                dailySummaryEmailEnabled = true,
+                followUpReminderEmailEnabled = true
+            });
+        update.EnsureSuccessStatusCode();
+
+        var persisted = await client.GetFromJsonAsync<AccountNotificationPreferencesResponse>(
+            "/api/account/notifications");
+        Assert.True(persisted!.SharingActivityEmailEnabled);
+        Assert.True(persisted.DailySummaryEmailEnabled);
+        Assert.True(persisted.FollowUpReminderEmailEnabled);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+        var row = await dbContext.UserNotificationPreferences.SingleAsync();
+        Assert.Equal(login.User.Id, row.UserId);
+    }
+
+    [Fact]
+    public async Task NotificationWorker_SendsDailyDigestsOnlyOncePerSchedule()
+    {
+        var clock = new MutableClock(new DateTimeOffset(2026, 8, 13, 8, 0, 0, TimeSpan.Zero));
+        var emailSender = new ControllableEmailSender();
+        using var factory = new DumpTetherApiFactory(
+            requireAuthentication: true,
+            extraConfiguration: NotificationConfiguration(),
+            emailSender: emailSender,
+            clock: clock);
+        using var client = factory.CreateClient();
+        var registered = await RegisterAsync(
+            client,
+            "digest@example.com",
+            "correct horse battery");
+        var login = await LoginAsync(client, "digest@example.com", "correct horse battery");
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.SessionToken);
+        (await client.PutAsJsonAsync(
+            "/api/account/notifications",
+            new
+            {
+                sharingActivityEmailEnabled = false,
+                dailySummaryEmailEnabled = true,
+                followUpReminderEmailEnabled = true
+            })).EnsureSuccessStatusCode();
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DumpTetherDbContext>();
+            var taskItem = TaskItem.Create(
+                registered.Workspace.Id,
+                projectId: null,
+                "Call before the deadline",
+                clock.UtcNow);
+            taskItem.SetFollowUp(clock.UtcNow.AddHours(4), clock.UtcNow);
+            dbContext.TaskItems.Add(taskItem);
+            await dbContext.SaveChangesAsync();
+        }
+
+        var worker = factory.Services.GetServices<IHostedService>()
+            .OfType<NotificationDeliveryHostedService>()
+            .Single();
+        await worker.ProcessOnceAsync(CancellationToken.None);
+        await worker.ProcessOnceAsync(CancellationToken.None);
+
+        Assert.Equal(2, emailSender.SentMessages.Count);
+        Assert.Contains(emailSender.SentMessages, message =>
+            message.Subject.Contains("daily summary", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(emailSender.SentMessages, message =>
+            message.Subject.Contains("follow-ups", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public async Task PostRegister_CreatesUserAndWorkspaceMembership()
     {
@@ -1386,6 +1484,23 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public void Startup_WhenNotificationsEnabledWithoutProvider_ThrowsHelpfulError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Notifications:Enabled"] = "true"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => RuntimeConfigurationValidator.Validate(configuration, isDevelopment: true));
+
+        Assert.Contains("DumpTether configuration is incomplete", exception.Message);
+        Assert.Contains("Email:Provider", exception.Message);
+    }
+
+    [Fact]
     public void Startup_WhenBooleanContainsInlineComment_ThrowsHelpfulError()
     {
         var configuration = new ConfigurationBuilder()
@@ -1474,6 +1589,7 @@ public sealed class AuthApiTests
     [InlineData("Auth:RequireAuthentication", "false")]
     [InlineData("Auth:AllowGuestSessions", "true")]
     [InlineData("Auth:EnableLocalDesktopLogin", "false")]
+    [InlineData("Notifications:Enabled", "true")]
     [InlineData("Cors:AllowedOrigins:0", "http://example.test")]
     [InlineData("Desktop:BootstrapToken", "not-a-valid-token")]
     public void Startup_WhenDesktopRuntimeBoundaryIsWeakened_Throws(
@@ -1729,6 +1845,17 @@ public sealed class AuthApiTests
         return configuration;
     }
 
+    private static Dictionary<string, string?> NotificationConfiguration()
+    {
+        var configuration = PasswordRecoveryConfiguration();
+        configuration["PasswordRecovery:Enabled"] = "false";
+        configuration["Notifications:Enabled"] = "true";
+        configuration["Notifications:SweepIntervalMinutes"] = "1440";
+        configuration["Notifications:DailyDigestHourUtc"] = "7";
+        configuration["Notifications:FollowUpWindowHours"] = "24";
+        return configuration;
+    }
+
     private static string ExtractPasswordResetToken(EmailMessage message)
     {
         var resetUrl = message.TextContent!
@@ -1763,6 +1890,7 @@ public sealed class AuthApiTests
             ["EmailConfirmation:Enabled"] = "false",
             ["PasswordRecovery:Enabled"] = "false",
             ["AccountDeletion:Enabled"] = "false",
+            ["Notifications:Enabled"] = "false",
             ["Email:Provider"] = "None",
             ["Mfa:Email:Enabled"] = "false",
             ["OAuth:Microsoft:Enabled"] = "false",

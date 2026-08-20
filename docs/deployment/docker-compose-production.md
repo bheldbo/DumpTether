@@ -293,6 +293,13 @@ Compose source or the repository. Public packages do not require registry login.
 
 ## Configuration Categories
 
+Scheduled account emails are opt-in at two levels. The operator enables the worker with
+`DUMPTETHER_NOTIFICATIONS_ENABLED=true` and configures an email provider; each user then
+chooses sharing, daily-summary, and follow-up emails in Account settings. Digest delivery
+defaults to 07:00 UTC and is claimed in the database so multiple API replicas do not
+normally send the same daily message twice. Keep notifications disabled in the local
+desktop sidecar; cloud preferences belong to the hosted account.
+
 Deployment/runtime config:
 
 - connection strings

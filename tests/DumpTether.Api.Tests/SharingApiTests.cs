@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using DumpTether.App.Auth;
+using DumpTether.App.Email;
 using DumpTether.App.LiveUpdates;
 using DumpTether.App.Templates;
 using DumpTether.App.Tasks;
@@ -18,6 +19,52 @@ namespace DumpTether.Api.Tests;
 
 public sealed class SharingApiTests
 {
+    [Fact]
+    public async Task WorkspaceInvitation_AcceptanceEmailsOwnerWhenEnabled()
+    {
+        var emailSender = new RecordingEmailSender();
+        using var factory = new DumpTetherApiFactory(
+            extraConfiguration: NotificationConfiguration(),
+            emailSender: emailSender);
+        using var ownerClient = factory.CreateClient();
+        using var invitedClient = factory.CreateClient();
+        await RegisterAndLoginAsync(
+            ownerClient,
+            "notification-owner@example.com",
+            "correct horse battery");
+        var invited = await RegisterAndLoginAsync(
+            invitedClient,
+            "notification-member@example.com",
+            "correct horse battery");
+
+        var preferenceResponse = await ownerClient.PutAsJsonAsync(
+            "/api/account/notifications",
+            new
+            {
+                sharingActivityEmailEnabled = true,
+                dailySummaryEmailEnabled = false,
+                followUpReminderEmailEnabled = false
+            });
+        preferenceResponse.EnsureSuccessStatusCode();
+
+        var inviteResponse = await ownerClient.PostAsJsonAsync(
+            "/api/workspace/invitations",
+            new { email = invited.User.Email });
+        inviteResponse.EnsureSuccessStatusCode();
+        Assert.Empty(emailSender.SentMessages);
+        var invite = (await inviteResponse.Content
+            .ReadFromJsonAsync<WorkspaceInvitationResponse>())!;
+
+        var acceptResponse = await invitedClient.PostAsJsonAsync(
+            "/api/workspace/invitations/accept",
+            new { token = invite.Token });
+        acceptResponse.EnsureSuccessStatusCode();
+
+        var message = Assert.Single(emailSender.SentMessages);
+        Assert.Contains("accepted", message.Subject, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("notification-member", message.TextContent, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task WorkspaceInvitation_AcceptedUserCanSeeWorkspaceTasks()
     {
@@ -1897,6 +1944,32 @@ public sealed class SharingApiTests
     {
         client.DefaultRequestHeaders.Remove("X-DumpTether-Workspace-Id");
         client.DefaultRequestHeaders.Add("X-DumpTether-Workspace-Id", workspaceId.ToString());
+    }
+
+    private static Dictionary<string, string?> NotificationConfiguration() =>
+        new()
+        {
+            ["Notifications:Enabled"] = "true",
+            ["Notifications:SweepIntervalMinutes"] = "1440",
+            ["Notifications:DailyDigestHourUtc"] = "7",
+            ["Notifications:FollowUpWindowHours"] = "24",
+            ["Email:Provider"] = "Smtp",
+            ["Email:FromEmail"] = "noreply@example.com",
+            ["Email:Smtp:Host"] = "localhost",
+            ["Email:Smtp:Port"] = "1025",
+            ["Email:Smtp:UseAuthentication"] = "false",
+            ["Email:Smtp:EnableSsl"] = "false"
+        };
+
+    private sealed class RecordingEmailSender : IEmailSender
+    {
+        public List<EmailMessage> SentMessages { get; } = [];
+
+        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
+        {
+            SentMessages.Add(message);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class RecordingLiveUpdatePublisher : ILiveUpdatePublisher

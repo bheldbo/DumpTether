@@ -13,6 +13,7 @@ import {
 } from '../auth/LegalNoticeDialog';
 import { AccountDeletionSection } from './AccountDeletionSection';
 import { HelpSection } from './HelpSection';
+import { NotificationPreferencesSection } from './NotificationPreferencesSection';
 import {
   formatDateTime,
   formatOAuthProvider,
@@ -23,6 +24,7 @@ import type { Language, Translate } from '../../localization';
 import type {
   ArchiveResolutionResponse,
   AccountDeletionResponse,
+  AccountNotificationPreferencesResponse,
   AuthSessionListItemResponse,
   AuthClientOptionsResponse,
   CloudSyncAccountResponse,
@@ -34,6 +36,7 @@ import type {
   RegisterUserResponse,
   ResetPasswordRequest,
   TaskShareInboxResponse,
+  UpdateAccountNotificationPreferencesRequest,
   UpdateArchiveResolutionRequest,
   WorkspaceInvitationInboxResponse,
   WorkspaceResponse,
@@ -577,6 +580,7 @@ export function AuthPanel({
 
 export function AccountPanel({
   accountDeletion,
+  accountNotificationPreferences,
   authSessions,
   authOptions,
   cloudSyncAccount,
@@ -598,6 +602,7 @@ export function AccountPanel({
   onLogin,
   onLogout,
   onOpenTour,
+  onUpdateAccountNotificationPreferences,
   onRequestAccountDeletion,
   onRegister,
   onRevokeAuthSession,
@@ -608,6 +613,7 @@ export function AccountPanel({
   t,
 }: {
   accountDeletion: AccountDeletionResponse | null;
+  accountNotificationPreferences: AccountNotificationPreferencesResponse | null;
   authSessions: AuthSessionListItemResponse[];
   authOptions: AuthClientOptionsResponse;
   cloudSyncAccount: CloudSyncAccountResponse | null;
@@ -629,6 +635,9 @@ export function AccountPanel({
   onLogin: (requestBody: LoginUserRequest) => Promise<void>;
   onLogout: () => Promise<void>;
   onOpenTour: () => void;
+  onUpdateAccountNotificationPreferences: (
+    request: UpdateAccountNotificationPreferencesRequest,
+  ) => Promise<AccountNotificationPreferencesResponse>;
   onRequestAccountDeletion: (
     confirmationEmail: string,
     currentPassword?: string,
@@ -797,6 +806,17 @@ export function AccountPanel({
               </div>
             )}
           </section>
+        ) : null}
+
+        {currentUser &&
+        !localDesktopSessionIsActive &&
+        !temporarySessionIsActive &&
+        accountNotificationPreferences ? (
+          <NotificationPreferencesSection
+            onUpdate={onUpdateAccountNotificationPreferences}
+            preferences={accountNotificationPreferences}
+            t={t}
+          />
         ) : null}
 
         {currentUser ? <HelpSection onStartTour={onOpenTour} t={t} /> : null}

@@ -37,6 +37,11 @@ public static class RuntimeConfigurationValidator
             AddMissingEmailProviderKeys(configuration, emailProvider, missingKeys);
         }
 
+        if (GetBoolean(configuration, "Notifications:Enabled"))
+        {
+            AddMissingEmailProviderKeys(configuration, emailProvider, missingKeys);
+        }
+
         if (GetBoolean(configuration, "Mfa:Email:Enabled"))
         {
             throw new InvalidOperationException(
@@ -272,6 +277,7 @@ public static class RuntimeConfigurationValidator
         RequireBoolean(configuration, "EmailConfirmation:Enabled", expected: false);
         RequireBoolean(configuration, "PasswordRecovery:Enabled", expected: false);
         RequireBoolean(configuration, "AccountDeletion:Enabled", expected: false);
+        RequireBoolean(configuration, "Notifications:Enabled", expected: false);
         RequireBoolean(configuration, "Mfa:Email:Enabled", expected: false);
         RequireBoolean(configuration, "OAuth:Microsoft:Enabled", expected: false);
 

@@ -13,6 +13,8 @@ pipeline, and failure mode before the product needs that scale.
 
 ## Decision
 
+Account notification preferences are stored per hosted user and default to off. Sharing acceptance emails are best-effort after the authoritative share transaction commits. Daily summaries and follow-up reminders use database-backed claim and sent timestamps so retries and multiple API instances do not normally duplicate a daily delivery. The local desktop runtime keeps scheduled email delivery disabled; cloud preferences remain owned by the hosted account.
+
 Transactional email remains a module inside the DumpTether modular monolith:
 
 ```text

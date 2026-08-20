@@ -48,6 +48,10 @@ services:
       AccountDeletion__GraceHours: ${DUMPTETHER_ACCOUNT_DELETION_GRACE_HOURS:-48}
       AccountDeletion__ReminderHoursBefore: ${DUMPTETHER_ACCOUNT_DELETION_REMINDER_HOURS_BEFORE:-24}
       AccountDeletion__SweepIntervalMinutes: ${DUMPTETHER_ACCOUNT_DELETION_SWEEP_INTERVAL_MINUTES:-30}
+      Notifications__Enabled: ${DUMPTETHER_NOTIFICATIONS_ENABLED:-false}
+      Notifications__SweepIntervalMinutes: ${DUMPTETHER_NOTIFICATIONS_SWEEP_INTERVAL_MINUTES:-15}
+      Notifications__DailyDigestHourUtc: ${DUMPTETHER_NOTIFICATIONS_DAILY_DIGEST_HOUR_UTC:-7}
+      Notifications__FollowUpWindowHours: ${DUMPTETHER_NOTIFICATIONS_FOLLOW_UP_WINDOW_HOURS:-24}
       Email__FromEmail: ${DUMPTETHER_EMAIL_FROM}
       Email__FromName: ${DUMPTETHER_EMAIL_FROM_NAME:-DumpTether}
       Email__Provider: ${DUMPTETHER_EMAIL_PROVIDER:-None}
