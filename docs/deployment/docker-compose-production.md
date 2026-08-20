@@ -95,7 +95,7 @@ credentials exist. First verify a real registration, Brevo delivery, confirmatio
 link, login, logout, Microsoft callback, rate limiting, and legal document display
 through the public HTTPS origin. Keep guest sessions disabled on the hosted API.
 
-For early private hosting, keep registration invite-only or whitelist-based. The API supports `DUMPTETHER_SIGNUP_MODE=Open`, `Whitelist`, `InviteOnly`, or `Closed`. `Whitelist` uses `DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0` and/or `DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0`. `InviteOnly` uses `DUMPTETHER_SIGNUP_INVITE_CODE_0`. Do not commit real invite codes.
+For early private hosting, keep registration invite-only or whitelist-based. The API supports `DUMPTETHER_SIGNUP_MODE=Open`, `Whitelist`, `InviteOnly`, or `Closed`. Outside Development, every mode except `Closed` requires email confirmation because invitations and task shares can target an email address. `Whitelist` uses `DUMPTETHER_SIGNUP_WHITELIST_EMAIL_0` and/or `DUMPTETHER_SIGNUP_WHITELIST_DOMAIN_0`. `InviteOnly` uses `DUMPTETHER_SIGNUP_INVITE_CODE_0`. Do not commit real invite codes.
 
 ## CORS and Origins
 
@@ -330,8 +330,9 @@ Integration config:
 
 ## Config Validation
 
-The API validates feature config at startup. If email confirmation, the selected
-email provider, or Microsoft login is enabled without its required settings,
+The API validates feature config at startup. Production registration cannot run
+without email confirmation. If email confirmation, the selected email provider,
+or Microsoft login is enabled without its required settings,
 startup fails with `DumpTether configuration is incomplete` and lists the
 missing keys. Email MFA does not have a completed challenge flow yet;
 `DUMPTETHER_EMAIL_MFA_ENABLED` must remain `false` and startup rejects `true`.

@@ -91,30 +91,35 @@ Use it when a cleanup is real but not worth derailing the current task.
 
 ### Desktop remote live-update relay
 
-- Status: durability fallback implemented; live relay deferred
+- Status: initial live relay implemented; lifecycle verification remains
 - Context: hosted web clients receive SignalR invalidations immediately.
   Desktop keeps hosted credentials protected in the local C# sidecar, so React
-  cannot safely connect to the hosted hub directly. The desktop currently
-  reconciles cloud boards and polls linked roots every few seconds while active.
+  cannot safely connect to the hosted hub directly. The sidecar now maintains
+  the hosted connection, translates events to local invalidations, and retains
+  slow reconciliation for missed events.
 - Why it can wait: durable pull/push and catalog reconciliation recover missed
-  changes, including after sleep or reconnect. A relay adds connection
-  lifecycle and session-revocation behavior that deserves focused tests.
-- Future cleanup: add a desktop-only hosted SignalR client in the sidecar,
-  translate remote workspace IDs through `SyncRoot`, trigger authoritative sync,
-  then emit local invalidation events. Keep polling as recovery.
+  changes, including after sleep or reconnect. Remaining lifecycle behavior is
+  tracked by GitHub issue #77.
+- Future cleanup: add explicit reconnect, hosted authorization-loss, logout,
+  and remote-session-revocation tests; stop already-connected hosted sessions
+  promptly after revocation; avoid reconnecting the web hub for ordinary view
+  selection changes. Keep polling as recovery rather than the primary path.
 
 ### Cloud-imported cache authorization in the local sidecar
 
-- Status: frontend enforces hosted role; hosted API remains authoritative
+- Status: authorization defect tracked by GitHub issue #109
 - Context: imported cloud boards are cached in SQLite under the durable local
   identity. Their `SyncRoot` records preserve hosted role/access provenance and
   prevent disallowed pushes, while the UI hides owner controls for read-only or
   task-share access.
 - Why it can wait: modifying local software or SQLite never grants hosted
-  access, and the cloud rejects unauthorized writes. The remaining concern is
-  preventing misleading local-only edits to a read-only cache.
+  access, and the cloud rejects unauthorized writes. However, revoked or
+  disconnected shared content can remain locally readable/writable through the
+  imported membership, so this is not merely presentation debt.
 - Future cleanup: add a desktop cache access policy in application services so
-  local mutation endpoints also consult imported-root role/access metadata.
+  local read and mutation endpoints consult imported-root role/access metadata;
+  purge or disable cloud-owned cache access after hosted revocation or account
+  disconnect while preserving unrelated local-only data.
 
 ### Transactional account email outbox
 

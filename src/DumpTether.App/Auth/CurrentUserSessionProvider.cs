@@ -41,7 +41,7 @@ internal sealed class CurrentUserSessionProvider : ICurrentUserSessionProvider
 
         if (session is null)
         {
-            _logger.LogWarning("Auth audit event session_token_not_found.");
+            _logger.LogDebug("Auth audit event session_token_not_found.");
             return null;
         }
 

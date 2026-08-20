@@ -30,7 +30,7 @@ internal sealed class SessionAuthenticationHandler : AuthenticationHandler<Authe
             var tokenSource = GetTokenSource();
             if (tokenSource is not null)
             {
-                Logger.LogWarning(
+                Logger.LogDebug(
                     "Session authentication failed for {Path}. Token source: {TokenSource}.",
                     Request.Path.Value,
                     tokenSource);

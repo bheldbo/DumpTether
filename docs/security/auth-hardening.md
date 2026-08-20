@@ -1,6 +1,10 @@
 # Authentication Hardening
 
-DumpTether uses a first-party session token for the current MVP. The frontend sends it as a bearer token, and the API can also read the session cookie created by the auth endpoints.
+DumpTether uses a first-party opaque session token. Hosted browser sessions rely
+on the Secure, HttpOnly session cookie created by the auth endpoints and do not
+retain the bearer token in browser storage. The desktop client keeps a bearer
+token only for its local sidecar boundary, where cookie-only browser auth is not
+the right transport.
 
 ## Session Scheme
 
@@ -30,9 +34,16 @@ Application services still enforce workspace membership, owner/member boundaries
 ## Current Protections
 
 - Session tokens are stored hashed in the database.
+- Hosted browser tokens are not persisted in `localStorage` or
+  `sessionStorage`; browser API and SignalR calls use the HttpOnly cookie.
+- Desktop bearer tokens remain separate from hosted browser state and are used
+  only for the local sidecar/API-client boundary.
 - Expired, revoked, and inactive-user sessions are rejected.
 - Production forces `Auth:RequireAuthentication=true`.
 - Server signup can be `Open`, `Whitelist`, `InviteOnly`, or `Closed`; production examples default to invite-only.
+- Outside Development, every available sign-up mode requires email confirmation
+  so an unverified password account cannot claim invitations or task shares sent
+  to somebody else's address.
 - Development login is disabled outside development.
 - Temporary browser `Guest` sessions are blocked from unsafe non-auth API writes so they cannot persist task data on a hosted server.
 - Protected controllers use the session policy.
@@ -49,7 +60,16 @@ Application services still enforce workspace membership, owner/member boundaries
 - Account deletion uses a durable pending/deleting state, atomic worker claims,
   a 48-hour cancellation period, and a 24-hour reminder.
 - The API adds conservative security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `X-Permitted-Cross-Domain-Policies`.
-- Auth failures with a presented bearer, query, or cookie token are logged by token source and path only; raw tokens are never logged.
+- Unknown presented tokens are recorded at Debug level by token source and path
+  only, while revoked, expired, inactive-user, and missing-user session states
+  retain warning-level audit evidence. Raw tokens are never logged.
+- ASP.NET Core request start/finish diagnostics are suppressed because SignalR
+  transports may carry bearer tokens in the query string when a non-browser
+  client cannot use the hosted cookie path.
+- OAuth completion accepts only framework-recognized local URLs or an absolute
+  URL whose full origin matches the current forwarded request origin.
+- Cloud synchronization sends bearer credentials only to HTTPS endpoints, with
+  HTTP reserved for loopback development endpoints.
 
 ## Roles
 

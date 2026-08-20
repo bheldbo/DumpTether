@@ -615,16 +615,24 @@ public sealed class AuthController : ControllerBase
             return "/";
         }
 
-        if (Uri.TryCreate(returnUrl, UriKind.Absolute, out var absolute) &&
-            absolute.Scheme is "http" or "https" &&
-            (string.Equals(absolute.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase) ||
-                (_environment.IsDevelopment() &&
-                    (absolute.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-                        absolute.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)))))
+        if (Url.IsLocalUrl(returnUrl))
         {
-            return absolute.ToString();
+            return returnUrl;
         }
 
-        return returnUrl.StartsWith('/') ? returnUrl : "/";
+        if (Uri.TryCreate(returnUrl, UriKind.Absolute, out var absolute) &&
+            absolute.Scheme is "http" or "https")
+        {
+            var requestOrigin = new Uri($"{Request.Scheme}://{Request.Host.Value}");
+            if (string.Equals(
+                    absolute.GetLeftPart(UriPartial.Authority),
+                    requestOrigin.GetLeftPart(UriPartial.Authority),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return absolute.ToString();
+            }
+        }
+
+        return "/";
     }
 }

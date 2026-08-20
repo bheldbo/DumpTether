@@ -81,9 +81,19 @@ const sessionTokenStorageKey = 'dumptether.sessionToken';
 const guestSessionTokenStorageKey = 'dumptether.guestSessionToken';
 const csrfCookieName = 'DumpTether.Csrf';
 const csrfHeaderName = 'X-DumpTether-CSRF';
+const clientManagedSessionTokensEnabled = isDesktopRuntime();
 let currentWorkspaceId: string | null = null;
-let currentSessionToken: string | null = readStoredSessionToken();
-let sessionIsTemporary = readStoredTemporarySessionFlag();
+let currentSessionToken: string | null = clientManagedSessionTokensEnabled
+  ? readStoredSessionToken()
+  : null;
+let sessionIsTemporary = clientManagedSessionTokensEnabled
+  ? readStoredTemporarySessionFlag()
+  : false;
+
+if (!clientManagedSessionTokensEnabled) {
+  window.localStorage.removeItem(sessionTokenStorageKey);
+  window.sessionStorage.removeItem(guestSessionTokenStorageKey);
+}
 
 interface ApiRequestOptions {
   workspaceId?: string | null;
@@ -131,8 +141,14 @@ export function isTemporarySession() {
 }
 
 export function setSessionToken(sessionToken: string | null, options: { temporary?: boolean } = {}) {
-  currentSessionToken = sessionToken;
+  currentSessionToken = clientManagedSessionTokensEnabled ? sessionToken : null;
   sessionIsTemporary = Boolean(sessionToken && options.temporary);
+
+  if (!clientManagedSessionTokensEnabled) {
+    window.localStorage.removeItem(sessionTokenStorageKey);
+    window.sessionStorage.removeItem(guestSessionTokenStorageKey);
+    return;
+  }
 
   if (sessionToken && options.temporary) {
     window.sessionStorage.setItem(guestSessionTokenStorageKey, sessionToken);

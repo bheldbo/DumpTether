@@ -39,7 +39,7 @@ services:
       Auth__SessionCleanupIntervalHours: ${DUMPTETHER_AUTH_SESSION_CLEANUP_INTERVAL_HOURS:-24}
       Archive__RetentionDays: ${DUMPTETHER_ARCHIVE_RETENTION_DAYS:-30}
       Cors__AllowedOrigins__0: ${DUMPTETHER_CORS_ALLOWED_ORIGIN_0}
-      EmailConfirmation__Enabled: ${DUMPTETHER_EMAIL_CONFIRMATION_ENABLED:-false}
+      EmailConfirmation__Enabled: ${DUMPTETHER_EMAIL_CONFIRMATION_ENABLED:-true}
       EmailConfirmation__PublicBaseUrl: ${DUMPTETHER_EMAIL_CONFIRMATION_PUBLIC_BASE_URL}
       PasswordRecovery__Enabled: ${DUMPTETHER_PASSWORD_RECOVERY_ENABLED:-false}
       PasswordRecovery__PublicBaseUrl: ${DUMPTETHER_PASSWORD_RECOVERY_PUBLIC_BASE_URL}

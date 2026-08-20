@@ -33,7 +33,9 @@ export function startLiveUpdates(
   const sessionToken = getStoredSessionToken();
   const connection = new signalR.HubConnectionBuilder()
     .withUrl(url, {
-      accessTokenFactory: () => getStoredSessionToken() ?? '',
+      ...(sessionToken
+        ? { accessTokenFactory: () => getStoredSessionToken() ?? '' }
+        : {}),
       headers: {
         ...getDesktopBootstrapHeaders(),
         ...(sessionToken ? {} : getCookieAuthCsrfHeader()),

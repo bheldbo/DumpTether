@@ -19,6 +19,16 @@ public static class RuntimeConfigurationValidator
         }
 
         var emailProvider = GetEmailProvider(configuration);
+        var signupMode = GetSignupMode(configuration);
+
+        if (!isDevelopment &&
+            !signupMode.Equals("Closed", StringComparison.OrdinalIgnoreCase) &&
+            !GetBoolean(configuration, "EmailConfirmation:Enabled"))
+        {
+            throw new InvalidOperationException(
+                "EmailConfirmation:Enabled must be true outside Development when sign-up is available. " +
+                "Verified email ownership is required before email-addressed invitations and task shares are safe.");
+        }
 
         if (GetBoolean(configuration, "EmailConfirmation:Enabled"))
         {
@@ -69,7 +79,7 @@ public static class RuntimeConfigurationValidator
                 "Auth:EnableDevelopmentLogin must be false outside Development.");
         }
 
-        AddMissingSignupKeys(configuration, missingKeys);
+        AddMissingSignupKeys(configuration, signupMode, missingKeys);
 
         if (missingKeys.Count > 0)
         {
@@ -82,10 +92,9 @@ public static class RuntimeConfigurationValidator
 
     private static void AddMissingSignupKeys(
         IConfiguration configuration,
+        string signupMode,
         List<string> missingKeys)
     {
-        var signupMode = GetSignupMode(configuration);
-
         if (signupMode == "InviteOnly" &&
             !HasAnyValue(configuration.GetSection("Auth:SignupInviteCodes")))
         {
