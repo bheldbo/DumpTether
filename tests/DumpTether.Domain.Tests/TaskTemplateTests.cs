@@ -51,4 +51,26 @@ public sealed class TaskTemplateTests
         Assert.Equal(TaskTemplateBuiltInKind.Basic, template.BuiltInKind);
         Assert.Equal("Basic Task", template.Name);
     }
+
+    [Fact]
+    public void RetireBuiltIn_HidesLegacyTemplateWithoutDiscardingItsDefinition()
+    {
+        var now = new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
+        var template = TaskTemplate.Create(Guid.NewGuid(), "ToDo Task", now);
+        var field = template.AddFieldDefinition(
+            "item",
+            "Item",
+            FieldDefinitionType.Text,
+            FieldDefinitionScope.Entry,
+            isRequired: false,
+            sortOrder: 0);
+        template.MarkAsBuiltIn(TaskTemplateBuiltInKind.Todo, now);
+
+        template.RetireBuiltIn(TaskTemplateBuiltInKind.Todo, now.AddMinutes(1));
+
+        Assert.Equal(TaskTemplateBuiltInKind.None, template.BuiltInKind);
+        Assert.False(template.IsProtected);
+        Assert.NotNull(template.DeletedAt);
+        Assert.Contains(template.FieldDefinitions, candidate => candidate.Id == field.Id);
+    }
 }

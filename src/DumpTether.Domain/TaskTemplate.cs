@@ -173,6 +173,18 @@ public sealed class TaskTemplate
         UpdatedAt = updatedAt;
     }
 
+    public void RetireBuiltIn(TaskTemplateBuiltInKind kind, DateTimeOffset retiredAt)
+    {
+        if (kind == TaskTemplateBuiltInKind.None || BuiltInKind != kind)
+        {
+            throw new InvalidOperationException("Only the matching built-in template can be retired.");
+        }
+
+        BuiltInKind = TaskTemplateBuiltInKind.None;
+        DeletedAt ??= retiredAt;
+        UpdatedAt = retiredAt;
+    }
+
     private void EnsureEditable()
     {
         if (IsProtected)

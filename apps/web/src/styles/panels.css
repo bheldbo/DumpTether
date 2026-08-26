@@ -863,6 +863,42 @@
   gap: 10px;
 }
 
+.template-layout-empty-region {
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  padding: 18px;
+  border: 1px dashed #b9c8d3;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.58);
+  color: #4f6071;
+  text-align: center;
+}
+
+.template-layout-empty-region:hover,
+.template-layout-empty-region:focus-visible {
+  border-color: #50807a;
+  background: rgba(235, 246, 244, 0.76);
+}
+
+.template-layout-empty-region .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.template-layout-empty-region > span {
+  font-weight: 790;
+}
+
+.template-layout-empty-region > small {
+  max-width: 420px;
+  color: #6a7888;
+  font-size: 0.76rem;
+  font-weight: 520;
+}
+
 .template-layout-row {
   display: grid;
   gap: 8px;

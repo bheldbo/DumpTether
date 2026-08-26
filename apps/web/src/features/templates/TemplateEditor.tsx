@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { Icon } from '../../components/Icon';
 import { fieldTypes, type EditableTemplateField } from '../../appTypes';
+import { type Translate } from '../../localization';
 import { FIELD_LAYOUT_MAX_COLUMNS } from '../../templateLayout';
 import {
   clampInteger,
@@ -73,9 +74,14 @@ function createTemplateLayoutRows(
   return Object.fromEntries(
     templateScopes.map((scope) => {
       const scopedFields = fields.filter((field) => field.scope === scope);
+
+      if (scopedFields.length === 0) {
+        return [scope, []];
+      }
+
       const storedRows = getStoredLayoutRows(template, scope);
       const maxRow = Math.max(
-        1,
+        0,
         ...scopedFields.map((field) => clampInteger(field.layoutRow, 1, 24)),
         ...storedRows.map((row) => clampInteger(row.row, 1, 24)),
       );
@@ -111,6 +117,10 @@ function normalizeFieldToLayoutRows(
   field: EditableTemplateField,
   rows: number[],
 ): EditableTemplateField {
+  if (rows.length === 0) {
+    return field;
+  }
+
   const row = clampInteger(field.layoutRow, 1, Math.max(1, rows.length));
   const columnCount = rows[row - 1] ?? 1;
   const column = clampInteger(field.layoutColumn, 1, columnCount);
@@ -282,6 +292,7 @@ function insertColumnWeightAfter(weights: number[], columnIndex: number) {
 export function TemplateEditor({
   onDeleteTemplate,
   onSaveTemplate,
+  t,
   template,
 }: {
   onDeleteTemplate: (id: string) => Promise<void>;
@@ -291,6 +302,7 @@ export function TemplateEditor({
     fields: UpsertFieldDefinitionRequest[],
     layout: TaskTemplateLayoutResponse,
   ) => Promise<TaskTemplateDetailResponse | null>;
+  t: Translate;
   template: TaskTemplateDetailResponse | null;
 }) {
   const [name, setName] = useState(template?.name ?? '');
@@ -688,14 +700,14 @@ export function TemplateEditor({
 
   const setLayoutRowCount = (scope: FieldDefinitionScope, rowCount: number) => {
     const highestFieldRow = Math.max(
-      1,
+      0,
       ...fields
         .filter((field) => field.scope === scope)
         .map((field) => field.layoutRow),
     );
     const nextRowCount = Math.max(
       highestFieldRow,
-      clampInteger(rowCount, 1, 12),
+      clampInteger(rowCount, 0, 12),
     );
 
     updateLayoutRowsForScope(scope, (rows) => {
@@ -722,10 +734,6 @@ export function TemplateEditor({
     const rowFields = fields.filter(
       (field) => field.scope === scope && field.layoutRow === rowNumber,
     );
-
-    if (layoutRows[scope].length <= 1) {
-      return;
-    }
 
     if (rowFields.length > 0 && !force) {
       setRowRemoval({
@@ -916,6 +924,7 @@ export function TemplateEditor({
           onSplitCell={(rowIndex, column) =>
             splitLayoutCell('Header', rowIndex, column)}
           onStartDrag={setDraggedFieldId}
+          t={t}
         />
         </section>
 
@@ -951,6 +960,7 @@ export function TemplateEditor({
           onSplitCell={(rowIndex, column) =>
             splitLayoutCell('Entry', rowIndex, column)}
           onStartDrag={setDraggedFieldId}
+          t={t}
         />
         </section>
       </fieldset>
@@ -1272,6 +1282,7 @@ function TemplateLayoutCanvas({
   onSelectField,
   onSplitCell,
   onStartDrag,
+  t,
 }: {
   activeFieldId: string | null;
   draggedFieldId: string | null;
@@ -1291,6 +1302,7 @@ function TemplateLayoutCanvas({
   onSelectField: (field: EditableTemplateField) => void;
   onSplitCell: (rowIndex: number, column: number) => void;
   onStartDrag: (clientId: string) => void;
+  t: Translate;
 }) {
   const [lastResizeDragEndedAt, setLastResizeDragEndedAt] = useState(0);
 
@@ -1406,13 +1418,24 @@ function TemplateLayoutCanvas({
         <TemplateLayoutStepper
           label="Rows"
           max={12}
-          min={1}
+          min={0}
           onChange={onChangeRowCount}
           value={layoutRows.length}
         />
-        <span>Build rows first. Split a row into cells, then click a cell to define its field.</span>
+        <span>{t('templateOptionalRegionHelp')}</span>
       </div>
       <div className="template-layout-rows">
+        {layoutRows.length === 0 ? (
+          <button
+            className="template-layout-empty-region"
+            onClick={() => onChangeRowCount(1)}
+            type="button"
+          >
+            <Icon name="plus" />
+            <span>{t('templateAddRow')}</span>
+            <small>{t('templateEmptyRegionHelp')}</small>
+          </button>
+        ) : null}
         {layoutRows.map((columnCount, rowIndex) => {
           const rowNumber = rowIndex + 1;
           const rowFields = fields.filter((field) => field.layoutRow === rowNumber);
@@ -1430,7 +1453,6 @@ function TemplateLayoutCanvas({
                   <span>{columnCount} {columnCount === 1 ? 'cell' : 'cells'}</span>
                   <button
                     className="tiny-icon-button"
-                    disabled={layoutRows.length <= 1}
                     onClick={() => onRemoveRow(rowIndex)}
                     title="Remove row"
                     type="button"

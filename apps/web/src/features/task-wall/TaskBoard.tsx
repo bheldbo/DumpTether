@@ -120,7 +120,6 @@ export function TaskBoard({
   onUpdateTaskItems,
   onUpdateTaskItem,
   onUpdateTimelineEntry,
-  onToggleTodoEntry,
   onUpdateWorkspace,
   onUpdateWorkspaceMemberRole,
   onShowToast,
@@ -203,13 +202,6 @@ export function TaskBoard({
     note: string | null,
     fieldValues?: FieldValueMap,
   ) => Promise<void>;
-  onToggleTodoEntry: (
-    taskItemId: string,
-    workspaceId: string,
-    timelineEntryId: string,
-    doneFieldDefinitionId: string,
-    isDone: boolean,
-  ) => Promise<void>;
   onUpdateWorkspace: (requestBody: UpdateWorkspaceRequest) => Promise<void>;
   onUpdateWorkspaceMemberRole: (
     userId: string,
@@ -266,34 +258,6 @@ export function TaskBoard({
     !currentUserHasReadOnlyWorkspaceAccess;
   const [filters, setFilters] = useState<TaskWallFilters>(emptyTaskWallFilters);
   const [pendingDeletedNoteIds, setPendingDeletedNoteIds] = useState<string[]>([]);
-  const [todoEntryOverrides, setTodoEntryOverrides] = useState<Record<string, boolean>>({});
-
-  const toggleTodoEntry = async (
-    taskItem: TaskItemSummaryResponse,
-    timelineEntryId: string,
-    doneFieldDefinitionId: string,
-    isDone: boolean,
-  ) => {
-    setTodoEntryOverrides((current) => ({ ...current, [timelineEntryId]: isDone }));
-
-    try {
-      await onToggleTodoEntry(
-        taskItem.id,
-        taskItem.workspaceId,
-        timelineEntryId,
-        doneFieldDefinitionId,
-        isDone,
-      );
-    } catch {
-      // The app-level handler reports the authoritative API error.
-    } finally {
-      setTodoEntryOverrides((current) => {
-        const next = { ...current };
-        delete next[timelineEntryId];
-        return next;
-      });
-    }
-  };
   const [editModeIsEnabled, setEditModeIsEnabled] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [batchReopenIsOpen, setBatchReopenIsOpen] = useState(false);
@@ -419,7 +383,12 @@ export function TaskBoard({
     event: ReactPointerEvent<HTMLElement>,
     taskItemId: string,
   ) => {
-    if (event.pointerType === 'mouse' || editModeIsEnabled || focusModeIsEnabled) {
+    if (
+      event.button !== 0 ||
+      editModeIsEnabled ||
+      focusModeIsEnabled ||
+      isTextEditingTarget(event.target)
+    ) {
       return;
     }
 
@@ -658,6 +627,7 @@ export function TaskBoard({
               data-expanded={isExpanded}
               data-edit-selected={isSelectedForEdit}
               data-edit-mode={editModeIsEnabled}
+              data-task-selection-target="true"
               data-state={getTaskState(taskItem)}
               key={taskItem.id}
               style={{
@@ -732,8 +702,7 @@ export function TaskBoard({
                     <span className="note-count">{taskItem.noteCount}</span>
                   ) : null}
                   {taskItem.subtaskCount > 0 ? (
-                    <span className="note-count" title={`${taskItem.subtaskCount} ${t('subtaskCount')}`}>
-                      <Icon name="subtasks" />
+                    <span className="subtask-stack-count" title={`${taskItem.subtaskCount} ${t('subtaskCount')}`}>
                       {taskItem.subtaskCount}
                     </span>
                   ) : null}
@@ -746,38 +715,7 @@ export function TaskBoard({
                   <TaskSyncIndicator syncState={taskItem.syncState} t={t} />
                 </span>
                 <span className="task-card-main">
-                  {taskItem.builtInTemplateKind === 'Todo' && taskItem.todoEntries?.length ? (
-                    <span
-                      className="task-card-todo-list"
-                      onClick={(event) => event.stopPropagation()}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      onPointerDown={(event) => event.stopPropagation()}
-                    >
-                      {taskItem.todoEntries.slice(0, 5).map((entry) => {
-                        const checked = todoEntryOverrides[entry.timelineEntryId] ?? entry.isDone;
-
-                        return (
-                          <label className="task-card-todo-entry" key={entry.timelineEntryId}>
-                            <input
-                              checked={checked}
-                              disabled={archiveViewIsActive || currentUserHasReadOnlyWorkspaceAccess}
-                              onChange={(event) => void toggleTodoEntry(
-                                taskItem,
-                                entry.timelineEntryId,
-                                entry.doneFieldDefinitionId,
-                                event.target.checked,
-                              )}
-                              type="checkbox"
-                            />
-                            <span data-done={checked}>{entry.label}</span>
-                          </label>
-                        );
-                      })}
-                      {taskItem.todoEntries.length > 5 ? (
-                        <small>+{taskItem.todoEntries.length - 5}</small>
-                      ) : null}
-                    </span>
-                  ) : <span className="task-card-latest">
+                  <span className="task-card-latest">
                     {taskItem.latestTimelineEntry ? (
                       <>
                         <span className="task-card-latest-date">
@@ -788,7 +726,7 @@ export function TaskBoard({
                     ) : (
                       t('noNotesYet')
                     )}
-                  </span>}
+                  </span>
                 </span>
                 <span className="task-card-meta">
                   {taskItem.status ? (

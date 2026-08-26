@@ -1871,8 +1871,7 @@ internal sealed class SyncService : ISyncService
         out TaskTemplateBuiltInKind builtInKind)
     {
         return Enum.TryParse(value, ignoreCase: true, out builtInKind) &&
-            builtInKind != TaskTemplateBuiltInKind.None &&
-            Enum.IsDefined(builtInKind);
+            builtInKind == TaskTemplateBuiltInKind.Basic;
     }
 
     private async Task<SyncMapping> EnsureLocalTaskMappingForUpdateAsync(

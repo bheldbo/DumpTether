@@ -23,8 +23,7 @@ public sealed record TaskItemSummaryResponse(
     TaskTimelineEntryResponse? LatestTimelineEntry,
     Guid? ParentTaskItemId = null,
     int SubtaskCount = 0,
-    string? BuiltInTemplateKind = null,
-    IReadOnlyList<TaskTodoEntryResponse>? TodoEntries = null);
+    string? BuiltInTemplateKind = null);
 
 public sealed record TaskItemDetailResponse(
     Guid Id,
@@ -48,14 +47,7 @@ public sealed record TaskItemDetailResponse(
     IReadOnlyList<TaskTimelineEntryResponse> TimelineEntries,
     Guid? ParentTaskItemId = null,
     int SubtaskCount = 0,
-    string? BuiltInTemplateKind = null,
-    IReadOnlyList<TaskTodoEntryResponse>? TodoEntries = null);
-
-public sealed record TaskTodoEntryResponse(
-    Guid TimelineEntryId,
-    string Label,
-    bool IsDone,
-    Guid DoneFieldDefinitionId);
+    string? BuiltInTemplateKind = null);
 
 public sealed record TaskItemViewCountResponse(
     Guid ViewId,

@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
+  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -28,6 +29,7 @@ export interface SubtaskWallStrings {
 }
 
 export interface SubtaskWallProps {
+  accentColor?: string | null;
   parentTaskItemId: string;
   subtasks: readonly TaskItemSummaryResponse[];
   strings: SubtaskWallStrings;
@@ -44,6 +46,7 @@ export interface SubtaskWallProps {
 }
 
 export function SubtaskWall({
+  accentColor,
   parentTaskItemId,
   subtasks,
   strings,
@@ -56,10 +59,32 @@ export function SubtaskWall({
   onRetry,
 }: SubtaskWallProps) {
   const [title, setTitle] = useState('');
+  const [composerIsOpen, setComposerIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasLoadError = error !== null;
+
+  useEffect(() => {
+    if (!composerIsOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && composerRef.current?.contains(event.target)) {
+        return;
+      }
+
+      if (!title.trim() && !isCreating) {
+        setComposerIsOpen(false);
+        setCreateError(null);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [composerIsOpen, isCreating, title]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,7 +106,7 @@ export function SubtaskWall({
 
       await onCreate(request);
       setTitle('');
-      requestAnimationFrame(() => inputRef.current?.focus());
+      setComposerIsOpen(false);
     } catch {
       setCreateError(strings.createErrorMessage);
       requestAnimationFrame(() => inputRef.current?.focus());
@@ -92,6 +117,12 @@ export function SubtaskWall({
 
   function handleInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
+      if (event.key === 'Escape' && !isCreating) {
+        event.preventDefault();
+        setTitle('');
+        setCreateError(null);
+        setComposerIsOpen(false);
+      }
       return;
     }
 
@@ -100,43 +131,18 @@ export function SubtaskWall({
   }
 
   return (
-    <section className="subtask-wall" aria-labelledby={`subtasks-${parentTaskItemId}`}>
+    <section
+      className="subtask-wall"
+      aria-labelledby={`subtasks-${parentTaskItemId}`}
+      style={{ '--subtask-wall-accent': accentColor || '#fff1a8' } as CSSProperties}
+    >
       <header className="subtask-wall__header">
-        <span className="subtask-wall__heading-icon" aria-hidden="true">
-          <Icon name="subtasks" />
-        </span>
         <h2 id={`subtasks-${parentTaskItemId}`}>{strings.heading}</h2>
+        <span className="subtask-wall__count">{subtasks.length}</span>
         {isLoading && subtasks.length > 0 ? (
           <span className="subtask-wall__quiet-spinner" aria-hidden="true" />
         ) : null}
       </header>
-
-      {canCreate ? (
-        <form className="subtask-wall__create" onSubmit={handleSubmit}>
-          <input
-            ref={inputRef}
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            onKeyDown={handleInputKeyDown}
-            placeholder={strings.createPlaceholder}
-            aria-label={strings.createPlaceholder}
-            disabled={isCreating}
-          />
-          <button
-            type="submit"
-            className="subtask-wall__create-button"
-            disabled={!title.trim() || isCreating}
-            aria-label={isCreating ? strings.creatingLabel : strings.createButtonLabel}
-            title={isCreating ? strings.creatingLabel : strings.createButtonLabel}
-          >
-            {isCreating ? (
-              <span className="subtask-wall__spinner" aria-hidden="true" />
-            ) : (
-              <Icon name="plus" />
-            )}
-          </button>
-        </form>
-      ) : null}
 
       {createError ? (
         <p className="subtask-wall__inline-error" role="alert">
@@ -161,11 +167,6 @@ export function SubtaskWall({
           <span className="subtask-wall__spinner" aria-hidden="true" />
           <p>{strings.loadingMessage}</p>
         </div>
-      ) : subtasks.length === 0 ? (
-        <div className="subtask-wall__state subtask-wall__state--empty">
-          <Icon name="subtasks" />
-          <p>{strings.emptyMessage}</p>
-        </div>
       ) : (
         <div className="subtask-wall__grid">
           {subtasks.map((subtask) => {
@@ -186,6 +187,11 @@ export function SubtaskWall({
                 {subtask.status ? (
                   <span className="subtask-wall__status">{subtask.status}</span>
                 ) : null}
+                {subtask.latestTimelineEntry ? (
+                  <span className="subtask-wall__latest">
+                    {subtask.latestTimelineEntry.details ?? subtask.latestTimelineEntry.summary}
+                  </span>
+                ) : null}
                 <span className="subtask-wall__card-meta">
                   <span>
                     <Icon name="clock" />
@@ -201,6 +207,52 @@ export function SubtaskWall({
               </button>
             );
           })}
+          {canCreate ? (
+            composerIsOpen ? (
+              <form
+                className="subtask-wall__composer-card"
+                onSubmit={handleSubmit}
+                ref={composerRef}
+              >
+                <input
+                  ref={inputRef}
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  onKeyDown={handleInputKeyDown}
+                  placeholder={strings.createPlaceholder}
+                  aria-label={strings.createPlaceholder}
+                  disabled={isCreating}
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={!title.trim() || isCreating}
+                  aria-label={isCreating ? strings.creatingLabel : strings.createButtonLabel}
+                  title={isCreating ? strings.creatingLabel : strings.createButtonLabel}
+                >
+                  {isCreating ? (
+                    <span className="subtask-wall__spinner" aria-hidden="true" />
+                  ) : (
+                    <Icon name="arrowRight" />
+                  )}
+                </button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                className="subtask-wall__add-card"
+                onClick={() => setComposerIsOpen(true)}
+                aria-label={strings.createButtonLabel}
+                title={strings.createButtonLabel}
+              >
+                <Icon name="plus" />
+              </button>
+            )
+          ) : subtasks.length === 0 ? (
+            <div className="subtask-wall__state subtask-wall__state--empty">
+              <p>{strings.emptyMessage}</p>
+            </div>
+          ) : null}
         </div>
       )}
     </section>

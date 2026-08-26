@@ -21,14 +21,6 @@ export interface TaskItemSummaryResponse {
   parentTaskItemId: string | null;
   subtaskCount: number;
   builtInTemplateKind: string | null;
-  todoEntries: TaskTodoEntryResponse[] | null;
-}
-
-export interface TaskTodoEntryResponse {
-  timelineEntryId: string;
-  label: string;
-  isDone: boolean;
-  doneFieldDefinitionId: string;
 }
 
 export interface TaskItemDetailResponse extends TaskItemSummaryResponse {

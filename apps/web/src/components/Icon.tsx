@@ -1,6 +1,7 @@
 export type IconName =
   | 'archive'
   | 'arrowDown'
+  | 'arrowRight'
   | 'arrowUp'
   | 'back'
   | 'check'
@@ -19,6 +20,7 @@ export type IconName =
   | 'login'
   | 'logout'
   | 'mail'
+  | 'menu'
   | 'minus'
   | 'note'
   | 'palette'
@@ -42,6 +44,7 @@ export type IconName =
 const iconPaths: Record<IconName, string> = {
   archive: 'M4 7h16v13H4V7Zm2-4h12l2 4H4l2-4Zm5 8h2',
   arrowDown: 'M12 5v14m0 0 6-6m-6 6-6-6',
+  arrowRight: 'M5 12h14m-6-6 6 6-6 6',
   arrowUp: 'M12 19V5m0 0 6 6m-6-6-6 6',
   back: 'M15 6 9 12l6 6M10 12h10',
   calendarX: 'M7 3v4M17 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm6 8 4 4m0-4-4 4',
@@ -60,6 +63,7 @@ const iconPaths: Record<IconName, string> = {
   login: 'M10 17l5-5-5-5M15 12H3M21 5v14a2 2 0 0 1-2 2h-5M14 3h5a2 2 0 0 1 2 2',
   logout: 'M14 7l-5 5 5 5M9 12h12M3 5v14a2 2 0 0 0 2 2h5M10 3H5a2 2 0 0 0-2 2',
   mail: 'M4 6h16v12H4V6Zm0 2 8 5 8-5',
+  menu: 'M5 7h14M5 12h14M5 17h14',
   minus: 'M5 12h14',
   note: 'M5 4h11l3 3v13H5V4Zm11 0v4h4M8 12h8M8 16h6',
   palette: 'M12 4a8 8 0 0 0-1 15.94c.8.1 1.33-.55 1.14-1.33-.13-.55.28-1.04.85-1.04h1.36A5.65 5.65 0 0 0 20 11.92C20 7.55 16.42 4 12 4ZM8 11.5h.01M10 8h.01M14 8h.01M16 11h.01',

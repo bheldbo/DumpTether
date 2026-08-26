@@ -1024,12 +1024,12 @@ button.member-chip:hover {
   right: 28px;
   bottom: 28px;
   z-index: 30;
-  display: grid;
+  display: flex;
   gap: 10px;
-  justify-items: end;
+  align-items: center;
 }
 
-.floating-selection-cancel {
+.floating-selection-primary {
   position: fixed;
   left: 28px;
   bottom: 28px;
@@ -1047,8 +1047,33 @@ button.member-chip:hover {
   backdrop-filter: blur(8px);
 }
 
-.floating-selection-cancel:hover,
-.floating-selection-cancel:focus-visible {
+.floating-selection-primary:hover:not(:disabled),
+.floating-selection-primary:focus-visible {
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+
+.floating-selection-primary:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.floating-selection-exit {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(24, 76, 72, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #184c48;
+  box-shadow: 0 16px 34px rgba(32, 45, 58, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.floating-selection-exit:hover,
+.floating-selection-exit:focus-visible {
   background: rgba(255, 255, 255, 0.9);
   transform: translateY(-1px);
 }

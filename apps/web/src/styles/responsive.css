@@ -633,7 +633,7 @@
     z-index: 92;
   }
 
-  .floating-selection-cancel {
+  .floating-selection-primary {
     left: 12px;
     bottom: max(12px, env(safe-area-inset-bottom));
     z-index: 92;
@@ -654,6 +654,11 @@
     width: auto;
     max-height: calc(100dvh - 96px - env(safe-area-inset-bottom));
     overflow: auto;
+  }
+
+  .floating-selection-exit {
+    width: 52px;
+    height: 52px;
   }
 
   .quick-create-popover {
