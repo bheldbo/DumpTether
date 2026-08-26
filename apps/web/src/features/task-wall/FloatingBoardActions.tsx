@@ -55,7 +55,7 @@ export function FloatingBoardActions({
   workspaces,
 }: FloatingBoardActionsProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const openActions = () => {
@@ -68,25 +68,33 @@ export function FloatingBoardActions({
   }, []);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen && !editModeIsEnabled) {
       return undefined;
     }
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (
-        menuRef.current &&
-        event.target instanceof Node &&
-        !menuRef.current.contains(event.target) &&
-        !editModeIsEnabled
-      ) {
-        setIsOpen(false);
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      if (actionsRef.current?.contains(event.target)) {
+        return;
+      }
+
+      if (event.target.closest('[data-task-selection-target="true"]')) {
+        return;
+      }
+
+      setIsOpen(false);
+      if (editModeIsEnabled) {
+        onToggleEditMode();
       }
     };
 
     window.addEventListener('pointerdown', handlePointerDown);
 
     return () => window.removeEventListener('pointerdown', handlePointerDown);
-  }, [editModeIsEnabled, isOpen]);
+  }, [editModeIsEnabled, isOpen, onToggleEditMode]);
 
   const closeSelectionMode = () => {
     setIsOpen(false);
@@ -94,19 +102,44 @@ export function FloatingBoardActions({
   };
 
   return (
-    <>
+    <div
+      className="floating-action-layer"
+      data-edit-mode={editModeIsEnabled}
+      ref={actionsRef}
+    >
       {editModeIsEnabled ? (
         <button
-          className="floating-selection-cancel"
-          onClick={closeSelectionMode}
-          title={t('cancel')}
+          className="floating-selection-primary"
+          disabled={selectedTaskCount === 0}
+          onClick={() => {
+            setIsOpen(false);
+            if (archiveModeIsActive) {
+              onOpenBatchReopen();
+            } else {
+              onOpenBatchArchive();
+            }
+          }}
+          title={archiveModeIsActive ? t('unarchiveSelected') : t('archiveSelected')}
           type="button"
         >
-          <Icon name="close" />
-          <span className="sr-only">{t('cancel')}</span>
+          <Icon name={archiveModeIsActive ? 'undo' : 'archive'} />
+          <span className="sr-only">
+            {archiveModeIsActive ? t('unarchiveSelected') : t('archiveSelected')}
+          </span>
         </button>
       ) : null}
-      <div className="floating-board-actions" data-edit-mode={editModeIsEnabled} ref={menuRef}>
+      <div className="floating-board-actions" data-edit-mode={editModeIsEnabled}>
+        {editModeIsEnabled ? (
+          <button
+            className="floating-selection-exit"
+            onClick={closeSelectionMode}
+            title={t('cancel')}
+            type="button"
+          >
+            <Icon name="back" />
+            <span className="sr-only">{t('cancel')}</span>
+          </button>
+        ) : null}
         <button
           className="quick-create-fab"
           data-active={isOpen}
@@ -116,7 +149,7 @@ export function FloatingBoardActions({
             : archiveModeIsActive ? t('archiveActions') : t('newTask')}
           type="button"
         >
-          <Icon name={editModeIsEnabled ? 'check' : 'plus'} />
+          <Icon name={editModeIsEnabled ? 'menu' : 'plus'} />
           <span>{editModeIsEnabled
             ? `${selectedTaskCount} ${t('selectedTasks')}`
             : archiveModeIsActive ? t('archiveActions') : t('newTask')}</span>
@@ -142,47 +175,20 @@ export function FloatingBoardActions({
                 <span className="quick-action-menu-label">
                   {selectedTaskCount} {t('selectedTasks')}
                 </span>
-                {archiveModeIsActive ? (
-                  <>
-                    <button
-                      disabled={selectedTaskCount === 0}
-                      onClick={() => {
-                        onOpenBatchReopen();
-                        setIsOpen(false);
-                      }}
-                      type="button"
-                    >
-                      <Icon name="undo" />
-                      <span>{t('unarchiveSelected')}</span>
-                    </button>
-                    {canPermanentlyDelete ? (
-                      <button
-                        className="danger-action"
-                        disabled={selectedTaskCount === 0}
-                        onClick={() => {
-                          onOpenBatchPermanentDelete();
-                          setIsOpen(false);
-                        }}
-                        type="button"
-                      >
-                        <Icon name="trash" />
-                        <span>{t('deletePermanently')}</span>
-                      </button>
-                    ) : null}
-                  </>
-                ) : (
+                {archiveModeIsActive && canPermanentlyDelete ? (
                   <button
+                    className="danger-action"
                     disabled={selectedTaskCount === 0}
                     onClick={() => {
-                      onOpenBatchArchive();
+                      onOpenBatchPermanentDelete();
                       setIsOpen(false);
                     }}
                     type="button"
                   >
-                    <Icon name="archive" />
-                    <span>{t('archiveSelected')}</span>
+                    <Icon name="trash" />
+                    <span>{t('deletePermanently')}</span>
                   </button>
-                )}
+                ) : null}
                 {canManageSharing && !archiveModeIsActive ? (
                   <button
                     disabled={selectedTaskCount === 0}
@@ -302,6 +308,6 @@ export function FloatingBoardActions({
           </div>
         ) : null}
       </div>
-    </>
+    </div>
   );
 }

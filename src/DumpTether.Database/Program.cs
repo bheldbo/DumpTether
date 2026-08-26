@@ -203,7 +203,6 @@ static async Task<int> SeedTestDataAsync(IServiceProvider services, IConfigurati
     var generalProject = await EnsureProjectAsync(db, workspace.Id, "General", "#FFE36D", now);
     var followUpProject = await EnsureProjectAsync(db, workspace.Id, "Follow-up", "#A7D8FF", now);
     var basicTemplate = await EnsureBasicTemplateAsync(db, user.Id, now);
-    var todoTemplate = await EnsureTodoTemplateAsync(db, user.Id, now);
 
     await EnsureTaskAsync(
         db,
@@ -221,9 +220,9 @@ static async Task<int> SeedTestDataAsync(IServiceProvider services, IConfigurati
         db,
         workspace.Id,
         followUpProject.Id,
-        todoTemplate.Id,
-        "Seed: test checklist task",
-        "Open the task and tick the entry checkbox.",
+        basicTemplate.Id,
+        "Seed: review follow-up note",
+        "Open the task and add a short progress note.",
         "#BFE7D2",
         "Follow-up",
         "Waiting",
@@ -364,8 +363,8 @@ static async Task<TaskTemplate> EnsureBasicTemplateAsync(
 
     template = TaskTemplate.Create(ownerUserId, "Basic Task", now);
     template.AddFieldDefinition(
-        "context",
-        "Context",
+        "description",
+        "Description",
         FieldDefinitionType.LongText,
         FieldDefinitionScope.Header,
         isRequired: false,
@@ -374,55 +373,8 @@ static async Task<TaskTemplate> EnsureBasicTemplateAsync(
         layoutColumn: 1,
         layoutWeight: 1);
     template.UpdateLayout(
-        """[{"row":1,"columnWeights":[1],"height":168}]""",
-        """[{"row":1,"columnWeights":[1],"height":132}]""",
-        now);
-    await db.TaskTemplates.AddAsync(template);
-
-    return template;
-}
-
-static async Task<TaskTemplate> EnsureTodoTemplateAsync(
-    DumpTetherDbContext db,
-    Guid ownerUserId,
-    DateTimeOffset now)
-{
-    var template = await db.TaskTemplates
-        .Include("_fieldDefinitions")
-        .FirstOrDefaultAsync(candidate =>
-            candidate.OwnerUserId == ownerUserId &&
-            candidate.Name == "ToDo Task" &&
-            candidate.DeletedAt == null);
-
-    if (template is not null)
-    {
-        return template;
-    }
-
-    template = TaskTemplate.Create(ownerUserId, "ToDo Task", now);
-    template.AddFieldDefinition(
-        "done",
-        "Done?",
-        FieldDefinitionType.Checkbox,
-        FieldDefinitionScope.Entry,
-        isRequired: false,
-        sortOrder: 0,
-        layoutRow: 1,
-        layoutColumn: 1,
-        layoutWeight: 0.22);
-    template.AddFieldDefinition(
-        "step",
-        "Step",
-        FieldDefinitionType.LongText,
-        FieldDefinitionScope.Entry,
-        isRequired: false,
-        sortOrder: 1,
-        layoutRow: 1,
-        layoutColumn: 2,
-        layoutWeight: 1.78);
-    template.UpdateLayout(
-        """[{"row":1,"columnWeights":[1],"height":132}]""",
-        """[{"row":1,"columnWeights":[0.22,1.78],"height":144}]""",
+        """[{"row":1,"columnWeights":[1],"height":190}]""",
+        "[]",
         now);
     await db.TaskTemplates.AddAsync(template);
 

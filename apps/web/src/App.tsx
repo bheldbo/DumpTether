@@ -2149,26 +2149,6 @@ function App() {
     }
   };
 
-  const handleToggleTodoEntry = async (
-    taskItemId: string,
-    workspaceId: string,
-    entryId: string,
-    doneFieldDefinitionId: string,
-    isDone: boolean,
-  ) => {
-    try {
-      const updated = await updateTaskTimelineEntry(taskItemId, entryId, {
-        fieldValues: { [doneFieldDefinitionId]: isDone },
-      }, { workspaceId });
-      applyTaskUpdate(updated);
-      void performBackgroundCloudSync(updated.workspaceId);
-    } catch (error) {
-      const message = getErrorMessage(error);
-      setErrorMessage(message);
-      throw error;
-    }
-  };
-
   const handleDeleteTimelineEntry = async (entryId: string) => {
     if (!selectedTask) {
       return;
@@ -2727,7 +2707,6 @@ function App() {
             onUpdateTaskItem={handleUpdateTaskItem}
             onUpdateTimelineEntry={handleUpdateTimelineEntry}
             onUnsavedChangesChange={setTaskHasUnsavedChanges}
-            onToggleTodoEntry={handleToggleTodoEntry}
             onUpdateProject={handleUpdateProject}
             onSyncWorkspaceWithCloud={handleSyncWorkspaceWithCloud}
             onUpdateWorkspace={handleUpdateWorkspace}

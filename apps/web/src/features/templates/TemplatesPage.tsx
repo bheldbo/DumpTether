@@ -109,6 +109,7 @@ export function TemplatesPage({
         key={templateDraftIsOpen ? 'new-template' : selectedTemplate?.id ?? 'empty-template'}
         onDeleteTemplate={onDeleteTemplate}
         onSaveTemplate={saveTemplate}
+        t={t}
         template={selectedTemplate}
       />
     </section>

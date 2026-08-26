@@ -383,15 +383,19 @@ internal sealed class TaskTemplateService : ITaskTemplateService
         var scopedFields = fields
             .Where(field => field.Scope == scope)
             .ToList();
+
+        if (scopedFields.Count == 0)
+        {
+            return [];
+        }
+
         var rowsByNumber = (requestedRows ?? [])
             .Where(row => row.Row >= 1 && row.Row <= MaxTemplateLayoutRows)
             .GroupBy(row => row.Row)
             .ToDictionary(group => group.Key, group => group.Last());
         var rowCount = Math.Max(
-            1,
-            Math.Max(
-                rowsByNumber.Keys.DefaultIfEmpty(1).Max(),
-                scopedFields.Select(field => field.LayoutRow).DefaultIfEmpty(1).Max()));
+            rowsByNumber.Keys.DefaultIfEmpty(1).Max(),
+            scopedFields.Select(field => field.LayoutRow).DefaultIfEmpty(1).Max());
         rowCount = Math.Min(MaxTemplateLayoutRows, rowCount);
 
         return Enumerable.Range(1, rowCount)

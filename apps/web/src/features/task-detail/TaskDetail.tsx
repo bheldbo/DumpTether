@@ -1,6 +1,5 @@
 import {
   type KeyboardEvent,
-  type MouseEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -205,24 +204,10 @@ export function TaskDetail({
     };
   }, [fieldDraft, headerFields, headerFieldsCanBeEdited, onUpdateFieldValues]);
 
-  const closeFromHeader = (event: MouseEvent<HTMLDivElement>) => {
-    if (
-      event.target instanceof HTMLElement &&
-      event.target.closest(
-        'button, input, select, textarea, label, .color-popover, .task-share-popover, .share-dialog, .task-header-fields, .task-meta-chip, .member-chip, .share-chip, .pending-invite-chip, .category-multi-select',
-      )
-    ) {
-      return;
-    }
-
-    void onClose();
-  };
-
   return (
     <section className="task-detail" aria-label="Task detail">
       <div
         className="detail-header task-detail-header"
-        onClick={closeFromHeader}
         style={getTaskCardStyle(taskItem.color)}
       >
         <button
@@ -299,12 +284,43 @@ export function TaskDetail({
         ) : null}
       </div>
 
+      {!taskItem.parentTaskItemId ? (
+        <SubtaskWall
+          accentColor={taskItem.color}
+          canCreate={canCreateSubtasks && !taskItem.archivedAt}
+          error={subtaskError}
+          isLoading={subtasksAreLoading}
+          onCreate={async (requestBody) => {
+            const created = await onCreateSubtask(requestBody);
+            setSubtasks((current) => [created, ...current]);
+          }}
+          onOpenSubtask={onOpenSubtask}
+          onRetry={() => void loadSubtasks()}
+          parentTaskItemId={taskItem.id}
+          strings={{
+            heading: t('subtasks'),
+            createPlaceholder: t('addSubtask'),
+            createButtonLabel: t('addSubtask'),
+            creatingLabel: t('saving'),
+            loadingMessage: t('loadingSubtasks'),
+            emptyMessage: t('noSubtasks'),
+            errorMessage: t('subtaskCreateFailed'),
+            createErrorMessage: t('subtaskCreateFailed'),
+            retryLabel: t('retrySync'),
+            formatNoteCount: (count) => `${count} ${t('noteCount')}`,
+            formatSubtaskCount: (count) => `${count} ${t('subtaskCount')}`,
+            formatUpdatedAt: formatRelativeDate,
+          }}
+          subtasks={subtasks}
+        />
+      ) : null}
+
       {headerFields.length > 0 || templateCanBeImported ? (
-        <section className="detail-section fields-details task-header-fields-section">
-          <div className="section-heading">
-            <span>
-              <h3 id="fields-title">{t('taskFields')}</h3>
-            </span>
+        <section
+          className="task-header-fields-section"
+          style={getTaskCardStyle(taskItem.color)}
+        >
+          <div className="task-header-fields-toolbar">
             <span className="section-heading-actions">
               {templateCanBeImported ? (
                 <button
@@ -349,36 +365,6 @@ export function TaskDetail({
             />
           ) : null}
         </section>
-      ) : null}
-
-      {!taskItem.parentTaskItemId ? (
-        <SubtaskWall
-          canCreate={canCreateSubtasks && !taskItem.archivedAt}
-          error={subtaskError}
-          isLoading={subtasksAreLoading}
-          onCreate={async (requestBody) => {
-            const created = await onCreateSubtask(requestBody);
-            setSubtasks((current) => [created, ...current]);
-          }}
-          onOpenSubtask={onOpenSubtask}
-          onRetry={() => void loadSubtasks()}
-          parentTaskItemId={taskItem.id}
-          strings={{
-            heading: t('subtasks'),
-            createPlaceholder: t('addSubtask'),
-            createButtonLabel: t('addSubtask'),
-            creatingLabel: t('saving'),
-            loadingMessage: t('loadingSubtasks'),
-            emptyMessage: t('noSubtasks'),
-            errorMessage: t('subtaskCreateFailed'),
-            createErrorMessage: t('subtaskCreateFailed'),
-            retryLabel: t('retrySync'),
-            formatNoteCount: (count) => `${count} ${t('noteCount')}`,
-            formatSubtaskCount: (count) => `${count} ${t('subtaskCount')}`,
-            formatUpdatedAt: formatRelativeDate,
-          }}
-          subtasks={subtasks}
-        />
       ) : null}
 
       <TimelinePanel
@@ -626,7 +612,6 @@ function TaskHeaderEditor({
             onBlur={() => void saveChanges({}, { field: 'status' })}
             onChange={(event) => {
               setStatus(event.target.value);
-              void saveChanges({ status: event.target.value }, { field: 'status' });
             }}
             value={status}
           >
@@ -691,7 +676,6 @@ function TaskHeaderEditor({
             onBlur={() => void saveChanges({}, { field: 'followUp' })}
             onChange={(event) => {
               setFollowUpDate(event.target.value);
-              void saveChanges({ followUpDate: event.target.value }, { field: 'followUp' });
             }}
             type="date"
             value={followUpDate}

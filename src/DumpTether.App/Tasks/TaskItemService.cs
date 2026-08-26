@@ -2351,8 +2351,7 @@ internal sealed class TaskItemService : ITaskItemService
                     MapFieldValues(latestTimelineEntry.FieldValues)),
             taskItem.ParentTaskItemId,
             subtaskCount,
-            MapBuiltInTemplateKind(taskTemplate),
-            MapTodoEntries(taskItem, taskTemplate));
+            MapBuiltInTemplateKind(taskTemplate));
     }
 
     private static TaskItemDetailResponse MapDetail(
@@ -2396,8 +2395,7 @@ internal sealed class TaskItemService : ITaskItemService
                 .ToList(),
             taskItem.ParentTaskItemId,
             subtaskCount,
-            MapBuiltInTemplateKind(taskTemplate),
-            MapTodoEntries(taskItem, taskTemplate));
+            MapBuiltInTemplateKind(taskTemplate));
     }
 
     private async Task<IReadOnlyDictionary<Guid, TaskTemplate>> LoadSummaryTemplatesAsync(
@@ -2417,71 +2415,6 @@ internal sealed class TaskItemService : ITaskItemService
         taskTemplate is null || taskTemplate.BuiltInKind == TaskTemplateBuiltInKind.None
             ? null
             : taskTemplate.BuiltInKind.ToString();
-
-    private static IReadOnlyList<TaskTodoEntryResponse>? MapTodoEntries(
-        TaskItem taskItem,
-        TaskTemplate? taskTemplate)
-    {
-        if (taskTemplate?.BuiltInKind != TaskTemplateBuiltInKind.Todo)
-        {
-            return null;
-        }
-
-        var itemField = taskTemplate.FieldDefinitions.FirstOrDefault(field =>
-            field.IsActive &&
-            field.Scope == FieldDefinitionScope.Entry &&
-            string.Equals(field.Key, "item", StringComparison.OrdinalIgnoreCase));
-        var doneField = taskTemplate.FieldDefinitions.FirstOrDefault(field =>
-            field.IsActive &&
-            field.Scope == FieldDefinitionScope.Entry &&
-            field.Type == FieldDefinitionType.Checkbox &&
-            string.Equals(field.Key, "done", StringComparison.OrdinalIgnoreCase));
-
-        if (itemField is null || doneField is null)
-        {
-            return [];
-        }
-
-        return taskItem.TimelineEntries
-            .Where(entry => entry.DeletedAt is null && entry.Kind == TaskTimelineEntryKind.NoteAdded)
-            .OrderBy(entry => entry.OccurredAt)
-            .ThenBy(entry => entry.Id)
-            .Select(entry =>
-            {
-                var itemValue = entry.FieldValues.FirstOrDefault(value =>
-                    value.FieldDefinitionId == itemField.Id)?.ValueJson;
-                var doneValue = entry.FieldValues.FirstOrDefault(value =>
-                    value.FieldDefinitionId == doneField.Id)?.ValueJson;
-
-                return new TaskTodoEntryResponse(
-                    entry.Id,
-                    ParseJsonString(itemValue) ?? entry.Details ?? string.Empty,
-                    string.Equals(doneValue, "true", StringComparison.OrdinalIgnoreCase),
-                    doneField.Id);
-            })
-            .Where(entry => !string.IsNullOrWhiteSpace(entry.Label))
-            .ToList();
-    }
-
-    private static string? ParseJsonString(string? valueJson)
-    {
-        if (string.IsNullOrWhiteSpace(valueJson) || valueJson == "null")
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(valueJson);
-            return document.RootElement.ValueKind == JsonValueKind.String
-                ? document.RootElement.GetString()
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
 
     private static TaskTimelineEntryResponse MapTimelineEntry(TaskTimelineEntry entry)
     {

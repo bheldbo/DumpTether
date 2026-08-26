@@ -1449,7 +1449,7 @@ public sealed class SyncApiTests
                     "Basic Task",
                     [new CloudSyncUpsertFieldDefinitionRequest(
                         Id: null,
-                        Name: "Context",
+                        Name: "Description",
                         Type: "LongText",
                         Scope: "Header",
                         Required: false,
@@ -1462,29 +1462,8 @@ public sealed class SyncApiTests
                         LayoutWeight: 1)],
                     new CloudSyncTaskTemplateLayoutRequest(
                         [new CloudSyncTaskTemplateLayoutRowRequest(1, [1], 190)],
-                        [new CloudSyncTaskTemplateLayoutRowRequest(1, [1], 90)]),
+                        []),
                     TaskTemplateBuiltInKind.Basic));
-
-            var todo = Templates.FirstOrDefault(template =>
-                template.BuiltInKind == TaskTemplateBuiltInKind.Todo.ToString() ||
-                (string.IsNullOrWhiteSpace(template.BuiltInKind) && template.Name == "ToDo Task"));
-            ReplaceTemplate(
-                todo,
-                CreateTemplate(
-                    todo?.Id ?? Guid.NewGuid(),
-                    "ToDo Task",
-                    [
-                        new CloudSyncUpsertFieldDefinitionRequest(
-                            null, "Description", "LongText", "Header", false, 0, [], 1, 1, 1, 1, 1),
-                        new CloudSyncUpsertFieldDefinitionRequest(
-                            null, "Item", "Text", "Entry", true, 0, [], 1, 1, 1, 1, 4),
-                        new CloudSyncUpsertFieldDefinitionRequest(
-                            null, "Done", "Checkbox", "Entry", false, 1, [], 1, 2, 1, 1, 1)
-                    ],
-                    new CloudSyncTaskTemplateLayoutRequest(
-                        [new CloudSyncTaskTemplateLayoutRowRequest(1, [1], 190)],
-                        [new CloudSyncTaskTemplateLayoutRowRequest(1, [4, 1], 90)]),
-                    TaskTemplateBuiltInKind.Todo));
         }
 
         private void ReplaceTemplate(

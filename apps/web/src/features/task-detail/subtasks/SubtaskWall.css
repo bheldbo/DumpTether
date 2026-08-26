@@ -1,101 +1,57 @@
 .subtask-wall {
   min-width: 0;
   display: grid;
-  gap: 12px;
-  padding: 16px;
-  border: 1px solid rgba(24, 33, 44, 0.12);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.72);
+  gap: 9px;
+  padding: 0 4px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--subtask-wall-accent, #fff1a8) 34%, #cbd5df);
 }
 
 .subtask-wall__header {
+  width: fit-content;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 5px 5px 0 0;
+  background: color-mix(in srgb, var(--subtask-wall-accent, #fff1a8) 34%, #ffffff);
+  color: #263544;
 }
 
 .subtask-wall__header h2 {
   min-width: 0;
   margin: 0;
-  font-size: 0.96rem;
-  line-height: 1.25;
+  font-size: 0.83rem;
+  line-height: 1.2;
 }
 
-.subtask-wall__heading-icon {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  display: grid;
+.subtask-wall__count {
+  min-width: 20px;
+  height: 20px;
+  display: inline-grid;
   place-items: center;
-  border-radius: 6px;
-  background: rgba(24, 76, 72, 0.09);
-  color: #184c48;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  font-size: 0.67rem;
+  font-weight: 780;
 }
 
 .subtask-wall__quiet-spinner {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  margin-left: auto;
   color: #52706d;
   animation: subtask-wall-spin 850ms linear infinite;
-}
-
-.subtask-wall__create {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
-  gap: 7px;
-  align-items: center;
-}
-
-.subtask-wall__create input {
-  width: 100%;
-  min-width: 0;
-  min-height: 38px;
-  padding: 8px 11px;
-  border: 1px solid #cbd6df;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.9);
-  color: #18212c;
-  font: inherit;
-}
-
-.subtask-wall__create input:focus-visible {
-  border-color: #2c716a;
-  outline: 2px solid rgba(44, 113, 106, 0.18);
-  outline-offset: 1px;
-}
-
-.subtask-wall__create-button {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid rgba(24, 76, 72, 0.24);
-  border-radius: 999px;
-  background: #edf7f4;
-  color: #184c48;
-}
-
-.subtask-wall__create-button:hover:not(:disabled) {
-  background: #dcefeb;
-}
-
-.subtask-wall__create-button:disabled {
-  cursor: default;
-  opacity: 0.45;
 }
 
 .subtask-wall__inline-error {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: -3px 0 0;
+  margin: 0;
   color: #a33d35;
   font-size: 0.76rem;
 }
@@ -103,35 +59,55 @@
 .subtask-wall__grid {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 214px));
+  gap: 9px;
+  align-items: stretch;
+  justify-content: start;
+}
+
+.subtask-wall__card,
+.subtask-wall__composer-card {
+  --subtask-note-color: var(--subtask-wall-accent, #fff3a6);
+  position: relative;
+  min-width: 0;
+  min-height: 132px;
+  border: 1px solid color-mix(in srgb, var(--subtask-note-color) 58%, #9aa9b5);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--subtask-note-color) 82%, #ffffff);
+  color: #18212c;
+  box-shadow: 0 7px 15px rgba(32, 45, 58, 0.09);
 }
 
 .subtask-wall__card {
-  --subtask-note-color: #fff3a6;
-
-  min-width: 0;
-  min-height: 118px;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   align-content: start;
   gap: 8px;
   padding: 12px;
-  border: 1px solid rgba(24, 33, 44, 0.13);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--subtask-note-color) 78%, #ffffff);
-  color: #18212c;
-  box-shadow: 0 7px 16px rgba(32, 45, 58, 0.09);
   text-align: left;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.subtask-wall__card::after,
+.subtask-wall__composer-card::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(135deg, transparent 49%, rgba(255, 255, 255, 0.72) 50%);
+  content: '';
+  pointer-events: none;
 }
 
 .subtask-wall__card:hover {
-  border-color: rgba(24, 76, 72, 0.42);
-  box-shadow: 0 9px 20px rgba(32, 45, 58, 0.13);
-  transform: translateY(-1px);
+  border-color: rgba(24, 76, 72, 0.48);
+  box-shadow: 0 10px 21px rgba(32, 45, 58, 0.13);
+  transform: translateY(-2px);
 }
 
-.subtask-wall__card:focus-visible {
+.subtask-wall__card:focus-visible,
+.subtask-wall__add-card:focus-visible {
   outline: 3px solid rgba(24, 76, 72, 0.28);
   outline-offset: 2px;
 }
@@ -141,7 +117,7 @@
   display: -webkit-box;
   overflow: hidden;
   font-size: 0.92rem;
-  font-weight: 760;
+  font-weight: 780;
   line-height: 1.25;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -161,6 +137,17 @@
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.subtask-wall__latest {
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgba(24, 33, 44, 0.72);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .subtask-wall__card-meta {
@@ -183,13 +170,77 @@
   background: rgba(255, 255, 255, 0.5);
 }
 
+.subtask-wall__add-card {
+  width: 48px;
+  height: 48px;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(24, 76, 72, 0.17);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--subtask-wall-accent, #fff1a8) 16%, rgba(255, 255, 255, 0.82));
+  color: #184c48;
+  box-shadow: 0 10px 22px rgba(32, 45, 58, 0.09);
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+
+.subtask-wall__add-card:hover {
+  background: color-mix(in srgb, var(--subtask-wall-accent, #fff1a8) 30%, #ffffff);
+  transform: translateY(-1px);
+}
+
+.subtask-wall__composer-card {
+  width: min(214px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 7px;
+  align-items: start;
+  padding: 12px;
+}
+
+.subtask-wall__composer-card input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 2px 7px;
+  border: 0;
+  border-bottom: 2px solid rgba(24, 76, 72, 0.28);
+  border-radius: 0;
+  background: transparent;
+  color: #18212c;
+  font: inherit;
+  font-weight: 740;
+}
+
+.subtask-wall__composer-card input:focus-visible {
+  border-bottom-color: #184c48;
+  outline: 0;
+}
+
+.subtask-wall__composer-card button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(24, 76, 72, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  color: #184c48;
+}
+
+.subtask-wall__composer-card button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .subtask-wall__state {
-  min-height: 90px;
+  min-height: 72px;
   display: grid;
   place-items: center;
   align-content: center;
   gap: 8px;
-  padding: 18px;
+  padding: 14px;
   border: 1px dashed #c7d2dc;
   border-radius: 6px;
   color: #637383;
@@ -201,9 +252,7 @@
   font-size: 0.82rem;
 }
 
-.subtask-wall__state--empty {
-  min-height: 78px;
-}
+.subtask-wall__state--empty { min-height: 64px; }
 
 .subtask-wall__state--error {
   border-color: rgba(175, 62, 52, 0.28);
@@ -232,23 +281,17 @@
   animation: subtask-wall-spin 850ms linear infinite;
 }
 
-@keyframes subtask-wall-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+@keyframes subtask-wall-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 620px) {
-  .subtask-wall {
-    gap: 10px;
-    padding: 12px;
-  }
+  .subtask-wall { padding-inline: 0; }
+  .subtask-wall__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .subtask-wall__card,
+  .subtask-wall__composer-card { min-height: 116px; }
+  .subtask-wall__composer-card { width: 100%; }
+}
 
-  .subtask-wall__grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .subtask-wall__card {
-    min-height: 104px;
-  }
+@media (max-width: 410px) {
+  .subtask-wall__grid { grid-template-columns: minmax(0, 1fr); }
+  .subtask-wall__add-card { justify-self: end; }
 }
