@@ -93,6 +93,46 @@ public sealed class TaskItemsApiTests
     }
 
     [Fact]
+    public async Task Subtasks_PreviewOnParentAndDeletePermanently()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var client = factory.CreateClient();
+        var parent = await CreateTaskItemAsync(client, "Parent with notes");
+        var childIds = new List<Guid>();
+
+        for (var index = 1; index <= 4; index++)
+        {
+            var createResponse = await client.PostAsJsonAsync(
+                $"/api/tasks/{parent.Id}/subtasks",
+                new CreateTaskItemRequest($"Child {index}"));
+            createResponse.EnsureSuccessStatusCode();
+            childIds.Add((await createResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!.Id);
+        }
+
+        var archiveResponse = await client.PostAsync(
+            $"/api/tasks/{childIds[0]}/archive",
+            content: null);
+        Assert.Equal(HttpStatusCode.BadRequest, archiveResponse.StatusCode);
+        var boardTasks = (await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>("/api/tasks"))!;
+        var parentSummary = Assert.Single(boardTasks, task => task.Id == parent.Id);
+        Assert.Equal(4, parentSummary.SubtaskCount);
+        Assert.Equal(3, parentSummary.SubtaskPreviews!.Count);
+
+        var deleteResponse = await client.DeleteAsync(
+            $"/api/tasks/{parent.Id}/subtasks/{childIds[0]}");
+        deleteResponse.EnsureSuccessStatusCode();
+        var updatedParent = (await deleteResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+
+        Assert.Equal(3, updatedParent.SubtaskCount);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync($"/api/tasks/{childIds[0]}")).StatusCode);
+        Assert.Contains(updatedParent.TimelineEntries, entry =>
+            entry.Summary == "Subtask deleted permanently" && entry.Details == "Child 1");
+        var remaining = (await client.GetFromJsonAsync<List<TaskItemSummaryResponse>>(
+            $"/api/tasks/{parent.Id}/subtasks"))!;
+        Assert.Equal(3, remaining.Count);
+    }
+    [Fact]
     public async Task Subtasks_RejectNestedChildren()
     {
         using var factory = new DumpTetherApiFactory();
@@ -461,7 +501,9 @@ public sealed class TaskItemsApiTests
             new { taskItemIds = new[] { parent.Id } });
         Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
 
-        await PostArchiveAsync(client, child.Id);
+        var childDeleted = await client.DeleteAsync(
+            $"/api/tasks/{parent.Id}/subtasks/{child.Id}");
+        childDeleted.EnsureSuccessStatusCode();
         var deleted = await client.PostAsJsonAsync(
             "/api/tasks/permanent-delete",
             new { taskItemIds = new[] { parent.Id } });
@@ -469,7 +511,7 @@ public sealed class TaskItemsApiTests
         var result = await deleted.Content.ReadFromJsonAsync<TaskItemBatchResponse>();
 
         Assert.NotNull(result);
-        Assert.Equal(2, result.Count);
+        Assert.Equal(1, result.Count);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/tasks/{parent.Id}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/tasks/{child.Id}")).StatusCode);
     }

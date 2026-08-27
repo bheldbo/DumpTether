@@ -29,6 +29,7 @@ import {
 import { withDefaultFieldValues } from '../../templateFieldUtils';
 import { TimelinePanel } from '../timeline/TimelinePanel';
 import { SubtaskWall } from './subtasks/SubtaskWall';
+import { DeleteSubtaskDialog } from './TaskDialogs';
 import { TaskShareStrip } from '../sharing/ShareDialog';
 import { CategoryMultiSelect } from './CategoryMultiSelect';
 import type {
@@ -46,12 +47,14 @@ import type {
 interface TaskDetailProps {
   canCreateSubtasks: boolean;
   canManageSharing: boolean;
+  canDeleteSubtask: boolean;
   colorOptions: string[];
   onAddTimelineEntry: (note: string, fieldValues?: FieldValueMap) => Promise<void>;
   onCreateSubtask: (requestBody: CreateTaskItemRequest) => Promise<TaskItemDetailResponse>;
   onListSubtasks: () => Promise<TaskItemSummaryResponse[]>;
   onOpenSubtask: (taskItem: TaskItemSummaryResponse) => void;
   onArchive: () => Promise<void>;
+  onDeleteSubtask: () => Promise<void>;
   onClose: () => Promise<void>;
   onRequestSync: () => void;
   onReopen: (note?: string) => Promise<void>;
@@ -79,6 +82,9 @@ interface TaskDetailProps {
   pendingDeletedNoteIds: string[];
   projects: ProjectResponse[];
   statusOptions: string[];
+  statusColors: Record<string, string>;
+  workspaceName: string;
+  parentTaskTitle: string | null;
   t: Translate;
   templateCanBeImported: boolean;
   taskItem: TaskItemDetailResponse;
@@ -87,12 +93,14 @@ interface TaskDetailProps {
 export function TaskDetail({
   canCreateSubtasks,
   canManageSharing,
+  canDeleteSubtask,
   colorOptions,
   onAddTimelineEntry,
   onCreateSubtask,
   onListSubtasks,
   onOpenSubtask,
   onArchive,
+  onDeleteSubtask,
   onClose,
   onRequestSync,
   onReopen,
@@ -109,12 +117,16 @@ export function TaskDetail({
   pendingDeletedNoteIds,
   projects,
   statusOptions,
+  statusColors,
+  workspaceName,
+  parentTaskTitle,
   t,
   templateCanBeImported,
   taskItem,
 }: TaskDetailProps) {
   const closeLabel = taskItem.parentTaskItemId ? t('backToParent') : t('backToWall');
   const [reopenNote, setReopenNote] = useState('');
+  const [deleteDialogIsOpen, setDeleteDialogIsOpen] = useState(false);
   const [fieldDraft, setFieldDraft] = useState<FieldValueMap>({});
   const [isSavingFields, setIsSavingFields] = useState(false);
   const [subtasks, setSubtasks] = useState<TaskItemSummaryResponse[]>([]);
@@ -206,6 +218,15 @@ export function TaskDetail({
 
   return (
     <section className="task-detail" aria-label="Task detail">
+      {taskItem.parentTaskItemId ? (
+        <nav className="task-detail-breadcrumb" aria-label={t('subtaskOf')}>
+          <span>{workspaceName}</span>
+          <span aria-hidden="true">›</span>
+          <span>{parentTaskTitle ?? t('subtaskOf')}</span>
+          <span aria-hidden="true">›</span>
+          <strong>{taskItem.title}</strong>
+        </nav>
+      ) : null}
       <div
         className="detail-header task-detail-header"
         style={getTaskCardStyle(taskItem.color)}
@@ -223,6 +244,7 @@ export function TaskDetail({
           onUpdateTaskItem={onUpdateTaskItem}
           projects={projects}
           statusOptions={statusOptions}
+          statusColors={statusColors}
           t={t}
           taskItem={taskItem}
         />
@@ -243,7 +265,18 @@ export function TaskDetail({
               t={t}
             />
           ) : null}
-          {taskItem.archivedAt ? (
+          {taskItem.parentTaskItemId ? (
+            canDeleteSubtask ? (
+              <button
+                className="danger-action"
+                onClick={() => setDeleteDialogIsOpen(true)}
+                type="button"
+              >
+                <Icon name="trash" />
+                <span>{t('deleteSubtask')}</span>
+              </button>
+            ) : null
+          ) : taskItem.archivedAt ? (
             <form
               className="reopen-form"
               onSubmit={(event) => {
@@ -367,6 +400,17 @@ export function TaskDetail({
         </section>
       ) : null}
 
+      {deleteDialogIsOpen ? (
+        <DeleteSubtaskDialog
+          onClose={() => setDeleteDialogIsOpen(false)}
+          onDelete={async () => {
+            await onDeleteSubtask();
+            setDeleteDialogIsOpen(false);
+          }}
+          t={t}
+          taskTitle={taskItem.title}
+        />
+      ) : null}
       <TimelinePanel
         entryFields={entryFields}
         entryLayoutRows={taskItem.template?.layout.entry ?? []}
@@ -388,12 +432,14 @@ function TaskHeaderEditor({
   onUpdateTaskItem,
   projects,
   statusOptions,
+  statusColors,
   t,
   taskItem,
 }: {
   onUpdateTaskItem: (requestBody: UpdateTaskItemRequest) => Promise<void>;
   projects: ProjectResponse[];
   statusOptions: string[];
+  statusColors: Record<string, string>;
   t: Translate;
   taskItem: TaskItemDetailResponse;
 }) {
@@ -546,7 +592,13 @@ function TaskHeaderEditor({
           <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
             {t('lastUpdated')}: {formatRelativeDate(taskItem.lastTouchedAt)}
           </span>
-          <span>{t('status')}: {taskItem.status ?? t('noStatus')}</span>
+          <span
+            style={getContextChipStyle(
+              taskItem.status ? statusColors[taskItem.status] ?? null : null,
+            )}
+          >
+            {t('status')}: {taskItem.status ?? t('noStatus')}
+          </span>
           {splitTaskCategories(taskItem.category).length > 0 ? (
             splitTaskCategories(taskItem.category).map((categoryName) => {
               const project = projects.find((candidate) =>
@@ -625,6 +677,7 @@ function TaskHeaderEditor({
         ) : (
           <button
             className="task-meta-chip"
+            style={getContextChipStyle(taskItem.status ? statusColors[taskItem.status] ?? null : null)}
             onClick={(event) => {
               event.stopPropagation();
               setEditingField('status');

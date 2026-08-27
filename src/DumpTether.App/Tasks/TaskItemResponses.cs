@@ -3,6 +3,12 @@ using DumpTether.Domain;
 
 namespace DumpTether.App.Tasks;
 
+public sealed record TaskSubtaskPreviewResponse(
+    Guid Id,
+    string Title,
+    string? Status,
+    string? Color);
+
 public sealed record TaskItemSummaryResponse(
     Guid Id,
     Guid WorkspaceId,
@@ -23,7 +29,8 @@ public sealed record TaskItemSummaryResponse(
     TaskTimelineEntryResponse? LatestTimelineEntry,
     Guid? ParentTaskItemId = null,
     int SubtaskCount = 0,
-    string? BuiltInTemplateKind = null);
+    string? BuiltInTemplateKind = null,
+    IReadOnlyList<TaskSubtaskPreviewResponse>? SubtaskPreviews = null);
 
 public sealed record TaskItemDetailResponse(
     Guid Id,
@@ -47,7 +54,8 @@ public sealed record TaskItemDetailResponse(
     IReadOnlyList<TaskTimelineEntryResponse> TimelineEntries,
     Guid? ParentTaskItemId = null,
     int SubtaskCount = 0,
-    string? BuiltInTemplateKind = null);
+    string? BuiltInTemplateKind = null,
+    IReadOnlyList<TaskSubtaskPreviewResponse>? SubtaskPreviews = null);
 
 public sealed record TaskItemViewCountResponse(
     Guid ViewId,

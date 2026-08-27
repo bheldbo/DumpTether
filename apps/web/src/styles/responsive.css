@@ -1,4 +1,4 @@
-﻿@media (max-width: 1100px) {
+@media (max-width: 1100px) {
   .app-shell,
   .app-shell[data-sidebar-collapsed="true"] {
     grid-template-columns: 1fr;
@@ -906,5 +906,25 @@
 @media (prefers-reduced-motion: reduce) {
   .sidebar {
     animation: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .task-card-subtask-note {
+    max-width: 96px;
+  }
+
+  .task-card-subtask-notes {
+    gap: 4px;
+  }
+
+  .task-detail-breadcrumb {
+    margin-inline: 4px;
+    padding-inline: 8px;
+  }
+
+  .task-detail-breadcrumb span,
+  .task-detail-breadcrumb strong {
+    max-width: 30vw;
   }
 }

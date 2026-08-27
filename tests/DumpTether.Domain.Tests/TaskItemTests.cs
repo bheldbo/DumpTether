@@ -104,6 +104,23 @@ public sealed class TaskItemTests
     }
 
     [Fact]
+    public void RecordSubtaskDeleted_PreservesEvidenceOnParent()
+    {
+        var workspaceId = Guid.NewGuid();
+        var createdAt = new DateTimeOffset(2026, 8, 26, 10, 0, 0, TimeSpan.Zero);
+        var parent = TaskItem.Create(workspaceId, null, "Parent", createdAt);
+        var child = TaskItem.Create(workspaceId, null, "Disposable child", createdAt);
+        child.MakeSubtaskOf(parent, createdAt.AddMinutes(1));
+
+        parent.RecordSubtaskDeleted(child, createdAt.AddMinutes(2));
+
+        var evidence = parent.TimelineEntries.Last();
+        Assert.Equal(TaskTimelineEntryKind.ParentChanged, evidence.Kind);
+        Assert.Equal("Subtask deleted permanently", evidence.Summary);
+        Assert.Equal("Disposable child", evidence.Details);
+        Assert.Equal(createdAt.AddMinutes(2), parent.LastTouchedAt);
+    }
+    [Fact]
     public void MakeSubtaskOf_DifferentWorkspace_RejectsRelationship()
     {
         var now = DateTimeOffset.UtcNow;

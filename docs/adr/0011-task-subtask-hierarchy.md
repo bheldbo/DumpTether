@@ -15,13 +15,17 @@ and behavioral weight to the common case.
 - A `TaskItem` may reference one parent `TaskItem` in the same board.
 - Hierarchy is intentionally one level deep. A subtask cannot contain another
   subtask.
-- Normal board queries return root tasks only. Subtasks are loaded when their
-  parent is opened and are displayed as a compact task wall inside the detail
-  view.
+- Normal board queries return root tasks only. Root summaries include a bounded
+  set of compact subtask previews and a total active-child count. The full child
+  list is loaded when its parent is opened and displayed as a compact task wall
+  inside the detail view.
 - A subtask remains a complete `TaskItem`: it uses the same fields, notes,
-  timeline, archive rules, sharing checks and sync model as any other task.
+  sharing checks and sync model as any other task. Its lifecycle is intentionally
+  simpler: status (for example `Done`) expresses completion and an owner-confirmed
+  Delete action permanently removes the subtask instead of archiving it.
 - Creating a subtask touches its parent and leaves timeline evidence on both
-  records.
+  records. Permanently deleting a subtask leaves deletion evidence on the parent
+  before removing the child, its fields, notes, history and shares.
 - Sync transports the parent ID and processes parents before children.
 - Copying a selected parent automatically copies every readable direct child
   and remaps the copied parent ID. Copying a child by itself creates a root task

@@ -473,6 +473,45 @@ internal sealed class EfTaskItemRepository : ITaskItemRepository
         return taskIds.Count;
     }
 
+    public async Task<bool> DeleteSubtaskAsync(
+        Guid workspaceId,
+        Guid parentTaskItemId,
+        Guid subtaskId,
+        CancellationToken cancellationToken)
+    {
+        var exists = await _dbContext.TaskItems.AnyAsync(taskItem =>
+            taskItem.Id == subtaskId &&
+            taskItem.WorkspaceId == workspaceId &&
+            taskItem.ParentTaskItemId == parentTaskItemId,
+            cancellationToken);
+        if (!exists)
+        {
+            return false;
+        }
+
+        var timelineEntryIds = await _dbContext.TaskTimelineEntries
+            .Where(entry => entry.TaskItemId == subtaskId)
+            .Select(entry => entry.Id)
+            .ToListAsync(cancellationToken);
+
+        _dbContext.FieldValues.RemoveRange(await _dbContext.FieldValues
+            .Where(value => value.TaskItemId == subtaskId)
+            .ToListAsync(cancellationToken));
+        _dbContext.TaskTimelineEntryFieldValues.RemoveRange(
+            await _dbContext.TaskTimelineEntryFieldValues
+                .Where(value => timelineEntryIds.Contains(value.TaskTimelineEntryId))
+                .ToListAsync(cancellationToken));
+        _dbContext.TaskTimelineEntries.RemoveRange(await _dbContext.TaskTimelineEntries
+            .Where(entry => entry.TaskItemId == subtaskId)
+            .ToListAsync(cancellationToken));
+        _dbContext.TaskItemShares.RemoveRange(await _dbContext.TaskItemShares
+            .Where(share => share.TaskItemId == subtaskId)
+            .ToListAsync(cancellationToken));
+        _dbContext.TaskItems.Remove(await _dbContext.TaskItems.SingleAsync(
+            taskItem => taskItem.Id == subtaskId,
+            cancellationToken));
+        return true;
+    }
     public async Task<IReadOnlyList<TaskItem>> ListByShareTokenHashAsync(
         string tokenHash,
         bool trackChanges,

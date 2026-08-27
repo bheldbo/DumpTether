@@ -127,3 +127,56 @@ export function PermanentDeleteDialog({
     </ModalFrame>
   );
 }
+
+export function DeleteSubtaskDialog({
+  onClose,
+  onDelete,
+  t,
+  taskTitle,
+}: {
+  onClose: () => void;
+  onDelete: () => Promise<void>;
+  t: Translate;
+  taskTitle: string;
+}) {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  return (
+    <ModalFrame onClose={onClose}>
+      <section aria-labelledby="delete-subtask-title" aria-modal="true" className="delete-workspace-dialog" role="dialog">
+        <div className="dialog-header">
+          <div>
+            <p className="detail-kicker">{t('deleteSubtask')}</p>
+            <h2 id="delete-subtask-title">{taskTitle}</h2>
+          </div>
+          <button className="icon-button" disabled={isDeleting} onClick={onClose} type="button">
+            <Icon name="close" />
+            <span className="sr-only">{t('close')}</span>
+          </button>
+        </div>
+        <p>{t('deleteSubtaskWarning')}</p>
+        <div className="dialog-actions">
+          <button className="ghost-button" disabled={isDeleting} onClick={onClose} type="button">
+            {t('cancel')}
+          </button>
+          <button
+            className="danger-action"
+            disabled={isDeleting}
+            onClick={async () => {
+              setIsDeleting(true);
+              try {
+                await onDelete();
+              } finally {
+                setIsDeleting(false);
+              }
+            }}
+            type="button"
+          >
+            <Icon name="trash" />
+            {t('deleteSubtask')}
+          </button>
+        </div>
+      </section>
+    </ModalFrame>
+  );
+}

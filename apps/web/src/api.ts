@@ -466,6 +466,17 @@ export function createSubtask(
   }, options);
 }
 
+export function deleteSubtask(
+  parentTaskItemId: string,
+  subtaskId: string,
+  options: ApiRequestOptions = {},
+): Promise<TaskItemDetailResponse> {
+  return request<TaskItemDetailResponse>(
+    `/api/tasks/${parentTaskItemId}/subtasks/${subtaskId}`,
+    { method: 'DELETE' },
+    options,
+  );
+}
 export function createTaskItem(
   requestBody: CreateTaskItemRequest,
   options: ApiRequestOptions = {},

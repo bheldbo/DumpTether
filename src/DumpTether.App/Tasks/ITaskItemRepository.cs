@@ -80,6 +80,11 @@ public interface ITaskItemRepository
         IReadOnlyList<Guid> ids,
         CancellationToken cancellationToken);
 
+    Task<bool> DeleteSubtaskAsync(
+        Guid workspaceId,
+        Guid parentTaskItemId,
+        Guid subtaskId,
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<TaskItem>> ListByShareTokenHashAsync(
         string tokenHash,
         bool trackChanges,

@@ -181,6 +181,34 @@ public sealed class TaskItemsController : ControllerBase
     }
 
     [EnableRateLimiting("task-writes")]
+    [HttpDelete("{parentId:guid}/subtasks/{subtaskId:guid}")]
+    public async Task<ActionResult<TaskItemDetailResponse>> DeleteSubtask(
+        Guid parentId,
+        Guid subtaskId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _taskItemService.DeleteSubtaskAsync(
+                parentId,
+                subtaskId,
+                cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+        catch (ValidationException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
+    }
+    [EnableRateLimiting("task-writes")]
     [HttpPost("{id:guid}/template/import")]
     public async Task<ActionResult<TaskTemplateImportResponse>> ImportTemplate(
         Guid id,

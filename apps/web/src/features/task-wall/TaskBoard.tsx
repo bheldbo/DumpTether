@@ -101,6 +101,7 @@ export function TaskBoard({
   onCreateSubtask,
   onCreateWorkspaceInvitation,
   onDeleteProject,
+  onDeleteSubtask,
   onDeleteTimelineEntry,
   onImportTaskTemplate,
   onListSubtasks,
@@ -127,6 +128,7 @@ export function TaskBoard({
   selectedTask,
   selectedTaskId,
   statusOptions,
+  statusColors,
   syncRoot,
   taskItems,
   templates,
@@ -173,6 +175,7 @@ export function TaskBoard({
     requestBody: CreateWorkspaceInvitationRequest,
   ) => Promise<WorkspaceInvitationResponse>;
   onDeleteProject: (projectId: string) => Promise<void>;
+  onDeleteSubtask: (parentTaskItem: TaskItemSummaryResponse, subtaskId: string) => Promise<void>;
   onDeleteTimelineEntry: (entryId: string) => Promise<void>;
   onImportTaskTemplate: (taskItemId: string) => Promise<void>;
   onReopen: (note?: string) => Promise<void>;
@@ -212,6 +215,7 @@ export function TaskBoard({
   selectedTask: TaskItemDetailResponse | null;
   selectedTaskId: string | null;
   statusOptions: string[];
+  statusColors: Record<string, string>;
   syncRoot: SyncRootResponse | null;
   taskItems: TaskItemSummaryResponse[];
   templates: TaskTemplateDetailResponse[];
@@ -280,8 +284,10 @@ export function TaskBoard({
   );
   const [draftTaskIsOpen, setDraftTaskIsOpen] = useState(false);
   const focusedTaskItem = selectedTaskId
-    ? visibleTaskItems.find((taskItem) => taskItem.id === selectedTaskId) ??
-      (selectedTask?.id === selectedTaskId ? selectedTask : null)
+    ? selectedTask?.parentTaskItemId
+      ? visibleTaskItems.find((taskItem) => taskItem.id === selectedTask.parentTaskItemId) ?? selectedTask
+      : visibleTaskItems.find((taskItem) => taskItem.id === selectedTaskId) ??
+        (selectedTask?.id === selectedTaskId ? selectedTask : null)
     : null;
   const focusModeIsEnabled = Boolean(selectedTaskId) || draftTaskIsOpen;
   const displayedTaskItems = selectedTaskId || draftTaskIsOpen
@@ -604,7 +610,7 @@ export function TaskBoard({
 
         {selectedTaskId && !focusedTaskItem ? (
           <div className="task-card task-card-pending-detail">
-            <div className="task-card-detail">
+            <div className="task-card-detail" aria-busy={isLoadingDetail}>
               <div className="task-detail-loading-indicator">
                 <BoardLoadingState compact t={t} />
               </div>
@@ -613,7 +619,8 @@ export function TaskBoard({
         ) : null}
 
         {displayedTaskItems.map((taskItem) => {
-          const isExpanded = selectedTaskId === taskItem.id;
+          const isExpanded = selectedTaskId === taskItem.id ||
+            selectedTask?.parentTaskItemId === taskItem.id;
           const isSelectedForEdit = selectedTaskIds.includes(taskItem.id);
           const taskCategoryNames = splitTaskCategories(taskItem.category);
           const sourceWorkspace = workspaceIsSystemAllTasks
@@ -728,9 +735,46 @@ export function TaskBoard({
                     )}
                   </span>
                 </span>
+                {taskItem.subtaskCount > 0 ? (
+                  <span className="task-card-subtask-notes" aria-label={`${taskItem.subtaskCount} ${t('subtaskCount')}`}>
+                    {(taskItem.subtaskPreviews ?? []).map((subtask) => (
+                      <span
+                        className="task-card-subtask-note"
+                        key={subtask.id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelectTaskItem(subtask.id, taskItem.workspaceId);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' && event.key !== ' ') return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onSelectTaskItem(subtask.id, taskItem.workspaceId);
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        role="button"
+                        style={getTaskCardStyle(subtask.color)}
+                        tabIndex={0}
+                        title={subtask.status ? `${subtask.title} · ${subtask.status}` : subtask.title}
+                      >
+                        {subtask.title}
+                      </span>
+                    ))}
+                    {taskItem.subtaskCount > (taskItem.subtaskPreviews?.length ?? 0) ? (
+                      <span className="task-card-subtask-overflow">
+                        … +{taskItem.subtaskCount - (taskItem.subtaskPreviews?.length ?? 0)}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
                 <span className="task-card-meta">
                   {taskItem.status ? (
-                    <TaskMetaChip icon="status" label={t('status')} value={taskItem.status} />
+                    <TaskMetaChip
+                      icon="status"
+                      label={t('status')}
+                      style={getContextChipStyle(statusColors[taskItem.status] ?? null)}
+                      value={taskItem.status}
+                    />
                   ) : null}
                   <span title={`${t('lastUpdated')}: ${formatRelativeDate(taskItem.lastTouchedAt)}`}>
                     <Icon name="clock" />
@@ -776,8 +820,11 @@ export function TaskBoard({
               </div>
 
               {isExpanded ? (
-                <div className="task-card-detail">
-                  {isLoadingDetail || !selectedTask ? (
+                <div className="task-card-detail" aria-busy={isLoadingDetail}>
+                  {!selectedTask || (
+                    selectedTask.id !== taskItem.id &&
+                    selectedTask.parentTaskItemId !== taskItem.id
+                  ) ? (
                     <div className="task-detail-loading-indicator">
                       <BoardLoadingState compact t={t} />
                     </div>
@@ -788,6 +835,10 @@ export function TaskBoard({
                       onListSubtasks={() => onListSubtasks(selectedTask)}
                       onOpenSubtask={(subtask) => onSelectTaskItem(subtask.id, subtask.workspaceId)}
                       onArchive={onArchive}
+                      onDeleteSubtask={() => onDeleteSubtask(
+                        taskItems.find((candidate) => candidate.id === selectedTask.parentTaskItemId) ?? selectedTask,
+                        selectedTask.id,
+                      )}
                       onClose={closeFocusedTask}
                       onReopen={onReopen}
                       onQueueDeleteTimelineEntry={(entryId) =>
@@ -810,6 +861,11 @@ export function TaskBoard({
                       colorOptions={colorOptions}
                       canCreateSubtasks={canCreateSubtasks}
                       canManageSharing={canManageSharing}
+                      canDeleteSubtask={Boolean(
+                        focusedTaskWorkspace &&
+                        (!focusedTaskWorkspace.role || isOwnerRole(focusedTaskWorkspace.role)) &&
+                        !workspaceIsCloudImported,
+                      )}
                       templateCanBeImported={Boolean(
                         selectedTask.taskTemplateId &&
                         selectedTask.template &&
@@ -819,6 +875,9 @@ export function TaskBoard({
                       pendingDeletedNoteIds={pendingDeletedNoteIds}
                       projects={projects}
                       statusOptions={statusOptions}
+                      statusColors={statusColors}
+                      workspaceName={focusedTaskWorkspace?.name ?? workspace?.name ?? t('board')}
+                      parentTaskTitle={taskItems.find((candidate) => candidate.id === selectedTask.parentTaskItemId)?.title ?? null}
                       t={t}
                       taskItem={selectedTask}
                     />
