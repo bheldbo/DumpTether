@@ -9,6 +9,7 @@ import type {
   ProjectResponse,
   TaskItemDetailResponse,
   TaskTemplateDetailResponse,
+  WorkspaceResponse,
 } from '../../types';
 import { type CreateTaskItemOptions } from './taskWallTypes';
 
@@ -19,6 +20,7 @@ interface DraftTaskCardProps {
     options?: CreateTaskItemOptions,
   ) => Promise<TaskItemDetailResponse | null>;
   onCreated: (taskItem: TaskItemDetailResponse) => void;
+  onWorkspaceChange?: (workspaceId: string) => void;
   projects: ProjectResponse[];
   selectedProjectId: string;
   t: Translate;
@@ -26,12 +28,14 @@ interface DraftTaskCardProps {
   workspaceColor: string | null;
   workspaceId: string;
   workspaceName: string;
+  workspaceOptions: WorkspaceResponse[];
 }
 
 export function DraftTaskCard({
   onCancel,
   onCreateTaskItem,
   onCreated,
+  onWorkspaceChange,
   projects,
   selectedProjectId,
   t,
@@ -39,6 +43,7 @@ export function DraftTaskCard({
   workspaceColor,
   workspaceId,
   workspaceName,
+  workspaceOptions,
 }: DraftTaskCardProps) {
   const [title, setTitle] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -60,7 +65,7 @@ export function DraftTaskCard({
 
   const submitDraft = async () => {
     const trimmedTitle = title.trim();
-    if (!trimmedTitle || isSubmitting) {
+    if (!trimmedTitle || !workspaceId || isSubmitting) {
       inputRef.current?.focus();
       return;
     }
@@ -133,6 +138,25 @@ export function DraftTaskCard({
                 />
               </div>
               <div className="task-header-fields task-header-fields-edit draft-task-controls">
+                {workspaceOptions.length > 0 ? (
+                  <label className="task-meta-chip draft-template-chip">
+                    <Icon name="panel" />
+                    <span className="sr-only">{t('chooseBoard')}</span>
+                    <select
+                      aria-label={t('chooseBoard')}
+                      onChange={(event) => onWorkspaceChange?.(event.target.value)}
+                      required
+                      value={workspaceId}
+                    >
+                      <option value="">{t('chooseBoard')}</option>
+                      {workspaceOptions.map((workspaceOption) => (
+                        <option key={workspaceOption.id} value={workspaceOption.id}>
+                          {workspaceOption.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 {selectedProject ? (
                   <span className="task-meta-chip draft-meta-chip" style={getContextChipStyle(selectedProject.color)}>
                     <Icon name="tag" />
@@ -166,7 +190,7 @@ export function DraftTaskCard({
             <div className="detail-actions">
               <button
                 className="secondary-action"
-                disabled={!title.trim() || isSubmitting}
+                disabled={!title.trim() || !workspaceId || isSubmitting}
                 type="submit"
               >
                 <Icon name="plus" />

@@ -184,8 +184,12 @@ export function TaskBoard({
   onRemoveWorkspaceMember: (userId: string) => Promise<void>;
   onRevokeTaskShare: (taskItemId: string, shareId: string) => Promise<void>;
   onRevokeWorkspaceInvitation: (id: string) => Promise<void>;
-  onCloseTaskItem: () => void;
-  onSelectTaskItem: (id: string, workspaceId: string) => void;
+  onCloseTaskItem: (destination?: 'default' | 'wall' | 'parent') => void;
+  onSelectTaskItem: (
+    id: string,
+    workspaceId: string,
+    returnTarget?: 'wall' | 'parent',
+  ) => void;
   onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void;
   onUpdateFieldValues: (fieldValues: FieldValueMap) => Promise<void>;
   onUpdateProject: (id: string, requestBody: UpdateProjectRequest) => Promise<void>;
@@ -245,6 +249,13 @@ export function TaskBoard({
     Boolean(effectiveWorkspaceRole && isReadOnlyRole(effectiveWorkspaceRole));
   const hasWorkspace = Boolean(workspace?.id);
   const workspaceIsSystemAllTasks = workspace ? isSystemAllTasksWorkspace(workspace) : false;
+  const creatableWorkspaces = useMemo(
+    () => workspaces.filter((candidate) =>
+      !isSystemAllTasksWorkspace(candidate) &&
+      !isTaskShareWorkspace(candidate) &&
+      (!candidate.role || !isReadOnlyRole(candidate.role))),
+    [workspaces],
+  );
   const canManageSharing = !workspaceIsCloudImported &&
     currentUserOwnsWorkspace &&
     !workspaceIsTaskShareOnly &&
@@ -412,7 +423,7 @@ export function TaskBoard({
 
   useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
 
-  const closeFocusedTask = useCallback(async () => {
+  const closeFocusedTask = useCallback(async (destination: 'default' | 'wall' = 'default') => {
     if (!onBeforeTaskNavigation()) {
       return;
     }
@@ -425,10 +436,52 @@ export function TaskBoard({
       await onDeleteTimelineEntry(entryId);
     }
 
-    onCloseTaskItem();
+    onCloseTaskItem(destination);
   }, [onBeforeTaskNavigation, onCloseTaskItem, onDeleteTimelineEntry, pendingDeletedNoteIds]);
 
+  const openParentTask = useCallback(async () => {
+    if (!selectedTask?.parentTaskItemId || !onBeforeTaskNavigation()) {
+      return;
+    }
+
+    const idsToDelete = pendingDeletedNoteIds;
+    setPendingDeletedNoteIds([]);
+    for (const entryId of idsToDelete) {
+      await onDeleteTimelineEntry(entryId);
+    }
+
+    onCloseTaskItem('parent');
+  }, [
+    onBeforeTaskNavigation,
+    onDeleteTimelineEntry,
+    onCloseTaskItem,
+    pendingDeletedNoteIds,
+    selectedTask,
+  ]);
+
   const openCreateTask = useCallback(() => {
+    if (workspaceIsSystemAllTasks) {
+      if (creatableWorkspaces.length === 0) {
+        onShowToast(t('createBoardBeforeTasks'), 'error');
+        window.dispatchEvent(new CustomEvent('dumptether:open-board-create'));
+        return;
+      }
+
+      if (focusedTaskItem || draftTaskIsOpen) {
+        return;
+      }
+
+      setDraftTaskTarget({
+        workspaceId: '',
+        workspaceName: t('chooseBoard'),
+        workspaceColor: null,
+        projects: [],
+        selectedProjectId: '',
+      });
+      setDraftTaskIsOpen(true);
+      return;
+    }
+
     const targetWorkspace = workspace;
 
     if (!targetWorkspace?.id) {
@@ -455,6 +508,7 @@ export function TaskBoard({
     setDraftTaskIsOpen(true);
   }, [
     canCreateTask,
+    creatableWorkspaces,
     draftTaskIsOpen,
     focusedTaskItem,
     onShowToast,
@@ -462,6 +516,7 @@ export function TaskBoard({
     selectedProjectIds,
     t,
     workspace,
+    workspaceIsSystemAllTasks,
   ]);
 
   const openCloudSync = useCallback((workspaceId: string | null | undefined) => {
@@ -596,8 +651,21 @@ export function TaskBoard({
             onCreated={(createdTask) => {
               setDraftTaskIsOpen(false);
               setDraftTaskTarget(null);
-              onSelectTaskItem(createdTask.id, createdTask.workspaceId);
+              onSelectTaskItem(createdTask.id, createdTask.workspaceId, 'wall');
             }}
+            onWorkspaceChange={workspaceIsSystemAllTasks
+              ? (workspaceId) => {
+                  const targetWorkspace = creatableWorkspaces.find((candidate) =>
+                    candidate.id === workspaceId) ?? null;
+                  setDraftTaskTarget({
+                    workspaceId: targetWorkspace?.id ?? '',
+                    workspaceName: targetWorkspace?.name ?? '',
+                    workspaceColor: targetWorkspace?.color ?? null,
+                    projects: [],
+                    selectedProjectId: '',
+                  });
+                }
+              : undefined}
             projects={draftTaskTarget?.projects ?? projects}
             selectedProjectId={draftTaskTarget?.selectedProjectId ?? selectedProjectIds[0] ?? ''}
             t={t}
@@ -605,6 +673,7 @@ export function TaskBoard({
             workspaceColor={draftTaskTarget?.workspaceColor ?? workspace?.color ?? null}
             workspaceId={draftTaskTarget?.workspaceId ?? workspace?.id ?? ''}
             workspaceName={draftTaskTarget?.workspaceName ?? workspace?.name ?? t('board')}
+            workspaceOptions={workspaceIsSystemAllTasks ? creatableWorkspaces : []}
           />
         ) : null}
 
@@ -669,7 +738,7 @@ export function TaskBoard({
                   if (isExpanded) {
                     void closeFocusedTask();
                   } else {
-                    onSelectTaskItem(taskItem.id, taskItem.workspaceId);
+                    onSelectTaskItem(taskItem.id, taskItem.workspaceId, 'wall');
                   }
                 }}
                 onPointerCancel={clearLongPressTimer}
@@ -687,7 +756,7 @@ export function TaskBoard({
                   } else if (isExpanded) {
                     void closeFocusedTask();
                   } else {
-                    onSelectTaskItem(taskItem.id, taskItem.workspaceId);
+                    onSelectTaskItem(taskItem.id, taskItem.workspaceId, 'wall');
                   }
                 }}
                 role="button"
@@ -737,19 +806,20 @@ export function TaskBoard({
                 </span>
                 {taskItem.subtaskCount > 0 ? (
                   <span className="task-card-subtask-notes" aria-label={`${taskItem.subtaskCount} ${t('subtaskCount')}`}>
+                    <span className="task-card-subtask-heading">{t('subtasks')}</span>
                     {(taskItem.subtaskPreviews ?? []).map((subtask) => (
                       <span
                         className="task-card-subtask-note"
                         key={subtask.id}
                         onClick={(event) => {
                           event.stopPropagation();
-                          onSelectTaskItem(subtask.id, taskItem.workspaceId);
+                          onSelectTaskItem(subtask.id, taskItem.workspaceId, 'wall');
                         }}
                         onKeyDown={(event) => {
                           if (event.key !== 'Enter' && event.key !== ' ') return;
                           event.preventDefault();
                           event.stopPropagation();
-                          onSelectTaskItem(subtask.id, taskItem.workspaceId);
+                          onSelectTaskItem(subtask.id, taskItem.workspaceId, 'wall');
                         }}
                         onPointerDown={(event) => event.stopPropagation()}
                         role="button"
@@ -833,13 +903,16 @@ export function TaskBoard({
                       onAddTimelineEntry={onAddTimelineEntry}
                       onCreateSubtask={(requestBody) => onCreateSubtask(selectedTask, requestBody)}
                       onListSubtasks={() => onListSubtasks(selectedTask)}
-                      onOpenSubtask={(subtask) => onSelectTaskItem(subtask.id, subtask.workspaceId)}
+                      onOpenSubtask={(subtask) =>
+                        onSelectTaskItem(subtask.id, subtask.workspaceId, 'parent')}
                       onArchive={onArchive}
                       onDeleteSubtask={() => onDeleteSubtask(
                         taskItems.find((candidate) => candidate.id === selectedTask.parentTaskItemId) ?? selectedTask,
                         selectedTask.id,
                       )}
                       onClose={closeFocusedTask}
+                      onOpenBoard={() => closeFocusedTask('wall')}
+                      onOpenParent={openParentTask}
                       onReopen={onReopen}
                       onQueueDeleteTimelineEntry={(entryId) =>
                         setPendingDeletedNoteIds((currentIds) =>
@@ -860,7 +933,7 @@ export function TaskBoard({
                       onRequestSync={() => openCloudSync(selectedTask.workspaceId)}
                       colorOptions={colorOptions}
                       canCreateSubtasks={canCreateSubtasks}
-                      canManageSharing={canManageSharing}
+                      canManageSharing={canManageSharing && !selectedTask.parentTaskItemId}
                       canDeleteSubtask={Boolean(
                         focusedTaskWorkspace &&
                         (!focusedTaskWorkspace.role || isOwnerRole(focusedTaskWorkspace.role)) &&
@@ -926,7 +999,24 @@ export function TaskBoard({
             editModeIsEnabled ? closeEditMode() : setEditModeIsEnabled(true)}
           selectedTaskCount={selectedTaskIds.length}
           canManageSharing={canManageSharing}
-          canPermanentlyDelete={currentUserOwnsWorkspace && !workspaceIsTaskShareOnly}
+          canPermanentlyDelete={selectedTaskIds.length === 0
+            ? workspaceIsSystemAllTasks
+              ? workspaces.some((candidate) =>
+                  !isSystemAllTasksWorkspace(candidate) &&
+                  !isTaskShareWorkspace(candidate) &&
+                  (!candidate.role || isOwnerRole(candidate.role)))
+              : currentUserOwnsWorkspace && !workspaceIsTaskShareOnly
+            : selectedTaskIds.every((taskItemId) => {
+                const selectedItem = taskItems.find((taskItem) => taskItem.id === taskItemId);
+                const selectedItemWorkspace = selectedItem
+                  ? workspaces.find((candidate) => candidate.id === selectedItem.workspaceId)
+                  : null;
+                return Boolean(
+                  selectedItemWorkspace &&
+                  !isTaskShareWorkspace(selectedItemWorkspace) &&
+                  (!selectedItemWorkspace.role || isOwnerRole(selectedItemWorkspace.role)),
+                );
+              })}
           projects={projects}
           statusOptions={statusOptions}
           t={t}

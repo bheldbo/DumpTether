@@ -19,8 +19,10 @@ and behavioral weight to the common case.
   set of compact subtask previews and a total active-child count. The full child
   list is loaded when its parent is opened and displayed as a compact task wall
   inside the detail view.
-- A subtask remains a complete `TaskItem`: it uses the same fields, notes,
-  sharing checks and sync model as any other task. Its lifecycle is intentionally
+- A subtask remains a complete `TaskItem`: it uses the same fields, notes and
+  sync model as any other task. It cannot be shared directly. Board access or a
+  share on its root parent task governs access to the subtask, so sharing remains
+  a board/root-task concept instead of adding another hierarchy layer. Its lifecycle is intentionally
   simpler: status (for example `Done`) expresses completion and an owner-confirmed
   Delete action permanently removes the subtask instead of archiving it.
 - Creating a subtask touches its parent and leaves timeline evidence on both
@@ -36,6 +38,11 @@ and behavioral weight to the common case.
 - Parent assignment is immutable after creation. Moving or re-parenting tasks
   is deferred until a user workflow justifies the added conflict and timeline
   rules.
+- Every focused task shows its hierarchy path. Root tasks show `Board → Task`;
+  subtasks show `Board → Parent task → Subtask`. The board and parent segments
+  are explicit navigation targets. The Back action preserves the surface that
+  opened the subtask (board wall or parent detail), while deletion always returns
+  to the surviving parent.
 
 ## Consequences
 
