@@ -235,6 +235,7 @@ function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskWorkspaceId, setSelectedTaskWorkspaceId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskItemDetailResponse | null>(null);
+  const [selectedTaskReturnTarget, setSelectedTaskReturnTarget] = useState<'wall' | 'parent'>('wall');
   const selectedTaskRef = useRef<TaskItemDetailResponse | null>(null);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(
     () => window.matchMedia('(max-width: 620px)').matches,
@@ -1953,6 +1954,7 @@ function App() {
       setSelectedTaskId(updatedParent.id);
       setSelectedTaskWorkspaceId(updatedParent.workspaceId);
       setSelectedTask(updatedParent);
+      setSelectedTaskReturnTarget('wall');
       showToast(t('subtaskDeleted'));
     } catch (error) {
       const message = getErrorMessage(error);
@@ -2394,10 +2396,31 @@ function App() {
     }
 
     try {
-      await deleteTaskItemsPermanently({ taskItemIds });
+      const taskIdsByWorkspace = taskItemIds.reduce((groups, taskItemId) => {
+        const taskWorkspaceId = taskItems.find((taskItem) => taskItem.id === taskItemId)?.workspaceId;
+        if (!taskWorkspaceId) {
+          return groups;
+        }
+
+        const workspaceTaskIds = groups.get(taskWorkspaceId) ?? [];
+        workspaceTaskIds.push(taskItemId);
+        groups.set(taskWorkspaceId, workspaceTaskIds);
+        return groups;
+      }, new Map<string, string[]>());
+
+      if (taskIdsByWorkspace.size === 0) {
+        throw new Error(t('selectedTasksUnavailable'));
+      }
+
+      await Promise.all([...taskIdsByWorkspace.entries()].map(([workspaceId, workspaceTaskIds]) =>
+        deleteTaskItemsPermanently(
+          { taskItemIds: workspaceTaskIds },
+          { workspaceId },
+        )));
       setSelectedTaskId(null);
       setSelectedTaskWorkspaceId(null);
       setSelectedTask(null);
+      setSelectedTaskReturnTarget('wall');
       await loadWorkspace(currentViewId, selectedWorkspaceId, { force: true });
       showToast(t('tasksDeletedPermanently'));
     } catch (error) {
@@ -2778,24 +2801,33 @@ function App() {
             onRevokeTaskShare={handleRevokeTaskShare}
             onRevokeWorkspaceInvitation={handleRevokeWorkspaceInvitation}
             onRemoveWorkspaceMember={handleRemoveWorkspaceMember}
-            onSelectTaskItem={(id, workspaceId) => {
+            onSelectTaskItem={(id, workspaceId, returnTarget = 'wall') => {
               if (!confirmTaskNavigation()) {
                 return;
               }
 
               setSelectedTaskId(id);
               setSelectedTaskWorkspaceId(workspaceId);
+              setSelectedTaskReturnTarget(returnTarget);
             }}
-            onCloseTaskItem={() => {
-              if (selectedTask?.parentTaskItemId) {
+            onCloseTaskItem={(destination = 'default') => {
+              if (
+                (destination === 'parent' || (
+                  destination === 'default' &&
+                  selectedTaskReturnTarget === 'parent'
+                )) &&
+                selectedTask?.parentTaskItemId
+              ) {
                 setSelectedTaskId(selectedTask.parentTaskItemId);
                 setSelectedTaskWorkspaceId(selectedTask.workspaceId);
+                setSelectedTaskReturnTarget('wall');
                 return;
               }
 
               setSelectedTaskId(null);
               setSelectedTaskWorkspaceId(null);
               setSelectedTask(null);
+              setSelectedTaskReturnTarget('wall');
             }}
             onUpdateFieldValues={handleUpdateFieldValues}
             onUpdateTaskShareRole={handleUpdateTaskShareRole}

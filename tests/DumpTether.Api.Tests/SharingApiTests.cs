@@ -828,6 +828,57 @@ public sealed class SharingApiTests
     }
 
     [Fact]
+    public async Task TaskShare_SubtasksCannotBeSharedDirectlyAndInheritParentAccess()
+    {
+        using var factory = new DumpTetherApiFactory();
+        using var ownerClient = factory.CreateClient();
+        using var sharedClient = factory.CreateClient();
+        var owner = await RegisterAndLoginAsync(
+            ownerClient,
+            "subtask-share-owner@example.com",
+            "correct horse battery");
+        var sharedUser = await RegisterAndLoginAsync(
+            sharedClient,
+            "subtask-share-user@example.com",
+            "correct horse battery");
+        var ownerWorkspaceId = owner.Workspaces.Single().Id;
+        var parent = await CreateTaskAsync(ownerClient, "Shared parent task");
+        var childResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{parent.Id}/subtasks",
+            new { title = "Child governed by parent share" });
+        childResponse.EnsureSuccessStatusCode();
+        var child = (await childResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+
+        var directShareResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{child.Id}/shares",
+            new { email = sharedUser.User.Email, role = 2 });
+        var directShareLinkResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{child.Id}/share-links",
+            new { email = sharedUser.User.Email, role = 2 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, directShareResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, directShareLinkResponse.StatusCode);
+
+        var parentShareResponse = await ownerClient.PostAsJsonAsync(
+            $"/api/tasks/{parent.Id}/shares",
+            new { email = sharedUser.User.Email, role = 2 });
+        parentShareResponse.EnsureSuccessStatusCode();
+
+        SetWorkspaceHeader(sharedClient, ownerWorkspaceId);
+        var parentDetailResponse = await sharedClient.GetAsync($"/api/tasks/{parent.Id}");
+        var childDetailResponse = await sharedClient.GetAsync($"/api/tasks/{child.Id}");
+        var childUpdateResponse = await sharedClient.PatchAsJsonAsync(
+            $"/api/tasks/{child.Id}",
+            new { title = "Child edited through parent share" });
+
+        parentDetailResponse.EnsureSuccessStatusCode();
+        childDetailResponse.EnsureSuccessStatusCode();
+        childUpdateResponse.EnsureSuccessStatusCode();
+        var childDetail = (await childDetailResponse.Content.ReadFromJsonAsync<TaskItemDetailResponse>())!;
+        Assert.Empty(childDetail.Shares);
+    }
+
+    [Fact]
     public async Task TaskShare_CreateAcceptsStringRole()
     {
         using var factory = new DumpTetherApiFactory();

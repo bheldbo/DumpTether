@@ -425,15 +425,12 @@ internal sealed class TaskItemService : ITaskItemService
             context.WorkspaceId,
             taskItems.Select(taskItem => taskItem.Id).ToArray(),
             cancellationToken);
-        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
         var readableSubtasks = (await _taskItemRepository.ListChildrenByParentIdsAsync(
             context.WorkspaceId,
             taskItems.Select(taskItem => taskItem.Id).ToArray(),
             trackChanges: false,
             cancellationToken))
-            .Where(taskItem =>
-                taskItem.ArchivedAt is null &&
-                CanReadTask(context, currentSession, taskItem))
+            .Where(taskItem => taskItem.ArchivedAt is null)
             .ToArray();
         var subtasksByParent = readableSubtasks
             .GroupBy(taskItem => taskItem.ParentTaskItemId!.Value)
@@ -507,7 +504,8 @@ internal sealed class TaskItemService : ITaskItemService
             trackChanges: true,
             cancellationToken);
 
-        if (taskItem is null || !CanReadTask(context, currentSession, taskItem))
+        if (taskItem is null ||
+            !await CanReadTaskAsync(context, currentSession, taskItem, cancellationToken))
         {
             return null;
         }
@@ -524,9 +522,7 @@ internal sealed class TaskItemService : ITaskItemService
             [taskItem.Id],
             trackChanges: false,
             cancellationToken))
-            .Where(child =>
-                child.ArchivedAt is null &&
-                CanReadTask(context, currentSession, child))
+            .Where(child => child.ArchivedAt is null)
             .ToArray();
 
         return MapDetail(
@@ -557,7 +553,7 @@ internal sealed class TaskItemService : ITaskItemService
             return null;
         }
 
-        if (!CanEditTask(context, currentSession, taskItem))
+        if (!await CanEditTaskAsync(context, currentSession, taskItem, cancellationToken))
         {
             return null;
         }
@@ -674,12 +670,16 @@ internal sealed class TaskItemService : ITaskItemService
             throw new ValidationException("One or more selected tasks were not found.");
         }
 
-        var inaccessibleTask = explicitlySelectedTasks.FirstOrDefault(taskItem =>
-            !CanReadTask(sourceContext, currentSession, taskItem));
-
-        if (inaccessibleTask is not null)
+        foreach (var explicitlySelectedTask in explicitlySelectedTasks)
         {
-            throw new ValidationException("One or more selected tasks were not found.");
+            if (!await CanReadTaskAsync(
+                    sourceContext,
+                    currentSession,
+                    explicitlySelectedTask,
+                    cancellationToken))
+            {
+                throw new ValidationException("One or more selected tasks were not found.");
+            }
         }
 
         var selectedParentIds = explicitlySelectedTasks
@@ -690,8 +690,7 @@ internal sealed class TaskItemService : ITaskItemService
                 sourceContext.WorkspaceId,
                 selectedParentIds,
                 trackChanges: false,
-                cancellationToken))
-            .Where(taskItem => CanReadTask(sourceContext, currentSession, taskItem));
+                cancellationToken));
         var sourceTasks = explicitlySelectedTasks
             .Concat(readableChildren)
             .DistinctBy(taskItem => taskItem.Id)
@@ -1010,7 +1009,7 @@ internal sealed class TaskItemService : ITaskItemService
             return null;
         }
 
-        if (!CanEditTask(context, currentSession, taskItem))
+        if (!await CanEditTaskAsync(context, currentSession, taskItem, cancellationToken))
         {
             return null;
         }
@@ -1188,7 +1187,9 @@ internal sealed class TaskItemService : ITaskItemService
         var now = _clock.UtcNow;
 
         return shares
-            .Where(item => item.Share.ExpiresAt is null || item.Share.ExpiresAt > now)
+            .Where(item =>
+                item.TaskItem.ParentTaskItemId is null &&
+                (item.Share.ExpiresAt is null || item.Share.ExpiresAt > now))
             .Select(MapIncomingShare)
             .ToList();
     }
@@ -1291,6 +1292,11 @@ internal sealed class TaskItemService : ITaskItemService
             throw new ValidationException("One or more selected tasks were not found.");
         }
 
+        if (taskItems.Any(taskItem => taskItem.ParentTaskItemId.HasValue))
+        {
+            throw new ValidationException("Subtasks cannot be shared directly. Share the parent task or board instead.");
+        }
+
         var normalizedEmail = AppUser.NormalizeEmail(request.Email);
         var targetUser = await _authRepository.GetUserByNormalizedEmailAsync(
             normalizedEmail,
@@ -1355,10 +1361,12 @@ internal sealed class TaskItemService : ITaskItemService
 
         var currentSession = await RequireCurrentSessionAsync(cancellationToken);
         var tokenHash = _sessionTokenService.HashToken(request.Token);
-        var taskItems = await _taskItemRepository.ListByShareTokenHashAsync(
+        var taskItems = (await _taskItemRepository.ListByShareTokenHashAsync(
             tokenHash,
             trackChanges: true,
-            cancellationToken);
+            cancellationToken))
+            .Where(taskItem => taskItem.ParentTaskItemId is null)
+            .ToArray();
         var now = _clock.UtcNow;
         var normalizedEmail = AppUser.NormalizeEmail(currentSession.Email);
         var acceptedTaskIds = new List<Guid>();
@@ -1585,9 +1593,20 @@ internal sealed class TaskItemService : ITaskItemService
         IReadOnlyList<Guid>? recipientUserIds = null)
     {
         currentSession ??= await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var sharingTaskItem = taskItem;
+        if (taskItem.ParentTaskItemId.HasValue)
+        {
+            sharingTaskItem = await _taskItemRepository.GetByIdAsync(
+                    taskItem.ParentTaskItemId.Value,
+                    taskItem.WorkspaceId,
+                    projectId: null,
+                    trackChanges: false,
+                    cancellationToken) ?? taskItem;
+        }
+
         var mergedRecipientUserIds = MergeRecipientUserIds(
             recipientUserIds,
-            GetActiveTaskShareRecipientUserIds(taskItem));
+            GetActiveTaskShareRecipientUserIds(sharingTaskItem));
 
         await _liveUpdatePublisher.PublishAsync(
             new LiveUpdateMessage(
@@ -1645,7 +1664,8 @@ internal sealed class TaskItemService : ITaskItemService
             trackChanges: true,
             cancellationToken);
 
-        return taskItem is not null && CanReadTask(context, currentSession, taskItem)
+        return taskItem is not null &&
+            await CanReadTaskAsync(context, currentSession, taskItem, cancellationToken)
             ? taskItem
             : null;
     }
@@ -1663,7 +1683,8 @@ internal sealed class TaskItemService : ITaskItemService
             trackChanges: true,
             cancellationToken);
 
-        return taskItem is not null && CanEditTask(context, currentSession, taskItem)
+        return taskItem is not null &&
+            await CanEditTaskAsync(context, currentSession, taskItem, cancellationToken)
             ? taskItem
             : null;
     }
@@ -1681,12 +1702,20 @@ internal sealed class TaskItemService : ITaskItemService
 
         await RequireCurrentSessionAsync(cancellationToken);
 
-        return await _taskItemRepository.GetByIdAsync(
+        var taskItem = await _taskItemRepository.GetByIdAsync(
             id,
             context.WorkspaceId,
             projectId: null,
             trackChanges: true,
             cancellationToken);
+
+        if (taskItem?.ParentTaskItemId.HasValue == true)
+        {
+            throw new ValidationException(
+                "Subtasks cannot be shared directly. Share the parent task or board instead.");
+        }
+
+        return taskItem;
     }
 
     private async Task<CurrentUserSession> RequireCurrentSessionAsync(
@@ -1707,6 +1736,11 @@ internal sealed class TaskItemService : ITaskItemService
         }
 
         if (currentSession is null)
+        {
+            return false;
+        }
+
+        if (taskItem.ParentTaskItemId.HasValue)
         {
             return false;
         }
@@ -1732,10 +1766,56 @@ internal sealed class TaskItemService : ITaskItemService
             return false;
         }
 
+        if (taskItem.ParentTaskItemId.HasValue)
+        {
+            return false;
+        }
+
         var normalizedEmail = AppUser.NormalizeEmail(currentSession.Email);
         return taskItem.Shares.Any(share =>
             share.Role == TaskItemShareRole.Editor &&
             share.MatchesUser(currentSession.UserId, normalizedEmail));
+    }
+
+    private async Task<bool> CanReadTaskAsync(
+        DevelopmentWorkspaceContext context,
+        CurrentUserSession? currentSession,
+        TaskItem taskItem,
+        CancellationToken cancellationToken)
+    {
+        if (!context.IsSharedOnly || !taskItem.ParentTaskItemId.HasValue)
+        {
+            return CanReadTask(context, currentSession, taskItem);
+        }
+
+        var parent = await _taskItemRepository.GetByIdAsync(
+            taskItem.ParentTaskItemId.Value,
+            context.WorkspaceId,
+            projectId: null,
+            trackChanges: false,
+            cancellationToken);
+        return parent is not null && CanReadTask(context, currentSession, parent);
+    }
+
+    private async Task<bool> CanEditTaskAsync(
+        DevelopmentWorkspaceContext context,
+        CurrentUserSession? currentSession,
+        TaskItem taskItem,
+        CancellationToken cancellationToken)
+    {
+        if ((!context.IsSharedOnly && context.CanWriteWorkspace) ||
+            !taskItem.ParentTaskItemId.HasValue)
+        {
+            return CanEditTask(context, currentSession, taskItem);
+        }
+
+        var parent = await _taskItemRepository.GetByIdAsync(
+            taskItem.ParentTaskItemId.Value,
+            context.WorkspaceId,
+            projectId: null,
+            trackChanges: false,
+            cancellationToken);
+        return parent is not null && CanEditTask(context, currentSession, parent);
     }
 
     private static void EnsureCanWriteWorkspace(DevelopmentWorkspaceContext context)
@@ -2561,6 +2641,11 @@ internal sealed class TaskItemService : ITaskItemService
 
     private static IReadOnlyList<TaskItemShareResponse> MapShares(TaskItem taskItem)
     {
+        if (taskItem.ParentTaskItemId.HasValue)
+        {
+            return [];
+        }
+
         return taskItem.Shares
             .Where(share => share.RevokedAt is null)
             .OrderBy(share => share.Email)

@@ -56,6 +56,8 @@ interface TaskDetailProps {
   onArchive: () => Promise<void>;
   onDeleteSubtask: () => Promise<void>;
   onClose: () => Promise<void>;
+  onOpenBoard: () => Promise<void>;
+  onOpenParent: () => Promise<void>;
   onRequestSync: () => void;
   onReopen: (note?: string) => Promise<void>;
   onUnsavedChangesChange: (hasUnsavedChanges: boolean) => void;
@@ -102,6 +104,8 @@ export function TaskDetail({
   onArchive,
   onDeleteSubtask,
   onClose,
+  onOpenBoard,
+  onOpenParent,
   onRequestSync,
   onReopen,
   onUnsavedChangesChange,
@@ -124,7 +128,7 @@ export function TaskDetail({
   templateCanBeImported,
   taskItem,
 }: TaskDetailProps) {
-  const closeLabel = taskItem.parentTaskItemId ? t('backToParent') : t('backToWall');
+  const closeLabel = taskItem.parentTaskItemId ? t('back') : t('backToWall');
   const [reopenNote, setReopenNote] = useState('');
   const [deleteDialogIsOpen, setDeleteDialogIsOpen] = useState(false);
   const [fieldDraft, setFieldDraft] = useState<FieldValueMap>({});
@@ -218,15 +222,29 @@ export function TaskDetail({
 
   return (
     <section className="task-detail" aria-label="Task detail">
-      {taskItem.parentTaskItemId ? (
-        <nav className="task-detail-breadcrumb" aria-label={t('subtaskOf')}>
-          <span>{workspaceName}</span>
+      <nav className="task-detail-breadcrumb" aria-label={t('taskPath')}>
+          <button onClick={() => void onOpenBoard()} type="button">{workspaceName}</button>
           <span aria-hidden="true">›</span>
-          <span>{parentTaskTitle ?? t('subtaskOf')}</span>
-          <span aria-hidden="true">›</span>
+          {taskItem.parentTaskItemId ? (
+            <>
+              <button onClick={() => void onOpenParent()} type="button">
+                {parentTaskTitle ?? t('subtaskOf')}
+              </button>
+              <span aria-hidden="true">›</span>
+            </>
+          ) : null}
           <strong>{taskItem.title}</strong>
-        </nav>
-      ) : null}
+          {templateCanBeImported ? (
+            <button
+              className="task-detail-import-link"
+              onClick={() => void onImportTemplate()}
+              title={t('importTemplateHelp')}
+              type="button"
+            >
+              {t('importTemplate')}
+            </button>
+          ) : null}
+      </nav>
       <div
         className="detail-header task-detail-header"
         style={getTaskCardStyle(taskItem.color)}
@@ -348,24 +366,13 @@ export function TaskDetail({
         />
       ) : null}
 
-      {headerFields.length > 0 || templateCanBeImported ? (
+      {headerFields.length > 0 ? (
         <section
           className="task-header-fields-section"
           style={getTaskCardStyle(taskItem.color)}
         >
           <div className="task-header-fields-toolbar">
             <span className="section-heading-actions">
-              {templateCanBeImported ? (
-                <button
-                  className="secondary-action compact-action"
-                  onClick={() => void onImportTemplate()}
-                  title={t('importTemplateHelp')}
-                  type="button"
-                >
-                  <Icon name="templates" />
-                  <span>{t('importTemplate')}</span>
-                </button>
-              ) : null}
               {isSavingFields ? (
                 <span
                   aria-label={t('saving')}

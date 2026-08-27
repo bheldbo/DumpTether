@@ -924,6 +924,7 @@
   }
 
   .task-detail-breadcrumb span,
+  .task-detail-breadcrumb button:not(.task-detail-import-link),
   .task-detail-breadcrumb strong {
     max-width: 30vw;
   }

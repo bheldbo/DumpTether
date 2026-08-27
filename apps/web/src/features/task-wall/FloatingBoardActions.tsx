@@ -107,24 +107,25 @@ export function FloatingBoardActions({
       data-edit-mode={editModeIsEnabled}
       ref={actionsRef}
     >
-      {editModeIsEnabled ? (
+      {editModeIsEnabled && (!archiveModeIsActive || canPermanentlyDelete) ? (
         <button
           className="floating-selection-primary"
+          data-danger={archiveModeIsActive}
           disabled={selectedTaskCount === 0}
           onClick={() => {
             setIsOpen(false);
             if (archiveModeIsActive) {
-              onOpenBatchReopen();
+              onOpenBatchPermanentDelete();
             } else {
               onOpenBatchArchive();
             }
           }}
-          title={archiveModeIsActive ? t('unarchiveSelected') : t('archiveSelected')}
+          title={archiveModeIsActive ? t('deletePermanently') : t('archiveSelected')}
           type="button"
         >
-          <Icon name={archiveModeIsActive ? 'undo' : 'archive'} />
+          <Icon name={archiveModeIsActive ? 'trash' : 'archive'} />
           <span className="sr-only">
-            {archiveModeIsActive ? t('unarchiveSelected') : t('archiveSelected')}
+            {archiveModeIsActive ? t('deletePermanently') : t('archiveSelected')}
           </span>
         </button>
       ) : null}
@@ -175,18 +176,17 @@ export function FloatingBoardActions({
                 <span className="quick-action-menu-label">
                   {selectedTaskCount} {t('selectedTasks')}
                 </span>
-                {archiveModeIsActive && canPermanentlyDelete ? (
+                {archiveModeIsActive ? (
                   <button
-                    className="danger-action"
                     disabled={selectedTaskCount === 0}
                     onClick={() => {
-                      onOpenBatchPermanentDelete();
+                      onOpenBatchReopen();
                       setIsOpen(false);
                     }}
                     type="button"
                   >
-                    <Icon name="trash" />
-                    <span>{t('deletePermanently')}</span>
+                    <Icon name="undo" />
+                    <span>{t('unarchiveSelected')}</span>
                   </button>
                 ) : null}
                 {canManageSharing && !archiveModeIsActive ? (

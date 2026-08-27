@@ -138,6 +138,19 @@ export function Sidebar({
   }, [workspaceCreateIsOpen]);
 
   useEffect(() => {
+    const openWorkspaceCreate = () => {
+      if (sidebarIsCollapsed) {
+        onToggleSidebarRef.current();
+      }
+      setWorkspaceCreateIsOpen(true);
+      window.requestAnimationFrame(() => workspaceInputRef.current?.focus());
+    };
+
+    window.addEventListener('dumptether:open-board-create', openWorkspaceCreate);
+    return () => window.removeEventListener('dumptether:open-board-create', openWorkspaceCreate);
+  }, [sidebarIsCollapsed]);
+
+  useEffect(() => {
     if (!workspaceCreateIsOpen) {
       return undefined;
     }

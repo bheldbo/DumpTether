@@ -1031,7 +1031,7 @@ button.member-chip:hover {
 
 .floating-selection-primary {
   position: fixed;
-  left: 28px;
+  left: calc(var(--sidebar-width, 284px) + 28px);
   bottom: 28px;
   z-index: 30;
   width: 52px;
@@ -1047,6 +1047,10 @@ button.member-chip:hover {
   backdrop-filter: blur(8px);
 }
 
+.app-shell[data-sidebar-collapsed="true"] .floating-selection-primary {
+  left: 104px;
+}
+
 .floating-selection-primary:hover:not(:disabled),
 .floating-selection-primary:focus-visible {
   background: rgba(255, 255, 255, 0.9);
@@ -1056,6 +1060,18 @@ button.member-chip:hover {
 .floating-selection-primary:disabled {
   cursor: default;
   opacity: 0.42;
+}
+
+.floating-selection-primary[data-danger="true"] {
+  border-color: #e0aaa0;
+  background: rgba(255, 245, 243, 0.9);
+  color: #84241e;
+}
+
+.floating-selection-primary[data-danger="true"]:hover:not(:disabled),
+.floating-selection-primary[data-danger="true"]:focus-visible {
+  border-color: #c85d4e;
+  background: #fee2df;
 }
 
 .floating-selection-exit {
