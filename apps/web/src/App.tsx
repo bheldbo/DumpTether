@@ -20,6 +20,7 @@ import {
   type ToastMessage,
   type ToastTone,
   type WorkspaceMode,
+  type StatusOption,
   languageStorageKey,
 } from './appTypes';
 import {
@@ -35,7 +36,6 @@ import {
   isSystemAllTasksWorkspace,
   isTaskShareWorkspace,
   pickSavedViewId,
-  readStoredStringList,
   updateUrl,
 } from './appUtils';
 import {
@@ -53,6 +53,7 @@ import {
   createTaskShareLinks,
   createTaskItem,
   createSubtask,
+  deleteSubtask,
   createTaskTemplate,
   createWorkspace,
   createWorkspaceInvitation,
@@ -179,6 +180,40 @@ import {
   writeCachedWorkspaceSnapshot,
 } from './workspaceCache';
 
+const defaultStatusOptions: StatusOption[] = [
+  { name: 'Active', color: '#bfe7d2' },
+  { name: 'Waiting', color: '#fff1a8' },
+  { name: 'Follow-up', color: '#a7d8ff' },
+  { name: 'Blocked', color: '#ffc7c7' },
+  { name: 'Done', color: '#d7dee8' },
+];
+
+function readStoredStatusOptions(): StatusOption[] {
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(statusOptionsStorageKey) ?? 'null',
+    );
+    if (!Array.isArray(parsed)) {
+      return defaultStatusOptions;
+    }
+
+    return parsed
+      .map((value, index): StatusOption | null => {
+        if (typeof value === 'string') {
+          return { name: value, color: defaultStatusOptions[index]?.color ?? '#d7dee8' };
+        }
+        if (value && typeof value === 'object' &&
+          typeof (value as StatusOption).name === 'string' &&
+          typeof (value as StatusOption).color === 'string') {
+          return value as StatusOption;
+        }
+        return null;
+      })
+      .filter((value): value is StatusOption => Boolean(value?.name.trim()));
+  } catch {
+    return defaultStatusOptions;
+  }
+}
 function App() {
   const [savedViews, setSavedViews] = useState<SavedViewResponse[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceResponse[]>([]);
@@ -191,11 +226,8 @@ function App() {
   const [syncRoots, setSyncRoots] = useState<SyncRootResponse[]>([]);
   const [templates, setTemplates] = useState<TaskTemplateDetailResponse[]>([]);
   const [importedTemplateSourceIds, setImportedTemplateSourceIds] = useState<string[]>([]);
-  const [configuredStatuses, setConfiguredStatuses] = useState<string[]>(
-    () => readStoredStringList(
-      statusOptionsStorageKey,
-      ['Active', 'Waiting', 'Follow-up', 'Blocked', 'Done'],
-    ),
+  const [configuredStatuses, setConfiguredStatuses] = useState<StatusOption[]>(
+    readStoredStatusOptions,
   );
   const [knownStatuses, setKnownStatuses] = useState<string[]>([]);
   const [mode, setMode] = useState<WorkspaceMode>(getInitialMode);
@@ -203,6 +235,7 @@ function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskWorkspaceId, setSelectedTaskWorkspaceId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskItemDetailResponse | null>(null);
+  const selectedTaskRef = useRef<TaskItemDetailResponse | null>(null);
   const [sidebarIsCollapsed, setSidebarIsCollapsed] = useState(
     () => window.matchMedia('(max-width: 620px)').matches,
   );
@@ -270,6 +303,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const workspaceLoadAbortRef = useRef<AbortController | null>(null);
   const workspaceLoadSequenceRef = useRef(0);
+  const workspaceMutationSequenceRef = useRef(0);
   const t = useCallback<Translate>((key) => translate(language, key), [language]);
   const {
     confirmNavigation: confirmTaskNavigation,
@@ -277,12 +311,19 @@ function App() {
     setHasUnsavedChanges: setTaskHasUnsavedChanges,
   } = useUnsavedTaskChanges(t('discardUnsavedChanges'));
   const statusOptions = useMemo(
-    () => uniqueSorted([...configuredStatuses, ...knownStatuses]),
+    () => uniqueSorted([...configuredStatuses.map((status) => status.name), ...knownStatuses]),
     [configuredStatuses, knownStatuses],
+  );
+  const statusColors = useMemo(
+    () => Object.fromEntries(configuredStatuses.map((status) => [status.name, status.color])),
+    [configuredStatuses],
   );
   const accountNotificationCount = incomingWorkspaceInvitations.length + incomingTaskShares.length;
   const workspaceAccessIsEnabled = !authOptions.requiresAuthentication || currentUser !== null;
 
+  useEffect(() => {
+    selectedTaskRef.current = selectedTask;
+  }, [selectedTask]);
   const applyTaskUpdate = useCallback((updated: TaskItemDetailResponse) => {
     setSelectedTask((currentTask) =>
       currentTask?.id === updated.id ? updated : currentTask,
@@ -478,6 +519,7 @@ function App() {
     ) => {
       const showLoading = !options.silent;
       const loadSequence = workspaceLoadSequenceRef.current + 1;
+      const mutationSequenceAtStart = workspaceMutationSequenceRef.current;
       workspaceLoadSequenceRef.current = loadSequence;
       workspaceLoadAbortRef.current?.abort();
 
@@ -674,7 +716,20 @@ function App() {
         setTaskColorOptions(colorOptions);
         setKnownStatuses(statuses);
         setCurrentViewId(selectedViewId);
-        setTaskItems(selectedTasks);
+        setTaskItems((currentItems) => {
+          if (workspaceMutationSequenceRef.current === mutationSequenceAtStart) {
+            return selectedTasks;
+          }
+
+          const mergedItems = new Map(selectedTasks.map((taskItem) => [taskItem.id, taskItem]));
+          currentItems.forEach((taskItem) => {
+            const loadedTask = mergedItems.get(taskItem.id);
+            if (!loadedTask || taskItem.lastTouchedAt > loadedTask.lastTouchedAt) {
+              mergedItems.set(taskItem.id, taskItem);
+            }
+          });
+          return [...mergedItems.values()];
+        });
         setViewCounts(counts);
         const snapshot = {
           currentViewId: selectedViewId,
@@ -697,7 +752,8 @@ function App() {
 
         if (
           selectedTaskId &&
-          !selectedTasks.some((taskItem) => taskItem.id === selectedTaskId) &&
+          !selectedTasks.some((taskItem) =>
+            taskItem.id === selectedTaskId || taskItem.id === selectedTask?.parentTaskItemId) &&
           !taskHasUnsavedChanges()
         ) {
           setSelectedTaskId(null);
@@ -724,6 +780,7 @@ function App() {
       currentUser,
       currentViewId,
       localDesktopSessionIsActive,
+      selectedTask,
       selectedTaskId,
       selectedWorkspaceId,
       taskHasUnsavedChanges,
@@ -840,6 +897,13 @@ function App() {
           })
           .catch(() => {
             if (taskHasUnsavedChanges()) {
+              return;
+            }
+
+            const missingTask = selectedTaskRef.current;
+            if (missingTask?.parentTaskItemId) {
+              setSelectedTaskId(missingTask.parentTaskItemId);
+              setSelectedTaskWorkspaceId(missingTask.workspaceId);
               return;
             }
 
@@ -1801,10 +1865,11 @@ function App() {
         workspaceId: targetWorkspaceId,
       });
       setMode('tasks');
-      setSelectedTaskId(null);
-      setSelectedTaskWorkspaceId(null);
-      setSelectedTask(null);
+      workspaceMutationSequenceRef.current += 1;
       if (targetWorkspaceId !== selectedWorkspaceId) {
+        setSelectedTaskId(null);
+        setSelectedTaskWorkspaceId(null);
+        setSelectedTask(null);
         setSelectedWorkspaceId(targetWorkspaceId);
         setCurrentViewId(null);
         updateUrl('tasks', null);
@@ -1849,12 +1914,21 @@ function App() {
       const created = await createSubtask(parentTaskItem.id, requestBody, {
         workspaceId: parentTaskItem.workspaceId,
       });
+      workspaceMutationSequenceRef.current += 1;
       setTaskItems((currentItems) => currentItems.map((taskItem) =>
         taskItem.id === parentTaskItem.id
-          ? { ...taskItem, subtaskCount: taskItem.subtaskCount + 1 }
+          ? {
+              ...taskItem,
+              subtaskCount: taskItem.subtaskCount + 1,
+              subtaskPreviews: [created, ...(taskItem.subtaskPreviews ?? [])].slice(0, 3),
+            }
           : taskItem));
       setSelectedTask((currentTask) => currentTask?.id === parentTaskItem.id
-        ? { ...currentTask, subtaskCount: currentTask.subtaskCount + 1 }
+        ? {
+            ...currentTask,
+            subtaskCount: currentTask.subtaskCount + 1,
+            subtaskPreviews: [created, ...(currentTask.subtaskPreviews ?? [])].slice(0, 3),
+          }
         : currentTask);
       void performBackgroundCloudSync(parentTaskItem.workspaceId);
       return created;
@@ -1865,6 +1939,27 @@ function App() {
     }
   };
 
+  const handleDeleteSubtask = async (
+    parentTaskItem: TaskItemSummaryResponse,
+    subtaskId: string,
+  ) => {
+    try {
+      const updatedParent = await deleteSubtask(parentTaskItem.id, subtaskId, {
+        workspaceId: parentTaskItem.workspaceId,
+      });
+      workspaceMutationSequenceRef.current += 1;
+      setTaskItems((currentItems) => currentItems.map((taskItem) =>
+        taskItem.id === updatedParent.id ? { ...taskItem, ...updatedParent } : taskItem));
+      setSelectedTaskId(updatedParent.id);
+      setSelectedTaskWorkspaceId(updatedParent.workspaceId);
+      setSelectedTask(updatedParent);
+      showToast(t('subtaskDeleted'));
+    } catch (error) {
+      const message = getErrorMessage(error);
+      showToast(message, 'error');
+      throw error;
+    }
+  };
   const handleCopyTaskItemsToWorkspace = async (
     taskItemIds: string[],
     destinationWorkspaceId: string,
@@ -2442,13 +2537,14 @@ function App() {
     }
   };
 
-  const handleSaveStatusOptions = (statuses: string[]) => {
-    const normalizedStatuses = uniqueSorted(statuses);
+  const handleSaveStatusOptions = (statuses: StatusOption[]) => {
+    const normalizedStatuses = statuses
+      .map((status) => ({ name: status.name.trim(), color: status.color }))
+      .filter((status, index, values) => status.name &&
+        values.findIndex((candidate) => candidate.name.toLowerCase() === status.name.toLowerCase()) === index)
+      .sort((first, second) => first.name.localeCompare(second.name));
     setConfiguredStatuses(normalizedStatuses);
-    window.localStorage.setItem(
-      statusOptionsStorageKey,
-      JSON.stringify(normalizedStatuses),
-    );
+    window.localStorage.setItem(statusOptionsStorageKey, JSON.stringify(normalizedStatuses));
   };
 
   const handleUpdateWorkspace = async (requestBody: UpdateWorkspaceRequest) => {
@@ -2674,6 +2770,7 @@ function App() {
             onCreateWorkspaceInvitation={handleCreateWorkspaceInvitation}
             onDeleteTimelineEntry={handleDeleteTimelineEntry}
             onDeleteProject={handleDeleteProject}
+            onDeleteSubtask={handleDeleteSubtask}
             onImportTaskTemplate={handleImportTaskTemplate}
             onReopen={handleReopenTaskItem}
             onReopenTaskItems={handleReopenTaskItems}
@@ -2693,7 +2790,6 @@ function App() {
               if (selectedTask?.parentTaskItemId) {
                 setSelectedTaskId(selectedTask.parentTaskItemId);
                 setSelectedTaskWorkspaceId(selectedTask.workspaceId);
-                setSelectedTask(null);
                 return;
               }
 
@@ -2717,6 +2813,7 @@ function App() {
             selectedTask={selectedTask}
             selectedTaskId={selectedTaskId}
             statusOptions={statusOptions}
+            statusColors={statusColors}
             syncRoot={syncRoots.find((root) => root.localWorkspaceId === workspace?.id) ?? null}
             taskItems={taskItems}
             templates={templates}

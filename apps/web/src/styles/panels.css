@@ -1,4 +1,4 @@
-﻿
+
 .settings-section {
   display: grid;
   gap: 8px;
@@ -1846,3 +1846,16 @@
   white-space: nowrap;
 }
 
+
+.settings-status-chip input[type="color"],
+.settings-inline-form input[type="color"] {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 2px;
+  border: 1px solid #c9d4de;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+}

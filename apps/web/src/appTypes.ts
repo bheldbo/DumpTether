@@ -1,6 +1,10 @@
 import type { AuthClientOptionsResponse, FieldDefinitionScope, FieldDefinitionType } from './types';
 
 export type WorkspaceMode = 'tasks' | 'templates' | 'tour';
+export interface StatusOption {
+  name: string;
+  color: string;
+}
 export type SettingsSectionKey = 'general' | 'statuses' | 'cleanup';
 
 export interface EditableTemplateField {

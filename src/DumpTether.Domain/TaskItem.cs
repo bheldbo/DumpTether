@@ -218,6 +218,22 @@ public sealed class TaskItem
             subtask.Title);
     }
 
+    public void RecordSubtaskDeleted(TaskItem subtask, DateTimeOffset occurredAt)
+    {
+        ArgumentNullException.ThrowIfNull(subtask);
+
+        if (subtask.ParentTaskItemId != Id || subtask.WorkspaceId != WorkspaceId)
+        {
+            throw new InvalidOperationException("The task is not a child of this parent.");
+        }
+
+        AddTimelineEntry(
+            TaskTimelineEntryKind.ParentChanged,
+            "Subtask deleted permanently",
+            occurredAt,
+            subtask.Title);
+    }
+
     public TaskTimelineEntry AddNote(string? note, DateTimeOffset occurredAt)
     {
         return AddTimelineEntry(

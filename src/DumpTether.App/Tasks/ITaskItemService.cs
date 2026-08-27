@@ -15,9 +15,14 @@ public interface ITaskItemService
         Guid parentTaskItemId,
         CancellationToken cancellationToken);
 
+    Task<TaskItemDetailResponse?> DeleteSubtaskAsync(
+        Guid parentTaskItemId,
+        Guid subtaskId,
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<TaskItemSummaryResponse>> ListAsync(
         TaskItemListScope scope,
         CancellationToken cancellationToken);
+
 
     Task<IReadOnlyList<TaskItemSummaryResponse>> ListAsync(
         TaskItemListRequest request,

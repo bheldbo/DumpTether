@@ -1,5 +1,11 @@
 export type TaskItemListScope = 'Active' | 'Archive' | 'All';
 
+export interface TaskSubtaskPreviewResponse {
+  id: string;
+  title: string;
+  status: string | null;
+  color: string | null;
+}
 export interface TaskItemSummaryResponse {
   id: string;
   workspaceId: string;
@@ -21,6 +27,7 @@ export interface TaskItemSummaryResponse {
   parentTaskItemId: string | null;
   subtaskCount: number;
   builtInTemplateKind: string | null;
+  subtaskPreviews: TaskSubtaskPreviewResponse[];
 }
 
 export interface TaskItemDetailResponse extends TaskItemSummaryResponse {

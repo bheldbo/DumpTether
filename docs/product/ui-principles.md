@@ -10,9 +10,12 @@ DumpTether should feel like a lightweight personal sticker wall backed by a stru
 - Task cards should look and behave like plain post-it notes.
 - The task's chosen color belongs to the whole card, not a small label or category strip.
 - The wall card is for scanning, not editing.
-- A card should show title, latest note content, small status/category/date signals, follow-up date when set, and whether notes exist.
+- A card should show title, latest note content, small status/category/date signals, follow-up date when set, whether notes exist, and up to three tiny subtask notes with an `… +N` overflow cue.
 - Clicking a card should focus that task and let it fill the workspace.
 - Color, status, category, title, dates, fields and notes are edited in the focused task surface.
+- User-configured statuses may have colors; use the color consistently on compact status chips without competing with the task card color.
+- A focused subtask must retain visible Board → Parent → Subtask context and feel like a document nested under its parent.
+- Subtasks use status such as `Done` for completion. Their destructive action is a confirmed permanent Delete, not Archive.
 - Creating a task should start from a compact `+` action so the wall keeps the screen.
 - Pressing Enter in quick-create creates the task immediately.
 - The quick-create input should stay focused after creation.

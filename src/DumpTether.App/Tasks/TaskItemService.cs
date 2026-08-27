@@ -277,6 +277,91 @@ internal sealed class TaskItemService : ITaskItemService
             .ToList();
     }
 
+    public async Task<TaskItemDetailResponse?> DeleteSubtaskAsync(
+        Guid parentTaskItemId,
+        Guid subtaskId,
+        CancellationToken cancellationToken)
+    {
+        if (parentTaskItemId == Guid.Empty || subtaskId == Guid.Empty)
+        {
+            throw new ValidationException("Parent and subtask ids are required.");
+        }
+
+        var context = await _developmentWorkspaceProvider.GetCurrentAsync(cancellationToken);
+        if (!context.CanDeleteWorkspaceData)
+        {
+            throw new ValidationException("Only the board owner can permanently delete a subtask.");
+        }
+
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var parent = await _taskItemRepository.GetByIdAsync(
+            parentTaskItemId,
+            context.WorkspaceId,
+            projectId: null,
+            trackChanges: true,
+            cancellationToken);
+        var subtask = await _taskItemRepository.GetByIdAsync(
+            subtaskId,
+            context.WorkspaceId,
+            projectId: null,
+            trackChanges: false,
+            cancellationToken);
+
+        if (parent is null || subtask is null ||
+            subtask.ParentTaskItemId != parent.Id ||
+            !CanReadTask(context, currentSession, parent))
+        {
+            return null;
+        }
+
+        var now = _clock.UtcNow;
+        parent.RecordSubtaskDeleted(subtask, now);
+        var deleted = await _taskItemRepository.DeleteSubtaskAsync(
+            context.WorkspaceId,
+            parent.Id,
+            subtask.Id,
+            cancellationToken);
+        if (!deleted)
+        {
+            return null;
+        }
+
+        await _taskItemRepository.SaveChangesAsync(cancellationToken);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskDeleted,
+            subtask,
+            now,
+            cancellationToken,
+            currentSession);
+        await PublishTaskEventAsync(
+            LiveUpdateEvents.TaskUpdated,
+            parent,
+            now,
+            cancellationToken,
+            currentSession);
+
+        var remainingSubtasks = (await _taskItemRepository.ListChildrenByParentIdsAsync(
+            context.WorkspaceId,
+            [parent.Id],
+            trackChanges: false,
+            cancellationToken))
+            .Where(item => item.ArchivedAt is null)
+            .OrderByDescending(item => item.LastTouchedAt)
+            .ThenBy(item => item.Id)
+            .ToArray();
+        var taskTemplate = await ResolveTaskTemplateForDetailAsync(
+            parent,
+            includeDeleted: true,
+            cancellationToken);
+
+        return MapDetail(
+            parent,
+            taskTemplate,
+            await GetTaskSyncStateAsync(parent.WorkspaceId, parent.Id, cancellationToken),
+            remainingSubtasks.Length,
+            MapSubtaskPreviews(remainingSubtasks));
+    }
+
     private async Task<DevelopmentWorkspaceContext> GetRequiredWorkspaceContextAsync(
         CancellationToken cancellationToken)
     {
@@ -334,31 +419,42 @@ internal sealed class TaskItemService : ITaskItemService
             context.IsSharedOnly,
             request,
             cancellationToken);
-        var taskItems = await _taskItemRepository.ListAsync(
-            query,
-            cancellationToken);
+        var taskItems = await _taskItemRepository.ListAsync(query, cancellationToken);
 
         var syncStates = await _syncService.ListTaskSyncStatesAsync(
             context.WorkspaceId,
             taskItems.Select(taskItem => taskItem.Id).ToArray(),
             cancellationToken);
-        var subtaskCounts = await _taskItemRepository.CountChildrenByParentIdsAsync(
+        var currentSession = await _currentUserSessionProvider.GetCurrentAsync(cancellationToken);
+        var readableSubtasks = (await _taskItemRepository.ListChildrenByParentIdsAsync(
             context.WorkspaceId,
             taskItems.Select(taskItem => taskItem.Id).ToArray(),
-            cancellationToken);
+            trackChanges: false,
+            cancellationToken))
+            .Where(taskItem =>
+                taskItem.ArchivedAt is null &&
+                CanReadTask(context, currentSession, taskItem))
+            .ToArray();
+        var subtasksByParent = readableSubtasks
+            .GroupBy(taskItem => taskItem.ParentTaskItemId!.Value)
+            .ToDictionary(group => group.Key, group => group.ToArray());
         var taskTemplates = await LoadSummaryTemplatesAsync(taskItems, cancellationToken);
 
         return taskItems
-            .Select(taskItem => MapSummary(
-                taskItem,
-                syncStates.GetValueOrDefault(taskItem.Id),
-                subtaskCounts.GetValueOrDefault(taskItem.Id),
-                taskItem.TaskTemplateId.HasValue
-                    ? taskTemplates.GetValueOrDefault(taskItem.TaskTemplateId.Value)
-                    : null))
+            .Select(taskItem =>
+            {
+                var subtasks = subtasksByParent.GetValueOrDefault(taskItem.Id) ?? [];
+                return MapSummary(
+                    taskItem,
+                    syncStates.GetValueOrDefault(taskItem.Id),
+                    subtasks.Length,
+                    taskItem.TaskTemplateId.HasValue
+                        ? taskTemplates.GetValueOrDefault(taskItem.TaskTemplateId.Value)
+                        : null,
+                    MapSubtaskPreviews(subtasks));
+            })
             .ToList();
     }
-
     public async Task<IReadOnlyList<TaskItemViewCountResponse>> CountByViewsAsync(
         IReadOnlyList<Guid> viewIds,
         CancellationToken cancellationToken)
@@ -411,12 +507,7 @@ internal sealed class TaskItemService : ITaskItemService
             trackChanges: true,
             cancellationToken);
 
-        if (taskItem is null)
-        {
-            return null;
-        }
-
-        if (!CanReadTask(context, currentSession, taskItem))
+        if (taskItem is null || !CanReadTask(context, currentSession, taskItem))
         {
             return null;
         }
@@ -428,18 +519,23 @@ internal sealed class TaskItemService : ITaskItemService
             taskItem,
             includeDeleted: true,
             cancellationToken);
-        var subtaskCounts = await _taskItemRepository.CountChildrenByParentIdsAsync(
+        var readableSubtasks = (await _taskItemRepository.ListChildrenByParentIdsAsync(
             context.WorkspaceId,
             [taskItem.Id],
-            cancellationToken);
+            trackChanges: false,
+            cancellationToken))
+            .Where(child =>
+                child.ArchivedAt is null &&
+                CanReadTask(context, currentSession, child))
+            .ToArray();
 
         return MapDetail(
             taskItem,
             taskTemplate,
             await GetTaskSyncStateAsync(taskItem.WorkspaceId, taskItem.Id, cancellationToken),
-            subtaskCounts.GetValueOrDefault(taskItem.Id));
+            readableSubtasks.Length,
+            MapSubtaskPreviews(readableSubtasks));
     }
-
     public async Task<TaskItemDetailResponse?> UpdateAsync(
         Guid id,
         UpdateTaskItemRequest request,
@@ -919,6 +1015,10 @@ internal sealed class TaskItemService : ITaskItemService
             return null;
         }
 
+        if (taskItem.ParentTaskItemId.HasValue)
+        {
+            throw new ValidationException("Subtasks cannot be archived. Use status to mark completion or delete the subtask.");
+        }
         taskItem.Archive(_clock.UtcNow);
         await _taskItemRepository.SaveChangesAsync(cancellationToken);
         await PublishTaskEventAsync(
@@ -2313,7 +2413,8 @@ internal sealed class TaskItemService : ITaskItemService
         TaskItem taskItem,
         TaskSyncStateResponse? syncState = null,
         int subtaskCount = 0,
-        TaskTemplate? taskTemplate = null)
+        TaskTemplate? taskTemplate = null,
+        IReadOnlyList<TaskSubtaskPreviewResponse>? subtaskPreviews = null)
     {
         var latestTimelineEntry = taskItem.TimelineEntries
             .Where(entry => entry.DeletedAt == null && entry.Kind == TaskTimelineEntryKind.NoteAdded)
@@ -2351,14 +2452,16 @@ internal sealed class TaskItemService : ITaskItemService
                     MapFieldValues(latestTimelineEntry.FieldValues)),
             taskItem.ParentTaskItemId,
             subtaskCount,
-            MapBuiltInTemplateKind(taskTemplate));
+            MapBuiltInTemplateKind(taskTemplate),
+            subtaskPreviews ?? []);
     }
 
     private static TaskItemDetailResponse MapDetail(
         TaskItem taskItem,
         TaskTemplate? taskTemplate,
         TaskSyncStateResponse? syncState = null,
-        int subtaskCount = 0)
+        int subtaskCount = 0,
+        IReadOnlyList<TaskSubtaskPreviewResponse>? subtaskPreviews = null)
     {
         return new TaskItemDetailResponse(
             taskItem.Id,
@@ -2395,8 +2498,22 @@ internal sealed class TaskItemService : ITaskItemService
                 .ToList(),
             taskItem.ParentTaskItemId,
             subtaskCount,
-            MapBuiltInTemplateKind(taskTemplate));
+            MapBuiltInTemplateKind(taskTemplate),
+            subtaskPreviews ?? []);
     }
+
+    private static IReadOnlyList<TaskSubtaskPreviewResponse> MapSubtaskPreviews(
+        IEnumerable<TaskItem> subtasks) => subtasks
+        .Where(taskItem => taskItem.ArchivedAt is null)
+        .OrderByDescending(taskItem => taskItem.LastTouchedAt)
+        .ThenBy(taskItem => taskItem.Id)
+        .Take(3)
+        .Select(taskItem => new TaskSubtaskPreviewResponse(
+            taskItem.Id,
+            taskItem.Title,
+            taskItem.Status,
+            taskItem.Color))
+        .ToArray();
 
     private async Task<IReadOnlyDictionary<Guid, TaskTemplate>> LoadSummaryTemplatesAsync(
         IReadOnlyCollection<TaskItem> taskItems,

@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { beginOAuthLogin } from '../../api';
-import type { SettingsSectionKey } from '../../appTypes';
+import type { SettingsSectionKey, StatusOption } from '../../appTypes';
 import { readCloudSyncApiBaseUrl } from '../../appSettings';
 import { Icon, type IconName } from '../../components/Icon';
 import { ModalFrame } from '../../components/ModalFrame';
@@ -1045,7 +1045,7 @@ export function SettingsPanel({
   cleanupCloudLinkedWorkspaceIds: string[];
   cleanupPreferredWorkspaceId: string | null;
   cleanupWorkspaces: WorkspaceResponse[];
-  configuredStatuses: string[];
+  configuredStatuses: StatusOption[];
   language: Language;
   onChangeLanguage: (language: Language) => void;
   onClose: () => void;
@@ -1055,18 +1055,19 @@ export function SettingsPanel({
     status?: string | null,
   ) => Promise<number>;
   onDeleteWorkspace: ((workspaceId: string) => Promise<void>) | null;
-  onSaveStatusOptions: (statuses: string[]) => void;
+  onSaveStatusOptions: (statuses: StatusOption[]) => void;
   t: Translate;
 }) {
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>('general');
   const [statusDraft, setStatusDraft] = useState('');
+  const [statusColorDraft, setStatusColorDraft] = useState('#d7dee8');
   const [workspacePendingDeletion, setWorkspacePendingDeletion] =
     useState<WorkspaceResponse | null>(null);
   const [archiveCleanupMode, setArchiveCleanupMode] =
     useState<'all' | 'older' | 'status' | null>(null);
   const [archiveCleanupDays, setArchiveCleanupDays] = useState(30);
   const [archiveCleanupStatus, setArchiveCleanupStatus] = useState(
-    configuredStatuses[0] ?? '',
+    configuredStatuses[0]?.name ?? '',
   );
   const [cleanupWorkspaceId, setCleanupWorkspaceId] = useState(
     cleanupWorkspaces.some((workspace) => workspace.id === cleanupPreferredWorkspaceId)
@@ -1105,7 +1106,7 @@ export function SettingsPanel({
       return;
     }
 
-    onSaveStatusOptions([...configuredStatuses, trimmedStatus]);
+    onSaveStatusOptions([...configuredStatuses, { name: trimmedStatus, color: statusColorDraft }]);
     setStatusDraft('');
   };
 
@@ -1172,19 +1173,33 @@ export function SettingsPanel({
                     type="text"
                     value={statusDraft}
                   />
-                  <button className="icon-button" disabled={!statusDraft.trim()} type="submit">
+                  <input
+                    aria-label={t('statusColor')}
+                    onChange={(event) => setStatusColorDraft(event.target.value)}
+                    type="color"
+                    value={statusColorDraft}
+                  />                  <button className="icon-button" disabled={!statusDraft.trim()} type="submit">
                     <Icon name="plus" />
                   </button>
                 </form>
                 <div className="settings-chip-list">
                   {configuredStatuses.map((status) => (
-                    <span className="settings-chip" key={status}>
-                      {status}
+                    <span className="settings-chip settings-status-chip" key={status.name}>
+                      <input
+                        aria-label={`${t('statusColor')}: ${status.name}`}
+                        onChange={(event) => onSaveStatusOptions(configuredStatuses.map((candidate) =>
+                          candidate.name === status.name
+                            ? { ...candidate, color: event.target.value }
+                            : candidate))}
+                        type="color"
+                        value={status.color}
+                      />
+                      {status.name}
                       <button
                         className="tiny-icon-button"
                         onClick={() =>
                           onSaveStatusOptions(
-                            configuredStatuses.filter((currentStatus) => currentStatus !== status),
+                            configuredStatuses.filter((currentStatus) => currentStatus.name !== status.name),
                           )}
                         title={t('deleteNote')}
                         type="button"
@@ -1297,7 +1312,7 @@ export function SettingsPanel({
           }}
           t={t}
           status={archiveCleanupStatus}
-          statuses={configuredStatuses}
+          statuses={configuredStatuses.map((status) => status.name)}
           workspace={cleanupWorkspace}
         />
       ) : null}

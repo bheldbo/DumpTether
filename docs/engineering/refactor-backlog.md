@@ -55,10 +55,10 @@ Use it when a cleanup is real but not worth derailing the current task.
 ### Synced permanent deletion needs tombstones
 
 - Status: blocks bulk archive cleanup
-- Context: permanent local task deletion can leave a sync mapping without a
+- Context: permanent local task or subtask deletion can leave a sync mapping without a
   deletion tombstone. A later pull could recreate a task the user believed was
   permanently removed.
-- Why it can wait: board deletion is already owner-only and confirmed, while
+- Why it can wait: board and subtask deletion are owner-only and confirmed, while
   archive retention can remain non-destructive until deletion sync is designed.
 - Future cleanup: add task deletion tombstones or an explicit unlink/delete
   protocol, cover both PostgreSQL and SQLite, then enable bulk archive cleanup.
